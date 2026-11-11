@@ -151,7 +151,7 @@ describe('observation fixtures', () => {
   it('format every element line back to itself', () => {
     for (const path of texts) {
       const parsed = parseObservation(read(path).replace(/\n$/, ''))
-      const lines = read(path).replace(/\n$/, '').split('\n').slice(parsed.others.length ? 2 : 1)
+      const lines = read(path).replace(/\n$/, '').split('\n').slice(1 + (parsed.header.document ? 1 : 0) + (parsed.others.length ? 1 : 0))
       parsed.lines.forEach((line, i) => {
         if (line.type === 'element') expect(formatObservation({ ...parsed, lines: [line] }).split('\n').pop(), `${relative(root, path)}:${i}`).toBe(lines[i])
       })
@@ -177,6 +177,7 @@ describe('recorded app fixtures', () => {
   const states = [
     'textedit/doc',
     'textedit/doc-shared',
+    'textedit/doc-edited',
     'textedit/typed',
     'textedit/save-sheet',
     'chrome/form',
@@ -184,7 +185,8 @@ describe('recorded app fixtures', () => {
     'chrome/loading',
     'tempcode-dev/first-run',
     'tempcode-dev/thread',
-    'intellij/project'
+    'intellij/project',
+    'finder/folder'
   ]
 
   it('hold every state', () => {

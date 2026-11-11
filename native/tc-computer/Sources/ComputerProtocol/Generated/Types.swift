@@ -855,6 +855,17 @@ public struct RawAXTree: Codable, Hashable, Sendable {
             self.capped = capped
         }
     }
+    public struct Document: Codable, Hashable, Sendable {
+        public let url: String?
+        public let mtime: Double?
+        public let edited: Bool?
+
+        public init(url: String? = nil, mtime: Double? = nil, edited: Bool? = nil) {
+            self.url = url
+            self.mtime = mtime
+            self.edited = edited
+        }
+    }
 
     public let recordedAt: String
     public let recorder: String
@@ -866,8 +877,9 @@ public struct RawAXTree: Codable, Hashable, Sendable {
     public let walk: Walk
     public let root: RawAXNode
     public let attached: [RawAXNode]?
+    public let document: Document?
 
-    public init(recordedAt: String, recorder: String, app: App, os: String, window: Window, scale: Double, manualAccessibility: ManualAccessibility, walk: Walk, root: RawAXNode, attached: [RawAXNode]? = nil) {
+    public init(recordedAt: String, recorder: String, app: App, os: String, window: Window, scale: Double, manualAccessibility: ManualAccessibility, walk: Walk, root: RawAXNode, attached: [RawAXNode]? = nil, document: Document? = nil) {
         self.recordedAt = recordedAt
         self.recorder = recorder
         self.app = app
@@ -878,5 +890,6 @@ public struct RawAXTree: Codable, Hashable, Sendable {
         self.walk = walk
         self.root = root
         self.attached = attached
+        self.document = document
     }
 }

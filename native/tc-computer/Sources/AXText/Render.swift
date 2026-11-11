@@ -26,7 +26,7 @@ public struct Compare: Sendable, Equatable {
 
 /// One line of a full observation, in reading order.
 public struct Row: Sendable {
-    public enum Kind: Sendable, Equatable { case element, range, more, stub }
+    public enum Kind: Sendable, Equatable { case element, range, more, stub, note }
 
     public var kind: Kind
     /// element: its number; range: the first
@@ -59,7 +59,7 @@ public struct Row: Sendable {
         switch kind {
         case .element: 1
         case .range: last - index + 1
-        case .more, .stub: 0
+        case .more, .stub, .note: 0
         }
     }
 
@@ -106,6 +106,8 @@ public struct Layout: Sendable {
     public var titleLimit = Int.max
     public var others: [OtherWindow]
     public var showOthers = true
+    /// the document line's facts (§25.10); always printed, the budget never drops it
+    public var document: WindowDocument?
     public var space: CoordinateSpace
     public var windowFrame: Rect
     public var geometry: Bool
@@ -144,6 +146,12 @@ public struct Layout: Sendable {
                                     valueLimit: wholeValues ? .max : ComputerDefaults.ObservationText.valueMaxChars,
                                     frame: n.frame, hidden: Hidden(), cls: f.cls, isList: n.isList, compares: [Compare(f)]))
                     add(n.children, parent: r, hidden: n.hidden)
+                    // a menu the call closes after this read: its items still take actions (§25.11)
+                    if s.closingMenus.contains(n.id) {
+                        rows.append(Row(kind: .note, index: 0, last: 0, parent: r, end: rows.count + 1, facts: LineFacts(role: ""),
+                                        valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: nil, hidden: Hidden(), cls: .other,
+                                        isList: false, compares: []))
+                    }
                     rows[r].end = rows.count
                 }
                 i += 1
@@ -157,7 +165,7 @@ public struct Layout: Sendable {
             }
         }
         add(tree.roots, parent: nil, hidden: nil)
-        return Layout(rows: rows, app: s.app.name, title: s.window.title, others: s.otherWindows, space: space, windowFrame: s.window.frame, geometry: geometry)
+        return Layout(rows: rows, app: s.app.name, title: s.window.title, others: s.otherWindows, document: s.document, space: space, windowFrame: s.window.frame, geometry: geometry)
     }
 
     /// A row that prints: not removed, and a summary only when it counts something.
@@ -199,6 +207,8 @@ public struct Layout: Sendable {
             return h.below > 0 ? "… \(h.below) more below" : "… \(h.above) more above"
         case .stub:
             return "(" + row.facts.role + (row.facts.name.map { " " + Quote.json($0) } ?? "") + T.stubSuffix
+        case .note:
+            return T.menuClosedNote
         }
     }
 
@@ -219,6 +229,9 @@ public struct Layout: Sendable {
         return parts.joined(separator: T.headerSeparator)
     }
 
+    /// The document line, after the header and before `other windows:`.
+    public var documentLine: String? { document?.line() }
+
     public var othersLine: String? {
         guard showOthers, !others.isEmpty else { return nil }
         return T.otherWindowsPrefix + others.map { Quote.json($0.title) + ($0.minimized ? " minimized" : $0.otherSpace ? " other Space" : "") }.joined(separator: ", ")
@@ -233,6 +246,7 @@ public struct Layout: Sendable {
     /// The full text: header, other windows, the rows, and the footer when there is one.
     public func text(_ h: HeaderFacts, footer: String? = nil) -> String {
         var out = [header(h)]
+        if let d = documentLine { out.append(d) }
         if let o = othersLine { out.append(o) }
         out += lines().map(\.text)
         if let footer { out.append(footer) }
@@ -242,6 +256,7 @@ public struct Layout: Sendable {
     /// UTF-8 bytes of the text without its footer.
     public func bytes(_ h: HeaderFacts) -> Int {
         var n = header(h).utf8.count
+        if let d = documentLine { n += 1 + d.utf8.count }
         if let o = othersLine { n += 1 + o.utf8.count }
         for l in lines() { n += 1 + l.text.utf8.count }
         return n

@@ -1276,7 +1276,12 @@ export const RawAXTreeSchema = z.object({
   walk: WalkStatsSchema,
   root: RawAXNodeSchema,
   /** open menus and popovers the app shows outside the window's own children */
-  attached: z.array(RawAXNodeSchema).optional()
+  attached: z.array(RawAXNodeSchema).optional(),
+  /**
+   * What is behind the window on disk (§25.10, E5): the window's AXDocument (a `file:` URL; a folder's ends in /),
+   * the file's mtime in seconds since 1970, and the close button's AXEdited
+   */
+  document: z.object({ url: z.string().optional(), mtime: z.number().optional(), edited: z.boolean().optional() }).optional()
 })
 export type RawAXTree = z.infer<typeof RawAXTreeSchema>
 

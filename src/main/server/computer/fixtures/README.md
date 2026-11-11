@@ -93,7 +93,15 @@ The states are `textedit/{doc,typed,save-sheet}`,
 tree as the walk gives it while a capture runs (docs/computer-protocol.md
 §22: the title-bar buttons out of AXChildren, the "Window sharing" badge in
 their place, the buttons appended after it), its screenshot `doc`'s, and its
-observation equal to `doc`'s.
+observation equal to `doc`'s. Two more are no recordings either, until the
+recorder reads AXDocument and the edited flag (§25.10): `textedit/doc-edited`
+is `doc` with a file behind it (`tree.json`'s `document`: AXDocument
+`file:///Users/me/run/Total.txt`, its mtime, the close button's AXEdited) and
+follows `doc`, so its `diff.txt` is the document line's `~` form;
+`finder/folder` is a hand-built Finder window on `~/run` in list view (rows of
+name fields, AXDocument the folder's URL), its screenshot drawn to the
+window's size. The document line's path is `~`-relative under `/Users/me`
+and its written time is read in UTC (`RawTree.snapshot`).
 
 ### Recording them again
 

@@ -149,8 +149,12 @@ public struct AXSnapshot: Sendable {
     public var visited: Int
     public var partial: Bool
     public var walkMs: Int
+    /// what is behind the window on disk (§25.10): the line after the header
+    public var document: WindowDocument?
+    /// the AXMenu nodes the call will close after this read (§25.11): each takes the closed-menu note under its items
+    public var closingMenus: Set<NodeID>
 
-    public init(app: AppFacts, window: WindowInfo, otherWindows: [OtherWindow] = [], roots: [AXNode], menuBar: AXNode? = nil, focusedID: NodeID? = nil, ambientActions: Set<String> = [], visited: Int = 0, partial: Bool = false, walkMs: Int = 0) {
+    public init(app: AppFacts, window: WindowInfo, otherWindows: [OtherWindow] = [], roots: [AXNode], menuBar: AXNode? = nil, focusedID: NodeID? = nil, ambientActions: Set<String> = [], visited: Int = 0, partial: Bool = false, walkMs: Int = 0, document: WindowDocument? = nil, closingMenus: Set<NodeID> = []) {
         self.app = app
         self.window = window
         self.otherWindows = otherWindows
@@ -161,5 +165,7 @@ public struct AXSnapshot: Sendable {
         self.visited = visited
         self.partial = partial
         self.walkMs = walkMs
+        self.document = document
+        self.closingMenus = closingMenus
     }
 }

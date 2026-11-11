@@ -1,0 +1,3 @@
+app "TextEdit" · window "Total.txt" · 1206×1010 · focused [3] · changes since your last read
+~ file "~/run/Total.txt" written 14:02:11 · edited
+~ [1] window "Total.txt"

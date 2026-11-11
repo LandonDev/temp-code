@@ -1,0 +1,29 @@
+app "Finder" · window "run" · 1200×800 · focused [3]
+folder "~/run"
+[1] window "run"
+  [2] scroll area
+    [3] outline "list view" focused
+      [4] row actions: show menu
+        [5] cell
+          [6] image "icon"
+          [7] input = "Notes" actions: show menu, confirm
+        [8] cell
+          [9] text = "Today at 14:02"
+      [10] row actions: show menu
+        [11] cell
+          [12] image "icon"
+          [13] input = "Total.txt" actions: show menu, confirm
+        [14] cell
+          [15] text = "Today at 14:02"
+      [16] row actions: show menu
+        [17] cell
+          [18] image "icon"
+          [19] input = "draft.rtf" actions: show menu, confirm
+        [20] cell
+          [21] text = "Today at 14:02"
+      [22] row actions: show menu
+        [23] cell
+          [24] image "icon"
+          [25] input = "old.txt" actions: show menu, confirm
+        [26] cell
+          [27] text = "Today at 14:02"

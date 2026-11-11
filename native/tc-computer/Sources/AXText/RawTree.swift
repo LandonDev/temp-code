@@ -27,7 +27,10 @@ public enum RawTree {
         try JSONDecoder().decode(RawAXTree.self, from: data)
     }
 
-    public static func snapshot(_ tree: RawAXTree, ids: NodeIDSource, windowID: Int = 1) -> AXSnapshot {
+    /// The document line's path is `~`-relative under `home` (the fixtures' `/Users/me`) and its
+    /// written time is read in `timeZone`, UTC unless asked, so a golden reads the same on every host.
+    public static func snapshot(_ tree: RawAXTree, ids: NodeIDSource, windowID: Int = 1, home: String = "/Users/me",
+                                timeZone: TimeZone = TimeZone(identifier: "UTC")!) -> AXSnapshot {
         var focused: NodeID?
         var nodes = 0
         let window = node(tree.root, clip: tree.root.frame ?? tree.window.frame, ids: ids, focused: &focused, nodes: &nodes)
@@ -41,7 +44,10 @@ public enum RawTree {
             ambientActions: ObservationTables.ambientActions,
             visited: nodes,
             partial: tree.walk.capped,
-            walkMs: tree.walk.ms
+            walkMs: tree.walk.ms,
+            document: tree.document.flatMap {
+                WindowDocument.from(url: $0.url, mtime: $0.mtime, edited: $0.edited ?? false, home: home, timeZone: timeZone)
+            }
         )
     }
 
