@@ -5,7 +5,7 @@
   "keystroke": false,
   "rest": false,
   "load-only": true,
-  "bodies-per-batch": false,
+  "bodies-per-batch": true,
   "refolds": true,
   "rows-built": false,
   "keystroke-bodies": false,

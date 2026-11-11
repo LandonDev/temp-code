@@ -11,11 +11,16 @@ public struct SubscriptionHandlers: Sendable {
     public var page: @MainActor @Sendable (EventsPage, _ tailFirst: Bool) -> Void
     /// `session.subscribe` was refused: the session is gone from the host.
     public var gone: @MainActor @Sendable (String) -> Void
+    /// Applies the pushes the owner still holds unapplied (`PushIngress`),
+    /// asked before the cursor is read: a resume must start after every row
+    /// that has arrived, or its gap page repeats them.
+    public var settle: @MainActor @Sendable () -> Void
 
-    public init(cursor: @escaping @MainActor @Sendable () -> Int, page: @escaping @MainActor @Sendable (EventsPage, Bool) -> Void, gone: @escaping @MainActor @Sendable (String) -> Void) {
+    public init(cursor: @escaping @MainActor @Sendable () -> Int, page: @escaping @MainActor @Sendable (EventsPage, Bool) -> Void, gone: @escaping @MainActor @Sendable (String) -> Void, settle: @escaping @MainActor @Sendable () -> Void = {}) {
         self.cursor = cursor
         self.page = page
         self.gone = gone
+        self.settle = settle
     }
 }
 
@@ -92,6 +97,7 @@ public final class Subscriptions {
     public func resume(_ sessionId: String, tail: Int? = nil) -> Task<EventsPage, any Error> {
         if let pending = inFlight[sessionId] { return pending }
         let socket = self.socket
+        handlers[sessionId]?.settle()
         let afterSeq = handlers[sessionId]?.cursor() ?? 0
         let generation = self.generation
         let token = UUID()

@@ -421,6 +421,8 @@ public final class EnvironmentClient {
     public let cache: SessionCache
     /// Every write this client makes to the cache, in the order it applied them (`CacheWriter`).
     @ObservationIgnored let cacheWrites: CacheWriter
+    /// Rows, live edits and session metas wait here to be applied a window at a time (`PushIngress`).
+    @ObservationIgnored private(set) var ingress = PushIngress()
     /// The client's own timers (the batch window) run on the clock the socket runs on.
     @ObservationIgnored let clock: any SocketClock
     public let subscriptions: Subscriptions
@@ -501,6 +503,7 @@ public final class EnvironmentClient {
         self.socket = TempCodeSocket(environment: environment, keys: keys, api: api, connect: connect, clock: clock, configuration: configuration)
         self.subscriptions = Subscriptions(socket: socket)
         self.extras = HostExtras(socket: socket, environment: environment, clock: clock)
+        ingress.land = { [weak self] items in self?.land(items) }
     }
 
     // MARK: - lifecycle
@@ -544,6 +547,7 @@ public final class EnvironmentClient {
         for id in Array(historyLoads.keys) { cancelHistory(id) }
         for loop in loops { loop.cancel() }
         loops = []
+        ingress.drop()
         await socket.stop()
         for model in models.values where model.value.isLive { model.mutate { $0.isLive = false } }
     }
@@ -851,7 +855,8 @@ public final class EnvironmentClient {
                     $0.goneReason = reason
                     $0.isLoading = false
                 }
-            }
+            },
+            settle: { [weak self] in self?.ingress.flush() }
         ))
         if await socket.isOpen {
             // Not awaited: the page lands through the handlers, and a caller
@@ -1069,6 +1074,8 @@ public final class EnvironmentClient {
                 relayObserver?(self, [presence], false)
             }
             subscriptions.sessionChanged()
+            // Nothing of an earlier socket waits behind the new one's pages.
+            ingress.flush()
             // A new socket has told the host nothing: name the thread on screen again.
             focusSignal.reconnected()
             syncFocus()
@@ -1095,6 +1102,8 @@ public final class EnvironmentClient {
             await socket.markFresh(true)
             await push?.sync(self)
         case .closed:
+            // What still waits came from the socket that closed: applied now, it would mark its thread live.
+            ingress.drop()
             focusSignal.reconnected()
             subscriptions.sessionChanged()
             extras.connectionLost()
@@ -1138,6 +1147,7 @@ public final class EnvironmentClient {
         if let answer, !answer.reset, cursor != nil {
             // The change log carries archived metas too, and an archived
             // thread that left is in `removed`: no archived walk.
+            ingress.flush()
             merge(unheard(answer.sessions ?? [], since: begun))
             let removed = unheard(answer.removed ?? [], since: begun)
             if !removed.isEmpty { removeSessions(removed) }
@@ -1199,6 +1209,7 @@ public final class EnvironmentClient {
         var page = first
         for _ in 0..<40 {
             guard let current = page else { return (listed, false) }
+            ingress.flush()
             merge(unheard(current.sessions, since: begun))
             for session in current.sessions { listed.insert(session.id) }
             guard let cursor = current.cursor else { return (listed, true) }
@@ -1213,25 +1224,26 @@ public final class EnvironmentClient {
             // The transport answers `open()` with the hello; it arrives as `SessionEvent.opened`.
             break
         case .resync:
+            ingress.flush()
             async let shell: Void = refreshShell()
             await subscriptions.resumeAll(tail: coldOpenTail, first: visibleThread)
             await shell
         case .presence(let value):
             relayObserver?(self, value.hosts, true)
         case .workspaces(let value):
+            ingress.flush()
             if value.workspaces != workspaces { publishList { workspaces = value.workspaces }; catalogStamp += 1 }
             let env = environment.id
             cacheWrites.write { try? await $0.replaceWorkspaces(env, value.workspaces) }
         case .projects(let value):
+            ingress.flush()
             if value.projects != projects { publishList { projects = value.projects }; catalogStamp += 1 }
             let env = environment.id
             cacheWrites.write { try? await $0.replaceProjects(env, value.projects) }
         case .sessions(let value):
-            // A thread listed here again (moved back) is no longer away.
-            for meta in value.sessions { moved[meta.id] = nil }
-            heard(value.sessions.map(\.id))
-            merge(value.sessions)
+            ingress.take(.sessions(value.sessions))
         case .sessionRemoved(let value):
+            ingress.flush()
             heard(value.sessionIds)
             removeSessions(value.sessionIds)
         case .sessionMoved(let value):
@@ -1239,22 +1251,13 @@ public final class EnvironmentClient {
             // between hosts"); this host keeps a hidden tombstone and sends a
             // session-removed next, so the phone drops its copy here, and
             // remembers where it went for a screen that is open on it.
+            ingress.flush()
             let record = MovedThread(sessionId: value.id, to: value.to, subagents: value.sessionIds.filter { $0 != value.id }, at: Int(Date().timeIntervalSince1970 * 1000))
             for id in [value.id] + record.subagents { moved[id] = record }
             heard(value.sessionIds)
             removeSessions(value.sessionIds)
         case .events(let value):
-            guard models[value.sessionId] != nil else { return }
-            if subscriptions.hold(value.sessionId, rows: value.rows) { return }
-            PerfCounters.mark(.batch)
-            PerfCounters.bump(.pushedRows, by: value.rows.count)
-            append(value.sessionId, rows: value.rows)
-            if peek(value.sessionId)?.isLive != true { write(value.sessionId) { $0.isLive = true } }
-            // A frame of streaming previews alone holds nothing the cache keeps.
-            if value.rows.contains(where: { $0.ephemeral != true }) {
-                let env = environment.id
-                cacheWrites.write { try? await $0.store(env, sessionId: value.sessionId, rows: value.rows) }
-            }
+            ingress.take(.events(sessionId: value.sessionId, rows: value.rows))
         case .resources(let value):
             resources.apply(value)
         case .bootResume(let value):
@@ -1274,14 +1277,7 @@ public final class EnvironmentClient {
         case .accounts(let value):
             accounts.apply(value.snapshot, now: Int(Date().timeIntervalSince1970 * 1000))
         case .liveEdits(let value):
-            // The host's live diff of a file a thread is changing: into that
-            // thread's fold, onto its running edit row; memory only, as on the desktop.
-            for item in value.items {
-                for sessionId in item.sessionIds where models[sessionId] != nil {
-                    PerfCounters.bump(.threadPublishes)
-                    write(sessionId) { _ = $0.fold.applyLiveEdit(item.edit) }
-                }
-            }
+            ingress.take(.liveEdits(value.items))
         case .hostDevices, .hostLog:
             extras.applyPush(push) // iOS 21: devices and the deploy log (Client/HostExtras.swift)
         case .batch(let value):
@@ -1293,6 +1289,57 @@ public final class EnvironmentClient {
 
     static let bootResumeKind = "boot-resume"
 
+    /// Another ingress in place of the wall-clock one (a test's, on a clock it moves).
+    func install(_ ingress: PushIngress) {
+        self.ingress.drop()
+        self.ingress = ingress
+        ingress.land = { [weak self] items in self?.land(items) }
+    }
+
+    /// One window's pushes, applied in one synchronous block in the order
+    /// they arrived (`PushIngress`). Rows: one batch per thread, held for a
+    /// resume in flight when the block runs, not when the push arrived.
+    /// Live edits: one write per thread. Metas: one merge, the observer and
+    /// the click's clock seeing each status in order.
+    private func land(_ items: [PushIngress.Item]) {
+        for item in items {
+            switch item {
+            case .events(let sessionId, let rows):
+                guard models[sessionId] != nil else { continue }
+                if subscriptions.hold(sessionId, rows: rows) { continue }
+                PerfCounters.mark(.batch)
+                PerfCounters.bump(.pushedRows, by: rows.count)
+                append(sessionId, rows: rows)
+                if peek(sessionId)?.isLive != true { write(sessionId) { $0.isLive = true } }
+                // A block of streaming previews alone holds nothing the cache keeps.
+                if rows.contains(where: { $0.ephemeral != true }) {
+                    let env = environment.id
+                    cacheWrites.write { try? await $0.store(env, sessionId: sessionId, rows: rows) }
+                }
+            case .liveEdits(let edits):
+                // The host's live diff of a file a thread is changing: into that
+                // thread's fold, onto its running edit row; memory only, as on the desktop.
+                var order: [String] = []
+                var byThread: [String: [LiveEdit.Edit]] = [:]
+                for item in edits {
+                    for sessionId in item.sessionIds where models[sessionId] != nil {
+                        if byThread[sessionId] == nil { order.append(sessionId) }
+                        byThread[sessionId, default: []].append(item.edit)
+                    }
+                }
+                for sessionId in order {
+                    PerfCounters.bump(.threadPublishes)
+                    write(sessionId) { _ = $0.fold.applyLiveEdits(byThread[sessionId] ?? []) }
+                }
+            case .sessions(let metas):
+                // A thread listed here again (moved back) is no longer away.
+                for meta in metas { moved[meta.id] = nil }
+                heard(metas.map(\.id))
+                merge(metas)
+            }
+        }
+    }
+
     private func show(_ notice: BootResumeNotice) {
         bootResume = notice
     }
@@ -1301,6 +1348,8 @@ public final class EnvironmentClient {
 
     /// A thread this device just created: in the list before the `sessions` push lands.
     func adopt(_ meta: SessionMeta) {
+        // A meta the host pushed before this one must not land after it.
+        ingress.flush()
         heard([meta.id])
         merge([meta])
     }
@@ -1420,6 +1469,8 @@ public final class EnvironmentClient {
     }
 
     private func fold(_ id: String, page: EventsPage, tailFirst: Bool) {
+        // A page is not a push: rows still waiting for their window are applied (or held for this resume) first.
+        ingress.flush()
         guard let model = models[id] else { return }
         PerfCounters.bump(.pages)
         if page.reset || tailFirst {
