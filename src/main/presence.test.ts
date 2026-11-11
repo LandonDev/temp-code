@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { MacPresenceWatcher, macScreenReader, parseConsoleUsers, presenceFromEnv, staticPresence, type PowerMonitorLike } from './presence'
+import { describe, expect, it, vi } from 'vitest'
+import { COVERED_RECHECK_MS, MacPresenceWatcher, macScreenReader, parseConsoleUsers, presenceFromEnv, staticPresence, type PowerMonitorLike } from './presence'
 
 const plist = (users: string): string =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n\t<key>IOConsoleLocked</key>\n\t<false/>\n\t<key>IOConsoleUsers</key>\n\t${users}\n\t<key>IORegistryEntryName</key>\n\t<string>Root</string>\n</dict>\n</plist>\n`
@@ -178,5 +178,32 @@ describe('a screen saver is not a lock', () => {
     expect(await read()).toEqual({ facts: { sessionLocked: true, onConsole: true, saverRunning: true }, policy: { kind: 'off' } })
     await read()
     expect(calls.filter((c) => c === '/usr/sbin/sysadminctl')).toHaveLength(1)
+  })
+})
+
+describe('a covered screen is read again until it is not', () => {
+  it('re-reads every COVERED_RECHECK_MS while locked or under a saver, and stops once unlocked', async () => {
+    vi.useFakeTimers()
+    try {
+      const mac = { sessionLocked: true, saverRunning: false }
+      let reads = 0
+      const w = new MacPresenceWatcher()
+      w.useMac(async () => {
+        reads++
+        return { facts: { ...mac, onConsole: true }, policy: { kind: 'off' } }
+      }, async () => {})
+      await w.refresh()
+      expect(w.snapshot().screen).toBe('locked')
+      await vi.advanceTimersByTimeAsync(COVERED_RECHECK_MS)
+      expect(reads).toBe(2)
+      mac.sessionLocked = false
+      await vi.advanceTimersByTimeAsync(COVERED_RECHECK_MS)
+      expect(w.snapshot().screen).toBe('unlocked')
+      await vi.advanceTimersByTimeAsync(COVERED_RECHECK_MS * 3)
+      expect(reads).toBe(3)
+      w.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -64,6 +64,9 @@ export function parseConsoleUsers(plistXml: string): boolean | null {
 /** The facts and policy reader (a fake in tests): null when the session dictionary has no answer. */
 export type ScreenReader = () => Promise<{ facts: ScreenFacts; policy: LockPolicy } | null>
 
+/** While the screen reads covered (locked or a saver), the facts are read again this often: a missed unlock notice never leaves it stale. */
+export const COVERED_RECHECK_MS = 30_000
+
 /** How long sysadminctl's answer is kept: it changes only in System Settings. */
 export const LOCK_POLICY_KEEP_MS = 10 * 60_000
 
@@ -121,6 +124,7 @@ export class MacPresenceWatcher implements PresenceSource {
   /** when lock-screen last fired: a delayed policy's saver is passwordless until its delay runs out */
   private coveredAt: number | null = null
   private delayTimer: ReturnType<typeof setTimeout> | null = null
+  private recheck: ReturnType<typeof setInterval> | null = null
   private readonly now: () => number
   private readonly listeners = new Set<(presence: MacPresence) => void>()
   private reader: ScreenReader | null = null
@@ -214,10 +218,30 @@ export class MacPresenceWatcher implements PresenceSource {
       this.power = power
       this.saver = saver
       this.at = this.now()
+      this.armRecheck()
       const snapshot = this.snapshot()
       for (const l of this.listeners) l(snapshot)
     }
     return this.snapshot()
+  }
+
+  /** Stops the re-read timers (tests, shutdown). */
+  dispose(): void {
+    if (this.delayTimer) clearTimeout(this.delayTimer)
+    if (this.recheck) clearInterval(this.recheck)
+    this.delayTimer = null
+    this.recheck = null
+  }
+
+  private armRecheck(): void {
+    const covered = this.screen === 'locked' || this.saver
+    if (covered && this.reader && !this.recheck) {
+      this.recheck = setInterval(() => void this.refresh(), COVERED_RECHECK_MS)
+      this.recheck.unref?.()
+    } else if (!covered && this.recheck) {
+      clearInterval(this.recheck)
+      this.recheck = null
+    }
   }
 
   snapshot(): MacPresence {
