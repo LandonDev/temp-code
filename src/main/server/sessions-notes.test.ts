@@ -8,7 +8,7 @@ import { SessionRegistry } from './sessions'
 import { NOTES_MECHANICS, STEER_MECHANICS, isCommitCall, isNotesCall, wrapSteer } from './notesPrompts'
 import { MASTER_MECHANICS, implementerSpawnPrompt, orchestratorPrompt } from './orchestration'
 import { threadPreamble } from './threads'
-import { setAppBridge } from './apptools'
+import { appUpdateNotes, setAppBridge } from './apptools'
 import { cancelMirrors, threadDigest, writeThreadDigest } from './mirror'
 import { readFile } from 'node:fs/promises'
 
@@ -310,5 +310,32 @@ describe('successors start from the notes', () => {
     await registry.send(build2.id, 'go')
     await flush()
     expect(sends[0]).not.toContain('<planning-notes')
+  })
+})
+
+describe('a thrashing window (the update_notes loop)', () => {
+  it('the context reminder stays bounded while the window refills and compacts on every request', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const id = await startThread()
+      running()
+      const window = 200_000
+      // Every line the host sends is answered with an update_notes call,
+      // as the looping models did.
+      const answered = (): number => sends.filter((t) => t.includes('<notes-reminder reason="context">')).length
+      for (let cycle = 0; cycle < 10; cycle++) {
+        emit!({ type: 'context', tokens: window * 0.95, window })
+        await flush()
+        appUpdateNotes(registry, registry.get(id)!, { section: 'State', content: `cycle ${cycle}` })
+        emit!({ type: 'tool-call', callId: `n${cycle}`, name: 'mcp__app__update_notes', input: {} })
+        emit!({ type: 'compaction', phase: 'done', trigger: 'auto', preTokens: window * 0.95, postTokens: window * 0.1 })
+        emit!({ type: 'context', tokens: window * 0.1, window })
+        await flush()
+        vi.setSystemTime(Date.now() + 60_000)
+      }
+      expect(answered()).toBeGreaterThanOrEqual(10)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
