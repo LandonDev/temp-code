@@ -357,7 +357,8 @@ export const TierVerdictSchema = z.object({
     .object({
       hit: z.number().int().nonnegative().optional(),
       caret: z.number().int().nonnegative().optional(),
-      'scroll-page': z.number().int().nonnegative().optional()
+      'scroll-page': z.number().int().nonnegative().optional(),
+      'scroll-into-view': z.number().int().nonnegative().optional()
     })
     .optional(),
   /** when the host last ran `input.probe` on this app, epoch ms: a probe runs once per app */
@@ -481,7 +482,7 @@ export function formatStepLine(step: StepResult, action: ComputerAction): string
 }
 
 /** The background routes (§24.8): the line names them with what they acted on, `menu File › Close`. */
-export const FALLBACK_VIAS: readonly InputVia[] = ['menu', 'hit', 'caret', 'scroll-bar', 'scroll-page']
+export const FALLBACK_VIAS: readonly InputVia[] = ['menu', 'hit', 'caret', 'scroll-bar', 'scroll-page', 'pick', 'scroll-into-view']
 
 /** How a step went in: a fallback route and what it acted on, `type`'s way, else the tier. A paste that went by the clipboard names its tier. */
 function howWords(action: ComputerAction, step: Extract<StepResult, { status: 'ok' }>): string {

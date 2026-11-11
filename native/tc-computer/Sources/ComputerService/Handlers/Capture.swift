@@ -9,8 +9,9 @@ extension ComputerService {
     func registerCapture() {
         router.on("capture.screenshot") { [self] (p: Methods.CaptureScreenshot.Params, ctx) -> Shot in
             let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, ctx: ctx)
-            guard let lease = await slots.slot(target.pid).acquire(.shared, timeout: nil) else { throw Router.cancelledError }
-            defer { lease.release() }
+            // a ref naming a background tab selects it under the exclusive slot first (§25.4), as a read does
+            let hold = try await readHold(target, tabs: p.tabs, waitMs: ComputerDefaults.Wait.observe.busyMaxMs)
+            defer { hold.lease.release() }
             let shot = try await takeShot(
                 target, maxEdge: p.maxEdge ?? ComputerDefaults.Shot.defaultMaxEdge, region: p.region, format: p.format, action: "screenshot"
             )

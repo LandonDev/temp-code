@@ -10,7 +10,10 @@ import {
   COMPUTER_METHODS,
   COMPUTER_WAIT,
   ActionResultSchema,
+  AppInfoSchema,
   BatchResultSchema,
+  CaptureScreenshotParamsSchema,
+  ObservationSchema,
   ComputerActionSchema,
   ComputerErrorSchema,
   IgnoredRoutesSchema,
@@ -28,6 +31,7 @@ import {
   SessionRestoreSchema,
   StateGetParamsSchema,
   StepResultSchema,
+  TAB_LIST_MAX,
   TargetSchema,
   WaitOptionsSchema,
   lockPath,
@@ -339,7 +343,7 @@ describe('the background fallbacks (§24)', () => {
     const menu = { ...step, input: { via: 'menu', on: 'File › Close' } }
     expect(StepResultSchema.parse(menu)).toEqual(menu)
     expect(StepResultSchema.safeParse({ ...step, input: { via: 'hit', on: 'x'.repeat(201) } }).success).toBe(false)
-    expect(LEARNED_VIAS).toEqual(['hit', 'caret', 'scroll-page'])
+    expect(LEARNED_VIAS).toEqual(['hit', 'caret', 'scroll-page', 'scroll-into-view'])
     expect(SCROLL_POINTS_PER_CLICK).toBe(40)
   })
 
@@ -405,5 +409,70 @@ describe('the front guard\'s additions (§23)', () => {
 
   it('keeps its numbers in SERVICE', () => {
     expect(SERVICE).toMatchObject({ frontWatchMs: 30_000, frontChoiceMs: 500, frontRestoreMs: 400, frontStealsMax: 3, openItemsMax: 8 })
+  })
+})
+
+describe('web content in Chromium apps (§25)', () => {
+  const base = { session: 's', app: { app: 'Google Chrome' } }
+  const observation = {
+    epoch: 'e', session: 's', app: { pid: 1, bundleId: 'com.google.Chrome', name: 'Google Chrome' },
+    window: { id: 2, title: 'W', frame: { x: 0, y: 0, w: 10, h: 10 } }, kind: 'full', seq: 1, text: '',
+    space: { width: 10, height: 10, scale: 1 },
+    stats: { elements: 0, lines: 0, bytes: 0, omitted: 0, thin: false, partial: false, readMs: 0 }
+  }
+
+  it('lets key and hold_key name the element to focus first', () => {
+    expect(ok({ action: 'key', text: 'Return', element: 4 })).toBe(true)
+    expect(ok({ action: 'hold_key', text: 'shift', duration: 1, element: 4 })).toBe(true)
+    expect(ok({ action: 'key', text: 'Return', coordinate: [1, 1] })).toBe(false)
+  })
+
+  it('carries tabs on every call that reads or acts, and expectFocus on the acting calls', () => {
+    const click = { action: 'left_click', coordinate: [1, 1] }
+    expect(StateGetParamsSchema.safeParse({ ...base, tabs: 'background' }).success).toBe(true)
+    expect(CaptureScreenshotParamsSchema.safeParse({ ...base, tabs: 'any' }).success).toBe(true)
+    expect(ActionRunParamsSchema.safeParse({ ...base, action: click, tiers: ['ax'], tabs: 'any' }).success).toBe(true)
+    expect(ActionBatchParamsSchema.safeParse({ ...base, actions: [click], tiers: ['ax'], tabs: 'background', expectFocus: 9, epoch: 'e' }).success).toBe(true)
+    expect(StateGetParamsSchema.safeParse({ ...base, tabs: 'front' }).success).toBe(false)
+  })
+
+  it('counts expectFocus as an element index: it needs the epoch', () => {
+    const typing = { action: 'type', text: 'hi' }
+    expect(ActionRunParamsSchema.safeParse({ ...base, action: typing, tiers: ['ax'], expectFocus: 9 }).success).toBe(false)
+    expect(ActionRunParamsSchema.safeParse({ ...base, action: typing, tiers: ['ax'], expectFocus: 9, epoch: 'e' }).success).toBe(true)
+    expect(ActionBatchParamsSchema.safeParse({ ...base, actions: [typing], tiers: ['ax'], expectFocus: 9 }).success).toBe(false)
+  })
+
+  it("lists a browser window's tabs, at most 50, then their count", () => {
+    const window = { id: 1, title: 'Report - Google Chrome', frame: { x: 0, y: 0, w: 9, h: 9 }, main: true, focused: true, minimized: false, onScreen: true, space: 'current' }
+    const tabs = [{ title: 'Form', selected: true }, { title: 'Report', selected: false }]
+    const app = { pid: 1, bundleId: 'com.google.Chrome', name: 'Google Chrome', active: false, hidden: false }
+    expect(AppInfoSchema.safeParse({ ...app, windows: [{ ...window, tabs }] }).success).toBe(true)
+    expect(AppInfoSchema.safeParse({ ...app, windows: [{ ...window, tabs, moreTabs: 3 }] }).success).toBe(true)
+    const many = Array.from({ length: TAB_LIST_MAX + 1 }, (_, i) => ({ title: `t${i}`, selected: i === 0 }))
+    expect(AppInfoSchema.safeParse({ ...app, windows: [{ ...window, tabs: many }] }).success).toBe(false)
+  })
+
+  it('carries the page and the selected tab on an observation', () => {
+    expect(ObservationSchema.safeParse({ ...observation, page: { tab: 'Report', state: 'not-drawn' }, selectedTab: 'Report' }).success).toBe(true)
+    expect(ObservationSchema.safeParse({ ...observation, page: { tab: 'Report', state: 'blank' } }).success).toBe(false)
+    expect(ObservationSchema.safeParse(observation).success).toBe(true)
+  })
+
+  it('names the three new kinds: two only a step carries, tab_in_use a request error', () => {
+    expect(COMPUTER_ERROR_KINDS.slice(-3)).toEqual(['value_not_taken', 'focus_moved', 'tab_in_use'])
+    expect(STEP_ONLY_ERROR_KINDS).toContain('value_not_taken')
+    expect(STEP_ONLY_ERROR_KINDS).toContain('focus_moved')
+    expect(STEP_ONLY_ERROR_KINDS).not.toContain('tab_in_use')
+    const notTaken = { kind: 'value_not_taken', message: '[19] pop up "Plan" still reads "Choose a plan".', element: 19, value: 'Choose a plan' }
+    expect(ComputerErrorSchema.parse(notTaken)).toEqual(notTaken)
+    const moved = { kind: 'focus_moved', message: 'm', element: 9, reason: 'browser-field', focused: { index: 9, line: 'input "Address and search bar"' } }
+    expect(ComputerErrorSchema.parse(moved)).toEqual(moved)
+  })
+
+  it('appends pick and scroll-into-view to the routes, so the Swift enum keeps its order', () => {
+    expect(InputViaSchema.options.slice(-2)).toEqual(['pick', 'scroll-into-view'])
+    const step = { index: 0, action: 'set_value', status: 'ok', tier: 'ax', effect: 'changed', input: { via: 'pick', on: 'Team' } }
+    expect(StepResultSchema.parse(step)).toEqual(step)
   })
 })

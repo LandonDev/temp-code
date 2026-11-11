@@ -34,10 +34,25 @@ function walk(dir: string): string[] {
   })
 }
 
-/** A second request of one method: `input.restoreSession` right after the person's touch stopped a step. */
-const VARIANTS: Readonly<Record<string, ComputerMethod>> = { 'input.restoreSession.after-interrupt.request.json': 'input.restoreSession' }
-/** A second response of one method: the restore that ended a person guard (§14.9). */
-const RESPONSE_VARIANTS: Readonly<Record<string, ComputerMethod>> = { 'input.restoreSession.guarded.response.json': 'input.restoreSession' }
+/**
+ * A second request of one method: `input.restoreSession` right after the person's touch stopped a step; a
+ * browser's tabs (§25): a read naming a background tab, a key with `expectFocus`.
+ */
+const VARIANTS: Readonly<Record<string, ComputerMethod>> = {
+  'input.restoreSession.after-interrupt.request.json': 'input.restoreSession',
+  'apps.list.tabs.request.json': 'apps.list',
+  'state.get.tab.request.json': 'state.get',
+  'action.run.expect-focus.request.json': 'action.run'
+}
+/**
+ * A second response of one method: the restore that ended a person guard (§14.9); a browser window's tabs, a
+ * page not drawn and the tab a read selected (§25).
+ */
+const RESPONSE_VARIANTS: Readonly<Record<string, ComputerMethod>> = {
+  'input.restoreSession.guarded.response.json': 'input.restoreSession',
+  'apps.list.tabs.response.json': 'apps.list',
+  'state.get.tab.response.json': 'state.get'
+}
 const notificationFile = (method: string): string => `notify-${method.replace(/^\$\//, '').replace(/\//g, '-')}.json`
 const serviceNotes = ComputerNotificationSchema.options.map((o) => o.shape.method.value)
 const hostNotes = HostNotificationSchema.options.map((o) => o.shape.method.value)
@@ -171,6 +186,7 @@ describe('recorded app fixtures', () => {
     'chrome/form',
     'chrome/menu-open',
     'chrome/loading',
+    'chrome/not-drawn',
     'tempcode-dev/first-run',
     'tempcode-dev/thread',
     'intellij/project'

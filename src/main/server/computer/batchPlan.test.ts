@@ -12,10 +12,12 @@ describe('planBatch', () => {
     const segs = planBatch([A('left_click'), A('type'), A('key')], () => ['ax', 'process'])
     expect(segs).toHaveLength(1)
     expect(segs[0]).toMatchObject({ from: 0, last: true, tiers: ['ax', 'process'] })
+    expect(segs[0]).not.toHaveProperty('expectFocus')
   })
   it('splits at every change of list', () => {
     const lists: Tier[][] = [['ax', 'process'], ['ax', 'process'], ['ax', 'process', 'session'], ['ax', 'process']]
-    const segs = planBatch([A('left_click'), A('type'), A('hold_key'), A('key')], (_, i) => lists[i])
+    const segs = planBatch([A('left_click'), A('type'), A('hold_key'), A('key')], (_, i) => lists[i], 9)
+    expect(segs.map((s) => s.expectFocus)).toEqual([9, undefined, undefined])
     expect(segs.map((s) => [s.from, s.actions.length, s.last])).toEqual([
       [0, 2, false],
       [2, 1, false],

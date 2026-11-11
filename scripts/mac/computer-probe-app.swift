@@ -17,6 +17,8 @@
 // `--windows` (opt-in, for the window actions leg; docs/computer-protocol.md §22): see ProbeWindows below.
 //
 // `--fallbacks <dir>` (opt-in, for the background fallbacks leg; §24): see ProbeFallbacks below.
+// `--cover <x,y,w,h>` (field hand runs): one opaque normal-level window in global top-left points,
+// ordered in front without becoming key or taking input; no other probe window opens.
 //
 // `TCProbeSteal` (an Info.plist key, set only in "TC Probe Steal.app", bundle id
 // dev.landon.tempcode.computer-probe-steal, for the front guard's leg): the app takes the front the way a
@@ -45,6 +47,25 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     private let steals = Bundle.main.object(forInfoDictionaryKey: "TCProbeSteal") as? Bool ?? false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let at = CommandLine.arguments.firstIndex(of: "--cover") {
+            guard at + 1 < CommandLine.arguments.count else { exit(2) }
+            let parts = CommandLine.arguments[at + 1].split(separator: ",").compactMap { Double($0) }
+            guard parts.count == 4, parts.allSatisfy({ $0.isFinite }), parts[2] > 0, parts[3] > 0 else { exit(2) }
+            // Chrome's flags and CGWindowList use a top-left origin; AppKit uses bottom-left.
+            let screenTop = NSScreen.screens.first?.frame.maxY ?? 0
+            let cover = InertWindow(contentRect: NSRect(x: parts[0], y: screenTop - parts[1] - parts[3], width: parts[2], height: parts[3]), styleMask: [.borderless], backing: .buffered, defer: false)
+            cover.title = "TC Probe Cover"
+            cover.backgroundColor = .windowBackgroundColor
+            cover.isOpaque = true
+            cover.hasShadow = false
+            cover.level = .normal
+            cover.ignoresMouseEvents = true
+            cover.isRestorable = false
+            cover.isReleasedWhenClosed = false
+            cover.orderFrontRegardless()
+            self.window = cover
+            return
+        }
         let ticking = CommandLine.arguments.contains("--tick")
         let window = InertWindow(
             contentRect: NSRect(x: 160, y: 160, width: 360, height: ticking ? 180 : 150),

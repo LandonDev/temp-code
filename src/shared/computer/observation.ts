@@ -371,6 +371,8 @@ export function formatKeyCombo(combo: KeyCombo): string {
 export const HEADER_SEPARATOR = ' · '
 export const HEADER_WORDS = {
   loading: 'still loading',
+  /** a browser tab whose page the wait never saw (§25.2); never beside `loading` */
+  notDrawn: 'page not drawn',
   diff: 'changes since your last read',
   unchanged: 'no changes',
   thin: 'thin tree, see the screenshot'
@@ -386,6 +388,8 @@ export interface ObservationHeader {
   height: number
   focused?: number
   loading: boolean
+  /** the selected tab's page was not drawn by the end of the wait (§25.3); `loading` wins when both are set */
+  notDrawn?: boolean
   change: 'diff' | 'unchanged' | null
   thin: boolean
 }
@@ -472,6 +476,7 @@ export function formatHeader(h: ObservationHeader): string {
   const parts = [`app ${quote(h.app)}`, `window ${quote(h.window)}`, `${h.width}×${h.height}`]
   if (h.focused !== undefined) parts.push(`focused [${h.focused}]`)
   if (h.loading) parts.push(HEADER_WORDS.loading)
+  else if (h.notDrawn) parts.push(HEADER_WORDS.notDrawn)
   if (h.change) parts.push(HEADER_WORDS[h.change])
   if (h.thin) parts.push(HEADER_WORDS.thin)
   return parts.join(HEADER_SEPARATOR)
@@ -737,6 +742,7 @@ function parseHeader(text: string): ObservationHeader {
     c.expect(']')
   }
   if (c.take(HEADER_SEPARATOR + HEADER_WORDS.loading)) h.loading = true
+  else if (c.take(HEADER_SEPARATOR + HEADER_WORDS.notDrawn)) h.notDrawn = true
   if (c.take(HEADER_SEPARATOR + HEADER_WORDS.diff)) h.change = 'diff'
   else if (c.take(HEADER_SEPARATOR + HEADER_WORDS.unchanged)) h.change = 'unchanged'
   if (c.take(HEADER_SEPARATOR + HEADER_WORDS.thin)) h.thin = true

@@ -21,6 +21,11 @@ enum Live {
             emit(AppWindows.list(pid: pid).map { W(id: $0.id, title: $0.title, onScreen: $0.onScreen, minimized: $0.minimized) })
             return
         }
+        if args.command == "tabs" {
+            struct W: Encodable { var id: Int; var title: String; var tabs: [TabInfo]?; var moreTabs: Int? }
+            emit(AppWindows.list(pid: pid).map { W(id: $0.id, title: $0.title, tabs: $0.tabs, moreTabs: $0.moreTabs) })
+            return
+        }
         guard let title = args.options["expect-title"] else { fail("\(args.command) needs --expect-title") }
         var windows = AppWindows.list(pid: pid).filter { $0.title == title }
         // --window-id: that one window, so a proof never scans the app's other windows to find its own
@@ -49,12 +54,34 @@ enum Live {
             session(reader, ref, space)
         case "bench":
             bench(reader, ref, space, args)
+        case "select-tab":
+            answer { try selectTab(pid: pid, windowID: window.id, args) }
+        case "page":
+            answer { try page(reader, ref, space) }
         default:
             fail("unknown command \(args.command)")
         }
     }
 
     struct Failure: Encodable { var ok = false; var error: ComputerError }
+
+    /// `select-tab <title> [--tabs any]`: §25.4's selection of the allowed window's tab, as the handlers run it.
+    static func selectTab(pid: pid_t, windowID: Int, _ args: Args) throws -> TabSelect.Outcome {
+        guard let title = args.positional.first else { throw ComputerFailure(.unknown("usage"), "select-tab <tab title>") }
+        guard let hit = try AppWindows.tab(pid: pid, windowID: windowID, title: title) else {
+            throw ComputerFailure(ComputerError(kind: .windowNotFound, message: "No tab \(Quote.json(title)) in that window"))
+        }
+        return try TabSelect.select(pid: pid, window: hit.window, tab: hit.tab.element, tabs: args.options["tabs"] == "any" ? .any : .background)
+    }
+
+    struct PageRead: Encodable { var ok = true; var page: Page?; var header: String; var readMs: Int }
+
+    /// `page`: one full read of the window, its page state (§25.2) and its header line.
+    static func page(_ reader: AppReader, _ ref: ComputerProtocol.WindowRef, _ space: CoordinateSpace) throws -> PageRead {
+        let o = try reader.observe(ObserveRequest(window: ref, mode: .full, element: nil, budgetBytes: ComputerDefaults.ObservationBudget.defaultBytes,
+                                                  geometry: false, menus: false, space: space, loading: false, noteThin: true))
+        return PageRead(page: reader.lastPage, header: String(o.text.prefix { $0 != "\n" }), readMs: o.stats.readMs)
+    }
 
     /// One JSON line: the answer, or the ComputerError it threw.
     static func answer<T: Encodable>(_ body: () throws -> T) {
@@ -91,7 +118,7 @@ enum Live {
     /// JSON lines on stdin, one answer a line:
     /// `observe {"mode":"full","menus":true,"geometry":true,"budget":4000,"element":12}`, `resolve <i>`,
     /// `poke set-value <i> "<json string>"`, `poke select <i> <a> <b>`, `poke press <i>`, `poke action <i> <AXName>`,
-    /// `signature`, `busy`, `last-change`, `quit`.
+    /// `signature`, `busy`, `last-change`, `quit`; and web controls' `pick <i> <value>`, `into-view <i> <dir> <clicks>` (InputVerbs.swift).
     static func session(_ reader: AppReader, _ ref: ComputerProtocol.WindowRef, _ space: CoordinateSpace) {
         struct Ok: Encodable { var ok = true }
         struct Resolved: Encodable { var ok = true; var index: Int; var role: String; var line: String; var frame: ComputerProtocol.Rect; var actions: [String]; var settable: [String] }
@@ -104,6 +131,8 @@ enum Live {
             switch verb {
             case "quit":
                 return
+            case _ where inputVerbs.contains(verb):
+                inputVerb(verb, line: line, reader: reader)
             case "observe":
                 answer {
                     let rest = line.dropFirst("observe".count).trimmingCharacters(in: .whitespaces)

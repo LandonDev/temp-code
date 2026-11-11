@@ -35,7 +35,7 @@ const isLearned = (via: string | undefined): via is LearnedVia => (LEARNED_VIAS 
 
 /**
  * A learned fallback route's misses (§24.1): `none` counts one up, `changed` clears it, `unknown`
- * leaves it. Only `hit`, `caret` and `scroll-page`: a bar at its end and a menu item that changes
+ * leaves it. Only `hit`, `caret`, `scroll-page` and `scroll-into-view`: a bar at its end and a menu item that changes
  * nothing in the window are honest no-ops, and learning from them would demote the route.
  */
 function learnVia(v: TierVerdict, step: StepResult): boolean {

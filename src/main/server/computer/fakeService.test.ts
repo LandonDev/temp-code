@@ -717,3 +717,43 @@ describe('fake preview, Escape and shot controls', () => {
     }
   })
 })
+
+describe('Webby (§25)', () => {
+  it('lists two tabs, refuses active-window reads and screenshots, and selects through an admitted act', async () => {
+    const c = new Client({ FAKE_WEB_ACTIVE: '1' })
+    await c.open()
+    const app = (await c.call('apps.list', { windows: true })).apps.find((a) => a.name === 'Webby')!
+    expect(app).toMatchObject({ active: true, windows: [{ tabs: [{ title: 'Web front', selected: true }, { title: 'Web report', selected: false }] }] })
+    const target = { ...c.target('Webby'), window: { title: 'Web report' }, tabs: 'background' as const }
+    await c.error('state.get', target, 'tab_in_use')
+    await c.error('capture.screenshot', target, 'tab_in_use')
+    const result = await c.call('action.run', { ...target, tabs: 'any', expectFocus: 3, action: { action: 'key', text: 'Tab' }, tiers: ['ax', 'process', 'session'] })
+    expect(result.observation).toMatchObject({ selectedTab: 'Web report', page: { tab: 'Web report', state: 'loading' }, window: { id: 171000 } })
+    expect(result.observation?.text).toContain(' · still loading')
+    const loaded = await c.call('state.get', { ...c.target('Webby'), window: { id: 171000 } })
+    expect(loaded.page?.state).toBe('loaded')
+    expect(loaded.selectedTab).toBeUndefined()
+    await c.error('action.run', { ...c.target('Webby'), epoch: 'old', expectFocus: 3, action: { action: 'key', text: 'Tab' }, tiers: ['ax', 'process'] }, 'stale_element')
+  })
+
+  it('models a pop-up pick, a refused AXValue, scroll-into-view and focus leaving the page', async () => {
+    const c = new Client()
+    await c.open()
+    await c.call('state.get', c.target('Webby'))
+    expect((await c.act('Webby', { action: 'set_value', element: 19, value: 'Team' })).step).toMatchObject({ status: 'ok', input: { via: 'pick', on: 'Team' } })
+    expect((await c.act('Webby', { action: 'set_value', element: 4, value: 'New' })).step).toMatchObject({ status: 'failed', error: { kind: 'value_not_taken', value: 'Original' } })
+    expect((await c.act('Webby', { action: 'scroll', element: 20, scroll_direction: 'down', scroll_amount: 5 })).step).toMatchObject({ status: 'ok', input: { via: 'scroll-into-view' } })
+    await c.act('Webby', { action: 'key', text: 'super+l' })
+    expect((await c.act('Webby', { action: 'key', text: 'Tab' })).step).toMatchObject({ status: 'failed', error: { kind: 'focus_moved', focused: { index: 9 } } })
+    expect((await c.act('Webby', { action: 'key', text: 'Tab', element: 3 })).step.status).toBe('ok')
+  })
+
+  it('models a covered page without treating its screenshot as blank', async () => {
+    const c = new Client({ FAKE_WEB_NOT_DRAWN: '1' })
+    await c.open()
+    const obs = await c.call('state.get', { ...c.target('Webby'), screenshot: 'always' })
+    expect(obs.page?.state).toBe('not-drawn')
+    expect(obs.text).toContain(' · page not drawn')
+    expect(obs.shot?.blank).toBe(false)
+  })
+})

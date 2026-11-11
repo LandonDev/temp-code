@@ -13,8 +13,16 @@ struct Resolved: Sendable {
     let worker: Worker
     let info: WindowInfo
     let launched: Bool
+    /// the browser tab the ref matched (§25.4), nil for none; the element is on the worker
+    var tab: TabRef? = nil
 
     var windowID: UInt32 { UInt32(truncatingIfNeeded: info.id) }
+}
+
+/// The matched tab as the request task sees it.
+struct TabRef: Sendable, Equatable {
+    let title: String
+    let selected: Bool
 }
 
 /// The knobs of one observation, from `state.get` or an action's `observe`.
@@ -47,13 +55,15 @@ extension ComputerService {
     func stateGet(_ p: Methods.StateGet.Params, _ ctx: RequestContext) async throws -> Observation {
         if let failure = EpochCheck.check(names: p.element, epoch: p.epoch, current: epoch) { throw failure }
         let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, ctx: ctx)
-        guard let lease = await slots.slot(target.pid).acquire(.shared, timeout: nil) else { throw Router.cancelledError }
-        defer { lease.release() }
+        let options = p.wait ?? ComputerDefaults.Wait.observe
+        // a read that must select a tab holds the exclusive slot through its observation (§25.4)
+        let hold = try await readHold(target, tabs: p.tabs, waitMs: options.busyMaxMs)
+        defer { hold.lease.release() }
         let pixel = await pixelWatch(target)
         let t0 = MachTime.now()
         let sig0 = try await signature(target)
         let waited = await SmartWait.run(
-            p.wait ?? ComputerDefaults.Wait.observe, from: t0, signature0: sig0, thin: book.lastThin(target.session, pid: target.pid),
+            options, from: t0, signature0: sig0, thin: book.lastThin(target.session, pid: target.pid),
             watch: try await waitWatch(target, pixel: pixel), cancel: ctx.cancel, isRunning: { [inventory] in inventory.isRunning($0) },
             tick: env.timing.waitTick, trace: trace
         )
@@ -66,7 +76,7 @@ extension ComputerService {
         knobs.geometry = p.geometry
         knobs.menus = p.menus
         knobs.budgetBytes = p.budget?.bytes ?? ComputerDefaults.ObservationBudget.defaultBytes
-        return try await observe(target, knobs, loading: waited.report.busy, waited: waited.report, cancel: ctx.cancel)
+        return try await observe(target, knobs, loading: waited.report.busy, waited: waited.report, selectedTab: hold.selectedTab, cancel: ctx.cancel)
     }
 
     // MARK: Resolving
@@ -88,17 +98,20 @@ extension ComputerService {
         let source = modules.windows
         let readers = self.readers
         if launched { try await waitForFirstWindow(pid: pid, worker: worker) }
-        let info = try await worker.run { state in
-            let (element, info) = try source.resolve(pid: pid, ref: window)
-            state.windows[UInt32(truncatingIfNeeded: info.id)] = element
+        let (info, tab) = try await worker.run { state -> (WindowInfo, TabRef?) in
+            // §25.4: a ref may name a browser tab; resolution only finds it, the slot's holder selects it
+            let (element, info, tab) = try source.resolveTab(pid: pid, ref: window)
+            let id = UInt32(truncatingIfNeeded: info.id)
+            state.windows[id] = element
+            state.tabs[id] = tab
             if state.reader == nil { state.reader = try readers.reader(session: session, pid: pid) }
-            return info
+            return (info, tab.map { TabRef(title: $0.title, selected: $0.selected) })
         }
         env.windowEvents.watch(pid: pid)
         let running = inventory.running().first { $0.pid == pid }
         return Resolved(
             session: session, pid: pid, app: Observation.App(pid: Int(pid), bundleId: running?.bundleId, name: running?.name ?? ""),
-            worker: worker, info: info, launched: launched
+            worker: worker, info: info, launched: launched, tab: tab
         )
     }
 
@@ -137,13 +150,14 @@ extension ComputerService {
 
     /// The reader's text, the shot when asked or thin, and the shell's own fields (shell §9.1 step 6), as one
     /// transaction per session × pid, stamped once: `seq` and `base` count only what the host gets.
-    func observe(_ target: Resolved, _ knobs: ObserveKnobs, loading: Bool, waited: WaitReport?, cancel: CancelFlag) async throws -> Observation {
+    /// `selectedTab`: the tab this call switched to (§25.4), nil when it switched none.
+    func observe(_ target: Resolved, _ knobs: ObserveKnobs, loading: Bool, waited: WaitReport?, selectedTab: String? = nil, cancel: CancelFlag) async throws -> Observation {
         try await target.worker.observing.run {
-            try await observeOnce(target, knobs, loading: loading, waited: waited, cancel: cancel)
+            try await observeOnce(target, knobs, loading: loading, waited: waited, selectedTab: selectedTab, cancel: cancel)
         }
     }
 
-    private func observeOnce(_ target: Resolved, _ knobs: ObserveKnobs, loading: Bool, waited: WaitReport?, cancel: CancelFlag) async throws -> Observation {
+    private func observeOnce(_ target: Resolved, _ knobs: ObserveKnobs, loading: Bool, waited: WaitReport?, selectedTab: String?, cancel: CancelFlag) async throws -> Observation {
         let screenRecording = currentPermissions.screenRecording
         let maxEdge = knobs.maxEdge ?? ComputerDefaults.Shot.defaultMaxEdge
         let windowID = target.windowID
@@ -186,17 +200,20 @@ extension ComputerService {
         return Observation(
             epoch: epoch, session: target.session, app: target.app,
             window: Observation.Window(id: target.info.id, title: text.window.title, frame: text.window.frame),
-            kind: text.kind, seq: seq, base: base, text: text.text, space: space, stats: text.stats,
-            shot: shot, shotError: shotError, waited: waited
+            kind: text.kind, seq: seq, base: base, text: text.body, space: space, stats: text.stats,
+            shot: shot, shotError: shotError, waited: waited,
+            // §25.2: the selected tab's page as the reader found it; an element read has none
+            page: knobs.element == nil ? text.page : nil, selectedTab: selectedTab
         )
     }
 
-    private func read(_ target: Resolved, _ request: ObserveRequest) async throws -> ObservationText {
+    private func read(_ target: Resolved, _ request: ObserveRequest) async throws -> TextBox {
         let box = RequestBox(request: request)
         return try await target.worker.run { state in
             guard let reader = state.reader else { throw ComputerError(kind: .windowNotFound, message: "The app's reader is gone.") }
-            return TextBox(text: try reader.observe(box.request))
-        }.text
+            let text = try reader.observe(box.request)
+            return TextBox(text: text, page: reader.lastPage)
+        }
     }
 
     func resetBase(_ target: Resolved) async throws {
@@ -252,5 +269,13 @@ extension ComputerService {
 /// An `ObserveRequest` handed to the worker (it holds no AX handle).
 private struct RequestBox: @unchecked Sendable { let request: ObserveRequest }
 
-/// The reader's answer handed back from the worker.
-private struct TextBox: @unchecked Sendable { let text: ObservationText }
+/// The reader's answer handed back from the worker, with the page it found (§25.2).
+private struct TextBox: @unchecked Sendable {
+    let text: ObservationText
+    let page: Page?
+
+    var body: String { text.text }
+    var kind: ObservationKind { text.kind }
+    var stats: ObservationStats { text.stats }
+    var window: WindowInfo { text.window }
+}

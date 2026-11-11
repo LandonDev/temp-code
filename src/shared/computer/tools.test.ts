@@ -252,6 +252,12 @@ describe('the background routes (§24)', () => {
       'scroll down 5 on [4] · scroll-bar · no change seen'
     )
     expect(formatStepLine(ok('scroll', { input: { via: 'scroll-page' } }), { action: 'scroll', coordinate: [1, 1], scroll_direction: 'down', scroll_amount: 5 })).toMatch(/ · scroll-page · changed$/)
+    expect(formatStepLine(ok('set_value', { input: { via: 'pick', on: 'Team' }, element: { index: 19, line: 'pop up "Plan"' } }), { action: 'set_value', element: 19, value: 'Team' })).toMatch(
+      / · pick Team · changed$/
+    )
+    const intoView = formatStepLine(ok('scroll', { input: { via: 'scroll-into-view', on: 'row "Wuhan"' } }), { action: 'scroll', element: 4, scroll_direction: 'down', scroll_amount: 5 })
+    expect(intoView).toBe('scroll down 5 on [4] · scroll-into-view row "Wuhan" · changed')
+    expect(parseStepLine(intoView)).toMatchObject({ action: 'scroll', tier: 'scroll-into-view row "Wuhan"', effect: 'changed' })
     // what it acted on never holds the separator, so the line reads back
     expect(formatStepLine(ok('left_click', { input: { via: 'hit', on: 'button "A · B"' } }), { action: 'left_click', coordinate: [1, 1] })).toBe('left_click 1,1 · hit button "A B" · changed')
   })

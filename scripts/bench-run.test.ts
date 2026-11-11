@@ -34,6 +34,7 @@ describe('parseBenchArgs', () => {
       tasks: null,
       runs: null,
       session: false,
+      cover: false,
       rebaseline: false,
       judge: null,
       judgeField: null
@@ -82,6 +83,14 @@ describe('parseBenchArgs', () => {
     expect(() => parseBenchArgs(['--round', 'r1'])).toThrow(/--set field/)
     expect(() => parseBenchArgs(['--set', 'wide'])).toThrow(/gate or field/)
     expect(() => parseBenchArgs(['--host', 'phone'])).toThrow(/mac or box/)
+  })
+})
+
+describe('--cover', () => {
+  it('runs only with the hand field set, on either host', () => {
+    expect(parseBenchArgs(['--set', 'field', '--cover', '--host', 'mac'])).toMatchObject({ cover: true })
+    expect(parseBenchArgs(['--set', 'field', '--cover', '--host', 'box'])).toMatchObject({ cover: true })
+    for (const flags of [[], ['--gate'], ['--report-only']]) expect(() => parseBenchArgs([...flags, '--cover'])).toThrow(/hand run/)
   })
 })
 
@@ -147,6 +156,13 @@ describe('readRun', () => {
     // 5500 less the 100 + 400 + 200 + 100 ms some tool was open
     expect(facts.thinkMs).toBe(4700)
     expect(facts.tokens).toEqual({ input: 1200, output: 80 })
+  })
+
+  it('carries the call-entry coverage note into saved call records', () => {
+    const coverage = { window: 12, covered: true, fraction: 1 }
+    const rows = [call(100, 'c1', 'computer_observe'), result(200, 'c1'), call(300, 'c2', 'computer_act'), result(400, 'c2')]
+    const facts = readRun(rows, [{ ...host('computer_observe', 50), coverage }, { ...host('computer_act', 50), coverage: null }], 0, 500)
+    expect(facts.calls.map((c) => c.coverage)).toEqual([coverage, null])
   })
 
   it('counts a call refused before the host, with no host time', () => {

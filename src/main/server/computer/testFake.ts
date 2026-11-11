@@ -30,6 +30,7 @@ export const FAKE_APPS = {
   NoShot: { name: 'NoShot', pid: 16808, bundleId: 'dev.fake.noshot', windowId: 168080 },
   Touchy: { name: 'Touchy', pid: 16809, bundleId: 'dev.fake.touchy', windowId: 168090 },
   Menuey: { name: 'Menuey', pid: 16810, bundleId: 'dev.fake.menuey', windowId: 168100 },
+  Webby: { name: 'Webby', pid: 17100, bundleId: 'dev.fake.webby', windowId: 171000 },
   Hitty: { name: 'Hitty', pid: 16811, bundleId: 'dev.fake.hitty', windowId: 168110 },
   Closey: { name: 'Closey', pid: 16900, bundleId: 'dev.fake.closey', windowId: 169000 },
   Preview: { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windowId: 170000 },

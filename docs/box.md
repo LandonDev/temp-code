@@ -1857,6 +1857,14 @@ thread's own status says the Mac's line: the rail, the board, the phone and
 `check_agent` ("running: Waiting for the Mac, …") read it, and it clears when
 the call runs, answers, is stopped, or the Mac's link drops.
 
+A covered browser window. Chrome stops drawing a window other windows
+cover, and a tab selected there may get neither pixels nor a tree: the
+field test's blank pages came from box threads whose scratch Chrome sat
+behind the person's windows, not from the bridge, which runs the same
+`ComputerSessions.run` on the Mac. The observation's header then ends
+` · page not drawn`, and `perform raise` on the window draws it at the
+session tier, once the Mac is free (docs/computer-protocol.md §25.3).
+
 A held call answers Codex and Muse in time. A Codex or Muse thread's call held
 20 s answers anyway with an id ("Held after 20s: Waiting for the Mac, 1 of 1
 computer sessions, 1st in line. Nothing runs until you ask for it: call

@@ -14,7 +14,7 @@ enum Attributes {
     static let textEntry: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXDateField", "AXSearchField"]
     static let textEntryExtra = ["AXNumberOfCharacters", "AXSelectedTextRange", "AXPlaceholderValue", "AXRequired", "AXInvalid", "AXTitleUIElement"]
     static let expandable: Set<String> = ["AXCheckBox", "AXRadioButton", "AXRow", "AXCell", "AXDisclosureTriangle", "AXPopUpButton", "AXComboBox", "AXMenuButton", "AXMenuBarItem", "AXButton"]
-    static let lists: Set<String> = ["AXList", "AXOutline", "AXTable"]
+    static let lists: Set<String> = Viewport.listRoles
     static let listExtra = ["AXVisibleRows", "AXVisibleChildren", "AXVisibleColumns"]
     static let windows: Set<String> = ["AXWindow", "AXSheet", "AXDialog"]
     static let formControls: Set<String> = ["AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXSlider", "AXIncrementor", "AXStepper", "AXButton", "AXMenuButton", "AXColorWell", "AXLevelIndicator"]
@@ -25,7 +25,8 @@ enum Attributes {
         if textEntry.contains(role) { out += textEntryExtra } else { out.append("AXValue") }
         if expandable.contains(role) { out.append("AXExpanded") }
         if lists.contains(role) { out += listExtra }
-        if role == "AXWebArea" { out += ["AXElementBusy", "AXLoaded"] }
+        // AXURL matches an untitled page to its tab (§25.2)
+        if role == "AXWebArea" { out += ["AXElementBusy", "AXLoaded", "AXURL"] }
         if windows.contains(role) { out.append("AXModal") }
         // §22.1, §22.4: a window's buttons answer here whether or not a capture hid them from AXChildren
         if role == "AXWindow" { out += ["AXMinimized"] + TitleBar.attributes }

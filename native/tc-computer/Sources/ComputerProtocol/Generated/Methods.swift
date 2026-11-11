@@ -183,8 +183,9 @@ public enum Methods {
             public let menus: Bool?
             public let budget: Budget?
             public let wait: WaitOptions?
+            public let tabs: TabsMode?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, mode: ObservationMode? = nil, element: Int? = nil, screenshot: ScreenshotPolicy? = nil, maxEdge: Int? = nil, geometry: Bool? = nil, menus: Bool? = nil, budget: Budget? = nil, wait: WaitOptions? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, mode: ObservationMode? = nil, element: Int? = nil, screenshot: ScreenshotPolicy? = nil, maxEdge: Int? = nil, geometry: Bool? = nil, menus: Bool? = nil, budget: Budget? = nil, wait: WaitOptions? = nil, tabs: TabsMode? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -198,6 +199,7 @@ public enum Methods {
                 self.menus = menus
                 self.budget = budget
                 self.wait = wait
+                self.tabs = tabs
             }
         }
 
@@ -220,8 +222,10 @@ public enum Methods {
             public let pasteQuietMs: Int?
             public let personIdleMs: Int?
             public let ignored: IgnoredRoutes?
+            public let tabs: TabsMode?
+            public let expectFocus: Int?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -234,6 +238,8 @@ public enum Methods {
                 self.pasteQuietMs = pasteQuietMs
                 self.personIdleMs = personIdleMs
                 self.ignored = ignored
+                self.tabs = tabs
+                self.expectFocus = expectFocus
             }
         }
 
@@ -257,8 +263,10 @@ public enum Methods {
             public let pasteQuietMs: Int?
             public let personIdleMs: Int?
             public let ignored: IgnoredRoutes?
+            public let tabs: TabsMode?
+            public let expectFocus: Int?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -272,6 +280,8 @@ public enum Methods {
                 self.pasteQuietMs = pasteQuietMs
                 self.personIdleMs = personIdleMs
                 self.ignored = ignored
+                self.tabs = tabs
+                self.expectFocus = expectFocus
             }
         }
 
@@ -290,8 +300,9 @@ public enum Methods {
             public let maxEdge: Int?
             public let region: Region?
             public let format: ShotFormat?
+            public let tabs: TabsMode?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, maxEdge: Int? = nil, region: Region? = nil, format: ShotFormat? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, maxEdge: Int? = nil, region: Region? = nil, format: ShotFormat? = nil, tabs: TabsMode? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -300,6 +311,7 @@ public enum Methods {
                 self.maxEdge = maxEdge
                 self.region = region
                 self.format = format
+                self.tabs = tabs
             }
         }
 

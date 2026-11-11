@@ -119,6 +119,7 @@ public enum ObservationTables {
     public static let typingRoles: Set<String> = ["input", "search", "password", "text area", "date", "combo box"]
     public static let headerSeparator = " · "
     public static let headerLoading = "still loading"
+    public static let headerNotDrawn = "page not drawn"
     public static let headerDiff = "changes since your last read"
     public static let headerUnchanged = "no changes"
     public static let headerThin = "thin tree, see the screenshot"

@@ -28,6 +28,19 @@ enum AX {
         (copy(e, attr).0 as? NSNumber)?.intValue
     }
 
+    /// AXValue as text: a string as it is, a number or a checkbox's state as its digits; nil for anything else.
+    static func valueText(_ e: AXUIElement) -> String? {
+        let v = copy(e, "AXValue").0
+        if let s = v as? String { return s }
+        if let n = v as? NSNumber { return n.stringValue }
+        return nil
+    }
+
+    /// Inside an AXWebArea, the element itself counted; deep, since a page's tree is.
+    static func inWebArea(_ e: AXUIElement) -> Bool {
+        ancestor(e, role: "AXWebArea", maxDepth: 256) != nil
+    }
+
     static func element(_ e: AXUIElement, _ attr: String) -> AXUIElement? {
         guard let v = copy(e, attr).0, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
         return (v as! AXUIElement)

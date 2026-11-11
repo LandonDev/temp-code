@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 63,
+  "error": {
+    "code": -32000,
+    "message": "Google Chrome's window \"TC field front - Google Chrome\" is in front, on tab \"TC field front\"; switch tabs with an act, which waits for the Mac to be free.",
+    "data": {
+      "kind": "tab_in_use",
+      "message": "Google Chrome's window \"TC field front - Google Chrome\" is in front, on tab \"TC field front\"; switch tabs with an act, which waits for the Mac to be free."
+    }
+  }
+}

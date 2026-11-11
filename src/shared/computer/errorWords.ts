@@ -146,6 +146,18 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
   },
   key_window_unavailable: () => "the window isn't its app's key window, so keys and paste can't reach it; use set_value, or type with element",
   open_refused: OPEN_REFUSED,
+  value_not_taken: (e, ctx) => {
+    const reads = e.value === undefined ? 'did not take the value' : `still reads ${quote(e.value)}`
+    return `${index(e, ctx)} ${reads}; nothing after it ran. On a pop up, click it and perform pick on the item; on a field, type with element`
+  },
+  focus_moved: (e) => {
+    const at = e.focused ? `[${e.focused.index}] ${e.focused.line.length > 60 ? `${e.focused.line.slice(0, 59)}…` : e.focused.line}` : 'another element'
+    return e.reason === 'browser-field'
+      ? `the keys would go to ${at}, not the page; name the element they are for`
+      : `the focus moved to ${at} since your read; name the element the keys are for`
+  },
+  tab_in_use: (_e, ctx) =>
+    `the person has ${quoteApp(ctx.app)}'s window in front on another tab, so a read won't switch it; switch tabs with an act, which waits for the Mac to be free`,
   session_unavailable: (e) =>
     `the session tier can't run now${e.reason && SESSION_WHY[e.reason] ? `: ${SESSION_WHY[e.reason]}` : ''}; stay in the background tiers`
 }

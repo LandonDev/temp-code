@@ -77,6 +77,8 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         let facts = elementFacts(action, target)
         let held = core.held.heldTier(pid: target.pid)
         let live = LiveRoutes(engine: self, action: action, target: target)
+        // §25.9: keys with no element in a Chromium window go where the read said, or nowhere
+        try checkFocus(action, target: target)
         switch planRoutes(action, element: facts, facts: live.facts, tiers: tiers, held: held, ignored: target.ignored) {
         case .needs(let t, let menu):
             throw needsTier(action, t, menu: menu, pid: target.pid)
@@ -85,11 +87,19 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         case .noInput:
             return InputOutcome(tier: nil, via: nil, clipboard: nil, cursor: target.cursor)
         case .runs(let steps, let needed, let menu):
-            // §24.1: the next try only when one did nothing it could tell
+            // §24.1: the next try only when one did nothing it could tell; a web checkbox tells by its value alone (§25.7)
+            let toggle = togglesInPage(action, facts: facts, live: live) ? target.element?.element : nil
             for (i, step) in steps.enumerated() {
                 if step.tier != .ax || action.action == .type { try requirePosting() }
+                let before = toggle.flatMap(AX.valueText)
                 do {
-                    return try run(action, step: step, rest: Array(steps.dropFirst(i + 1)), target: target, tiers: tiers, facts: facts, held: held, live: live)
+                    var outcome = try run(action, step: step, rest: Array(steps.dropFirst(i + 1)), target: target, tiers: tiers, facts: facts, held: held, live: live)
+                    if let toggle {
+                        let effect = toggleEffect(toggle, before: before, cancelled: target.cancelled)
+                        if effect == .none, i < steps.count - 1 { continue }
+                        outcome.effect = effect
+                    }
+                    return outcome
                 } catch is RouteFellThrough {
                     continue
                 }
@@ -191,8 +201,16 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         }
         switch (step.route, action.action) {
         case (.element, .setValue):
-            try AXTier.setValue(element(target, action), action.value ?? "")
+            // §25.8: in a page the value is read back
+            try AXTier.setValue(element(target, action), action.value ?? "", readBack: live.facts.webContent(), clock: clock)
             return axDone(nil)
+        case (.pick, _):
+            let picked = try AXPick.pick(element(target, action), value: action.value ?? "", pid: target.pid, clock: clock)
+            return InputOutcome(tier: .ax, via: .pick, clipboard: nil, cursor: target.cursor, lastInputAt: picked.changed ? clock.ticks() : nil, on: picked.item)
+        case (.scrollIntoView, _):
+            guard let (root, visible) = live.intoViewRoot(),
+                  let on = AXTier.scrollIntoView(root: root, visible: visible, direction: action.scroll_direction ?? .down, clicks: action.scroll_amount ?? 1, clock: clock) else { throw RouteFellThrough() }
+            return InputOutcome(tier: .ax, via: .scrollIntoView, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks(), on: on)
         case (.element, .selectText):
             try AXTier.selectText(element(target, action), text: action.text, range: action.range, prefix: action.prefix, suffix: action.suffix, place: action.place)
             return axDone(nil)
@@ -237,13 +255,13 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
             // with an event tier after it, the insert is the paste flow's first rung; alone, it is the step
             if let next = rest.first(where: { $0.route == .events }) {
                 try requirePosting()
-                return try paste(content, tier: next.tier, target: target, insertFirst: true)
+                return try paste(content, tier: next.tier, target: target, insertFirst: true, recheck: { try self.checkFocus(action, target: target) })
             }
             guard let effect = try insertOnly(content.plain, target: target), effect != .none else { throw RouteFellThrough() }
             return InputOutcome(tier: .ax, via: .axInsert, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks())
         case (.events, .paste):
             let content = PasteContent.make(action.text ?? "", format: action.format)
-            return try paste(content, tier: tier, target: target)
+            return try paste(content, tier: tier, target: target, recheck: { try self.checkFocus(action, target: target) })
         default:
             return try events(action, tier: tier, target: target)
         }
@@ -254,6 +272,8 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         guard let (item, match) = live.menuItem, match.enabled else { throw RouteFellThrough() }
         // a menu item acts on the app's focused window: the key-window rule holds
         try ProcessTier.requireKeyWindow(pid: target.pid, window: target.window)
+        // a key with an element: the item acts on the focus, which goes there first (§25.9)
+        if let e = target.element { try ProcessTier.confirmFocus(e, pid: target.pid, clock: clock) }
         try AXTier.pressMenu(item, match: match, count: action.repeat ?? 1)
         return InputOutcome(tier: .ax, via: .menu, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks(), on: match.line)
     }
@@ -303,10 +323,18 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         let combo = Self.isKeyVerb(name) ? try parseKeyCombo(action.text ?? "") : nil
         if tier == .process {
             if Self.isPointerVerb(name) { try ProcessTier.requireNotMinimized(target.window) }
-            if Self.isKeyVerb(name) { try ProcessTier.requireKeyWindow(pid: target.pid, window: target.window) }
+            if Self.isKeyVerb(name) {
+                // §25.9: a key with an element focuses it first
+                if let e = target.element { try ProcessTier.confirmFocus(e, pid: target.pid, clock: clock) }
+                try ProcessTier.requireKeyWindow(pid: target.pid, window: target.window)
+            }
         }
         let fresh = tier == .session
         let (at, change, last) = try core.step(tier: tier, pid: target.pid, windowID: target.windowID, window: target.window, keys: Self.isKeyVerb(name), call: target.sessionCall, cancelled: target.cancelled) { ctx -> ScreenPoint? in
+            // activation may move the focus: the element taken again, or the keys checked again, before any event
+            if fresh, Self.isKeyVerb(name) {
+                if let e = target.element { try ProcessTier.confirmFocus(e, pid: target.pid, clock: clock) } else { try checkFocus(action, target: target) }
+            }
             switch name {
             case .leftClick, .rightClick, .middleClick, .doubleClick, .tripleClick:
                 let button: MouseButton = name == .rightClick ? .right : name == .middleClick ? .middle : .left

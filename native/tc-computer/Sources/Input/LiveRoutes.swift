@@ -20,6 +20,8 @@ final class LiveRoutes {
     private(set) var point: ScreenPoint?
     /// the scroll area a scroll acts on (§24.5)
     private(set) var area: AXUIElement?
+    /// §25.1: the step acts in a Chromium page, read once
+    private var web: Bool?
 
     init(engine: InputEngine, action: ComputerAction, target: InputTarget) {
         self.engine = engine
@@ -33,8 +35,48 @@ final class LiveRoutes {
             hit: { [self] in readHit() },
             scrollBar: { [self] in readArea().map { AXTier.hasScrollBar($0, direction: action.scroll_direction ?? .down) } ?? false },
             pageScrolls: { [self] in readArea().map { Set(AX.actions($0).filter { $0.hasPrefix("AXScroll") && $0.hasSuffix("ByPage") }) } ?? [] },
-            appActive: { [self] in NSRunningApplication(processIdentifier: target.pid)?.isActive ?? false }
+            appActive: { [self] in NSRunningApplication(processIdentifier: target.pid)?.isActive ?? false },
+            webContent: { [self] in readWeb() }
         )
+    }
+
+    /// The named element, or for a scroll the scroll area or the element under its point, lies in an
+    /// AXWebArea of a Chromium process; a scroll area holding the page counts too (§25.6).
+    private func readWeb() -> Bool {
+        if let web { return web }
+        var found = false
+        if target.chromium {
+            if let e = target.element?.element, AX.inWebArea(e) {
+                found = true
+            } else if action.action == .scroll {
+                let under = target.element == nil ? readPoint().flatMap { AXHit.element(at: $0, pid: target.pid, window: target.window) } : nil
+                if let under, AX.inWebArea(under) { found = true }
+                else if let area = readArea() { found = AX.inWebArea(area) || AXTier.webAreaChild(area) != nil }
+                else if let e = target.element?.element { found = AXTier.webAreaChild(e) != nil }
+            }
+        }
+        web = found
+        return found
+    }
+
+    /// What `scroll-into-view` scans and measures against (§25.6): an overflow box inside the page is its
+    /// own root, else the page's web area; the visible rect is the root's frame clipped to the scroll area
+    /// around it and to the window.
+    func intoViewRoot() -> (root: AXUIElement, visible: ComputerProtocol.Rect)? {
+        let named = target.element?.element
+        let area = readArea()
+        let root: AXUIElement?
+        if let area, AX.inWebArea(area) {
+            root = area
+        } else {
+            let start = named ?? readPoint().flatMap { AXHit.element(at: $0, pid: target.pid, window: target.window) }
+            root = start.flatMap { AX.ancestor($0, role: "AXWebArea", maxDepth: 256) } ?? area.flatMap(AXTier.webAreaChild) ?? named.flatMap(AXTier.webAreaChild)
+        }
+        guard let root, var visible = AX.frame(root) else { return nil }
+        AX.setTimeout(root, seconds: InputTiming.axTimeoutS)
+        if let area, !AX.same(area, root), let f = AX.frame(area) { visible = intersect(visible, f) ?? visible }
+        guard let shown = intersect(visible, target.windowFrame) else { return nil }
+        return (root, shown)
     }
 
     private func readMenu() -> MenuMatch? {

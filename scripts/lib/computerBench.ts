@@ -8,6 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
+import type { CoverageNote } from './windowCover'
 import {
   COMPUTER_ACTION_NAMES,
   NO_INPUT_ACTIONS,
@@ -50,6 +51,8 @@ export interface BenchCall {
   /** pictures the result carried, asked or thin-tree */
   shots: number
   isError: boolean
+  /** Window coverage sampled at call entry; null when the target could not be read. */
+  coverage?: CoverageNote | null
 }
 
 /**

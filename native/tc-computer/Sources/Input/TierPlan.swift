@@ -99,6 +99,10 @@ public enum Route: Equatable, Sendable {
     case scrollPage
     /// a paste's text set as AXSelectedText, the clipboard untouched (§24.6)
     case insert
+    /// a pop up in web content: its menu opened, the item pressed, the value read back (§25.7)
+    case pick
+    /// AXScrollToVisible on the element about a wheel's distance past the edge, approximately (§25.6)
+    case scrollIntoView
     /// posted events, at `process` or `session`
     case events
 
@@ -111,7 +115,8 @@ public enum Route: Equatable, Sendable {
         case .scrollBar: .scrollBar
         case .scrollPage: .scrollPage
         case .insert: .axInsert
-        case .element, .events: nil
+        case .scrollIntoView: .scrollIntoView
+        case .element, .events, .pick: nil
         }
     }
 }
@@ -129,13 +134,17 @@ public struct RouteFacts {
     public var pageScrolls: () -> Set<String>
     /// NSRunningApplication.isActive
     public var appActive: () -> Bool
+    /// §25.1: the named element, or the scroll area a scroll acts on, lies in an AXWebArea of a
+    /// Chromium process (`InputTarget.chromium`, and the element's ancestry)
+    public var webContent: () -> Bool
 
-    public init(menu: @escaping () -> MenuMatch? = { nil }, hit: @escaping () -> HitChoice? = { nil }, scrollBar: @escaping () -> Bool = { false }, pageScrolls: @escaping () -> Set<String> = { [] }, appActive: @escaping () -> Bool = { false }) {
+    public init(menu: @escaping () -> MenuMatch? = { nil }, hit: @escaping () -> HitChoice? = { nil }, scrollBar: @escaping () -> Bool = { false }, pageScrolls: @escaping () -> Set<String> = { [] }, appActive: @escaping () -> Bool = { false }, webContent: @escaping () -> Bool = { false }) {
         self.menu = menu
         self.hit = hit
         self.scrollBar = scrollBar
         self.pageScrolls = pageScrolls
         self.appActive = appActive
+        self.webContent = webContent
     }
 
     public static var none: RouteFacts { RouteFacts() }
@@ -176,6 +185,8 @@ public enum RouteChoice: Equatable, Sendable {
 private struct Candidate {
     var step: RouteStep
     var ignored: Bool
+    /// an approximate route that ranks with the exact ones (§25.6's exception to §24.1)
+    var early = false
 }
 
 private let tierRank: [Tier: Int] = [.ax: 0, .process: 1, .session: 2]
@@ -188,9 +199,9 @@ private func isPlainClick(_ action: ComputerAction) -> Bool {
 private func candidates(_ action: ComputerAction, element f: ElementFacts?, facts: RouteFacts, ignored: IgnoredRoutes?, disabled: inout MenuMatch?) -> [Candidate] {
     let ignoredVias = Set(ignored?.via ?? [])
     let processIgnored = actionClass(action.action).map { (ignored?.process ?? []).contains($0) } ?? false
-    func c(_ tier: Tier, _ route: Route, exact: Bool = true) -> Candidate {
+    func c(_ tier: Tier, _ route: Route, exact: Bool = true, early: Bool = false) -> Candidate {
         let named = route.via.map(ignoredVias.contains) ?? false
-        return Candidate(step: RouteStep(tier, route, exact: exact), ignored: named || (route == .events && tier == .process && processIgnored))
+        return Candidate(step: RouteStep(tier, route, exact: exact), ignored: named || (route == .events && tier == .process && processIgnored), early: early)
     }
     let events = [c(.process, .events), c(.session, .events)]
     let plain = isPlainClick(action)
@@ -217,6 +228,8 @@ private func candidates(_ action: ComputerAction, element f: ElementFacts?, fact
         return (facts.hit()?.action == .open ? [c(.ax, .hit)] : []) + events
     case .scroll where (action.text ?? "").isEmpty:
         let bar = facts.scrollBar() ? [c(.ax, .scrollBar)] : []
+        // §25.6: a web page takes no page actions (M4); scroll-into-view runs before the process wheel
+        if facts.webContent() { return bar + [c(.ax, .scrollIntoView, exact: false, early: true), c(.process, .events), c(.session, .events)] }
         let pages = (f?.pageScrolls ?? []).union(f == nil ? facts.pageScrolls() : [])
         let page = pageScrollAction(action.scroll_direction).map(pages.contains) == true ? [c(.ax, .scrollPage, exact: false)] : []
         return bar + [c(.process, .events)] + page + [c(.session, .events)]
@@ -229,6 +242,9 @@ private func candidates(_ action: ComputerAction, element f: ElementFacts?, fact
         let plainFormat = action.format == nil || action.format == .text || f?.role == "input"
         let ax = f?.settable.contains("AXSelectedText") == true && plainFormat
         return (ax ? [c(.ax, .insert)] : []) + events
+    case .setValue where f?.role == "pop up" && facts.webContent():
+        // §25.7: a web pop up takes AXValue and ignores it
+        return [c(.ax, .pick)]
     case .setValue, .selectText:
         return [c(.ax, .element)]
     case .perform:
@@ -239,7 +255,8 @@ private func candidates(_ action: ComputerAction, element f: ElementFacts?, fact
 }
 
 /// §24.1: the step's tries, first found: (1) an exact route at `ax`, then at `process`, that
-/// `ignored` does not name; (2) an approximate route not named there; (3) a route at `session`;
+/// `ignored` does not name, and in a web page `scroll-into-view`, approximate though it is (§25.6);
+/// (2) an approximate route not named there; (3) a route at `session`;
 /// (4) the routes `ignored` names, exact first (none with `skip`). A held button or key forces its
 /// tier on every action that posts events. With no allowed route: `needs` naming the lowest tier
 /// with one.
@@ -260,8 +277,8 @@ public func planRoutes(_ action: ComputerAction, element: ElementFacts?, facts: 
     if ignored?.skip == true { all.removeAll(where: \.ignored) }
     let runnable = all.filter { allowed.contains($0.step.tier) }
     let fresh = runnable.filter { !$0.ignored }
-    let band1 = fresh.filter { $0.step.exact && $0.step.tier != .session }
-    let band2 = fresh.filter { !$0.step.exact }
+    let band1 = fresh.filter { ($0.step.exact || $0.early) && $0.step.tier != .session }
+    let band2 = fresh.filter { !$0.step.exact && !$0.early }
     let band3 = fresh.filter { $0.step.exact && $0.step.tier == .session }
     let stale = runnable.filter(\.ignored)
     let band4 = stale.filter(\.step.exact) + stale.filter { !$0.step.exact }

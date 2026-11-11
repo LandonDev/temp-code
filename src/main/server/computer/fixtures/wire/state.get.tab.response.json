@@ -1,0 +1,51 @@
+{
+  "jsonrpc": "2.0",
+  "id": 65,
+  "result": {
+    "epoch": "e-7Kq2",
+    "session": "thread-9fK2",
+    "app": {
+      "pid": 21410,
+      "bundleId": "com.google.chrome.for.testing",
+      "name": "Google Chrome for Testing"
+    },
+    "window": {
+      "id": 2210,
+      "title": "TC field report - Google Chrome for Testing",
+      "frame": {
+        "x": 120,
+        "y": 80,
+        "w": 1100,
+        "h": 800
+      }
+    },
+    "kind": "full",
+    "seq": 1,
+    "text": "app \"Google Chrome for Testing\" · window \"TC field report - Google Chrome for Testing\" · 1280×930 · page not drawn\n[1] window \"TC field report - Google Chrome for Testing\"\n  [2] tab \"TC field front\" actions: close\n  [3] tab \"TC field report\" selected actions: close\n  [4] tab \"TC field form\" actions: close\n  [5] input \"Address and search bar\" = \"file:///private/tmp/tc-web/report.html\"",
+    "space": {
+      "width": 1280,
+      "height": 930,
+      "scale": 1.1636
+    },
+    "stats": {
+      "elements": 5,
+      "lines": 6,
+      "bytes": 390,
+      "omitted": 0,
+      "thin": true,
+      "partial": false,
+      "readMs": 41
+    },
+    "waited": {
+      "waitedMs": 5000,
+      "settled": false,
+      "busy": true,
+      "reason": "busy-max"
+    },
+    "page": {
+      "tab": "TC field report",
+      "state": "not-drawn"
+    },
+    "selectedTab": "TC field report"
+  }
+}

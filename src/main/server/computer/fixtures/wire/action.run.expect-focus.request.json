@@ -1,0 +1,26 @@
+{
+  "jsonrpc": "2.0",
+  "id": 66,
+  "method": "action.run",
+  "params": {
+    "session": "thread-9fK2",
+    "app": {
+      "app": "Google Chrome for Testing"
+    },
+    "window": {
+      "title": "TC field form"
+    },
+    "epoch": "e-7Kq2",
+    "action": {
+      "action": "key",
+      "text": "Return",
+      "element": 14
+    },
+    "tiers": [
+      "ax",
+      "process"
+    ],
+    "tabs": "background",
+    "expectFocus": 14
+  }
+}

@@ -44,6 +44,13 @@ final class HandleTable: @unchecked Sendable {
         return next
     }
 
+    /// The id of an element already interned, without interning it.
+    func existing(_ element: AXUIElement) -> NodeID? {
+        lock.lock()
+        defer { lock.unlock() }
+        return ids[ElementKey(element: element)]
+    }
+
     func element(_ id: NodeID) -> AXUIElement? {
         lock.lock()
         defer { lock.unlock() }

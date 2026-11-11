@@ -38,6 +38,19 @@ why and the measured headline.
   the tree, the capture badge never (docs/computer-protocol.md §22): closing
   and minimizing are clicks at `ax`; restoring is `perform raise`, at the
   session tier.
+- **Web content** (docs/computer-protocol.md §25). A Chromium process is
+  known by its bundle (`ChromiumBundle`), never by `AXManualAccessibility`,
+  which Chrome refuses. `window` may name a browser tab, which a call selects
+  over AX under the app's action slot (`TabSelect`; the person's own front
+  window answers `tab_in_use`, which a read words and an act takes to the tier
+  gate); the observation carries `page` (loaded, loading, not drawn: the
+  header's ` · page not drawn`) and `selectedTab`; a web area reads one screen
+  above and three below; a web pop up's `set_value` is `pick`, every web
+  `set_value` is read back (`value_not_taken`); `key` and `hold_key` take
+  `element`, and keys never go into the browser's own fields
+  (`focus_moved`, with the host's `expectFocus` from the model's last read);
+  a page scrolls by `scroll-into-view`. The gate's `webLeg` runs it on Chrome
+  for Testing; field hand runs use plain Chrome with `--cover`.
 - **The host** (src/main/server/computer/, §17). On a Mac with a screen,
   one `ComputerService` (binary.ts; respawned with backoff, down five
   minutes after five crashes in two, shut down after ten idle minutes).

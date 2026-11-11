@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, readdirSync, utimesSync, writeFileSync } from '
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { AppInfo, Shot } from '@shared/computer/protocol'
+import type { AppInfo, Observation, Shot } from '@shared/computer/protocol'
 import { formatAppsList, frontLine, mergeFront, outcomeOf, outcomeToPeer, renderText, type ComputerToolOutcome } from './result'
 import { STALE_SHOTS_MS, landShot, nextShotNumber, pruneStaleShots } from './shots'
 
@@ -143,5 +143,22 @@ describe('shots', () => {
     utimesSync(join(dir, 'shots', 'old'), old, old)
     await pruneStaleShots(dir, now)
     expect(readdirSync(join(dir, 'shots'))).toEqual(['new'])
+  })
+})
+
+
+describe('web results (§25)', () => {
+  it('puts tabs after each window title, with selection, escaping, counts and window state', () => {
+    const app: AppInfo = { pid: 1, name: 'Google Chrome', bundleId: 'com.google.Chrome', active: false, hidden: false,
+      windows: [win('Front - Google Chrome', { tabs: [{ title: 'Front', selected: true }, { title: 'Report "Q4"', selected: false }], moreTabs: 2, minimized: true }), win('Other')] }
+    expect(formatAppsList([app])).toBe(`Google Chrome (com.google.Chrome) · windows: "Front - Google Chrome" (tabs: "Front" selected, ${JSON.stringify('Report "Q4"')}, and 2 more) minimized, "Other"`)
+  })
+
+  it('says which tab it selected first, before actions and shots, and keeps the page header', () => {
+    const observation = { selectedTab: 'Report "Q4"', app: { name: 'Chrome' }, window: { title: 'Report - Chrome' }, text: 'app "Chrome" · window "Report - Chrome" · 1×1 · page not drawn' } as Observation
+    const o = outcomeOf([{ action: 'key', text: 'Tab' }], { steps: [{ index: 0, action: 'key', status: 'ok', tier: 'process', effect: 'changed' }], observation }, [])
+    expect(o.steps).toEqual([`Selected tab ${JSON.stringify('Report "Q4"')} in window "Report - Chrome"`, 'key Tab · process · changed'])
+    expect(o.body).toBe(observation.text)
+    expect(renderText(o).startsWith(o.steps[0])).toBe(true)
   })
 })

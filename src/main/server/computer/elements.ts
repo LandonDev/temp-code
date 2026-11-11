@@ -53,7 +53,7 @@ export class ElementBook {
     try {
       const parsed = parseObservation(text)
       lines = parsed.lines
-      if (kind !== 'subtree') this.focused = parsed.header.focused ?? null
+      this.focused = parsed.header.focused ?? null
     } catch {
       this.clear()
       return

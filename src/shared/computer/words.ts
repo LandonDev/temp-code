@@ -100,6 +100,8 @@ export interface TitleContext {
   appName: string
   /** the model's `window`, else the bound window's title; null leaves it out */
   window: string | null
+  /** A known tab this call will select before its steps. */
+  tab?: string
   /** the thread's book: an element's line, or null when it has none */
   element: (index: number) => ElementBrief | null
   /** text goes into a password field: steps say how long it is, never what */
@@ -238,7 +240,8 @@ export function computerApprovalTitle(
   }
   const steps = actingSteps(tool, args).map((a) => actionWords(a, ctx))
   const using = opts.session ? USING_SESSION_WORDS : ''
-  if (confirm) return confirmTitle(confirm, ctx.appName, steps.join(', ') || undefined) + using
+  if (confirm) return confirmTitle(confirm, ctx.appName, [...(ctx.tab ? [`select tab ${JSON.stringify(ctx.tab)}`] : []), ...steps].join(', ') || undefined) + using
+  if (ctx.tab) return `Select tab ${JSON.stringify(ctx.tab)} and ${steps.length === 1 ? steps[0] : `${steps.length} actions`} in ${where(ctx)}${using}${steps.length > 1 ? `: ${steps.join(', ')}` : ''}`
   if (steps.length === 1) return `${capital(steps[0])} in ${where(ctx)}${using}`
   return `${steps.length} actions in ${where(ctx)}${using}: ${steps.join(', ')}`
 }
@@ -273,7 +276,7 @@ export function computerApprovalInput(tool: ComputerToolName, args: ToolArgs, ct
   return {
     app: ctx.appName,
     window: ctx.window,
-    actions: actingSteps(tool, args).map((a) => actionWords(a, ctx)),
+    actions: [...(ctx.tab ? [`select tab ${JSON.stringify(ctx.tab)}`] : []), ...actingSteps(tool, args).map((a) => actionWords(a, ctx))],
     ...(confirm ? { confirm: confirmInput(confirm) } : {})
   }
 }

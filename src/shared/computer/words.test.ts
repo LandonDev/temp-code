@@ -386,3 +386,17 @@ describe('verdictWords', () => {
     expect(all).not.toMatch(/session|process|\bax\b/)
   })
 })
+
+
+describe('tab selection on a card (§25)', () => {
+  it('names the tab, its bound window and the acting steps', () => {
+    const context = ctx({ appName: 'Google Chrome', window: 'Front - Google Chrome', tab: 'Report' })
+    const args = { actions: [{ action: 'key' as const, text: 'Tab' }, { action: 'key' as const, text: 'Return' }] }
+    expect(computerApprovalTitle('computer_batch', args, context)).toBe('Select tab "Report" and 2 actions in Google Chrome, window "Front - Google Chrome": press Tab, press Return')
+    expect(computerApprovalInput('computer_batch', args, context).actions).toEqual(['select tab "Report"', 'press Tab', 'press Return'])
+    expect(computerApprovalTitle('computer_act', { action: 'key', text: 'Tab' } as ComputerAction, context)).toBe('Select tab "Report" and press Tab in Google Chrome, window "Front - Google Chrome"')
+    const confirm = { kind: 'send' as const, what: 'Submit the form' }
+    expect(computerApprovalTitle('computer_batch', args, context, confirm)).toContain('Send in Google Chrome: Submit the form')
+    expect(computerApprovalInput('computer_batch', args, context, confirm).actions[0]).toBe('select tab "Report"')
+  })
+})

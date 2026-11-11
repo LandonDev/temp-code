@@ -87,12 +87,15 @@ public struct HeaderFacts: Sendable, Equatable {
     public var loading: Bool
     public var change: Change?
     public var thin: Bool
+    /// the selected tab's page was not drawn by the end of the wait (§25.3); `loading` wins when both are set
+    public var notDrawn: Bool
 
-    public init(focused: Int? = nil, loading: Bool = false, change: Change? = nil, thin: Bool = false) {
+    public init(focused: Int? = nil, loading: Bool = false, change: Change? = nil, thin: Bool = false, notDrawn: Bool = false) {
         self.focused = focused
         self.loading = loading
         self.change = change
         self.thin = thin
+        self.notDrawn = notDrawn
     }
 }
 
@@ -209,7 +212,7 @@ public struct Layout: Sendable {
     public func header(_ h: HeaderFacts) -> String {
         var parts = ["app " + Quote.json(Cut.name(app, max: appLimit)), "window " + Quote.json(Cut.name(title, max: titleLimit)), "\(space.width)×\(space.height)"]
         if let f = h.focused { parts.append("focused [\(f)]") }
-        if h.loading { parts.append(T.headerLoading) }
+        if h.loading { parts.append(T.headerLoading) } else if h.notDrawn { parts.append(T.headerNotDrawn) }
         switch h.change {
         case .diff: parts.append(T.headerDiff)
         case .unchanged: parts.append(T.headerUnchanged)

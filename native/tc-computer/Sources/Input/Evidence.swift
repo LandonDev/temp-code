@@ -1,4 +1,5 @@
 import ComputerProtocol
+import Foundation
 
 /// What a destination showed of itself before and after keys or a paste went in: a
 /// digest of AXValue, AXSelectedTextRange and AXNumberOfCharacters, whichever it exposes.
@@ -54,5 +55,61 @@ public enum TypingRoute: Equatable, Sendable {
     /// after `changed` or `unknown` the text may be in, and it is never entered twice.
     public static func nextRungAfterAX(_ effect: StepEffect) -> Bool {
         effect == .none
+    }
+}
+
+/// §25.8's read-back: whether a value read from an element is the value `set_value` asked for.
+/// Strings compare trimmed, numbers as numbers, a pop up by its value or its selected item's title.
+public enum ReadBack {
+    public enum Verdict: Equatable, Sendable {
+        /// the element reads what was asked
+        case taken
+        /// it reads this instead: `value_not_taken`, its `value` this
+        case notTaken(String)
+        /// nothing readable: today's rule, the write's own answer stands
+        case unreadable
+    }
+
+    /// One read against the value asked; `read` nil is an element that answers nothing.
+    public static func verdict(asked: String, read: String?) -> Verdict {
+        guard let read else { return .unreadable }
+        return same(asked, read) ? .taken : .notTaken(read)
+    }
+
+    /// A pop up's read: its value, else its selected item's title, against the item `pick` pressed.
+    public static func popUp(item: String, value: String?, selectedTitle: String?) -> Verdict {
+        if let value, same(item, value) { return .taken }
+        if let selectedTitle, same(item, selectedTitle) { return .taken }
+        guard let shown = value ?? selectedTitle else { return .unreadable }
+        return .notTaken(shown)
+    }
+
+    /// Trimmed strings equal, or both numbers of the same value (`1,000` and `1000.0`).
+    public static func same(_ a: String, _ b: String) -> Bool {
+        let x = a.trimmingCharacters(in: .whitespacesAndNewlines), y = b.trimmingCharacters(in: .whitespacesAndNewlines)
+        if x == y { return true }
+        guard let n = number(x), let m = number(y) else { return false }
+        return n == m
+    }
+
+    /// A decimal number as written, with or without thousands commas; nil for anything else.
+    static func number(_ s: String) -> Double? {
+        let digits = s.unicodeScalars.allSatisfy { "0123456789.,+-eE".unicodeScalars.contains($0) }
+        guard digits, s.contains(where: \.isNumber) else { return nil }
+        if let d = Double(s) { return d }
+        // commas only as thousands separators: 1,234 or -12,345.6
+        let parts = s.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count <= 2 else { return nil }
+        let whole = parts[0].hasPrefix("-") || parts[0].hasPrefix("+") ? parts[0].dropFirst() : parts[0]
+        let groups = whole.split(separator: ",", omittingEmptySubsequences: false)
+        guard groups.count > 1, (1 ... 3).contains(groups[0].count), groups.dropFirst().allSatisfy({ $0.count == 3 }) else { return nil }
+        return Double(s.replacingOccurrences(of: ",", with: ""))
+    }
+
+    /// A checkbox's or radio's evidence (§25.7): its value alone before and after the route. Unchanged is
+    /// `none`, so a click that only moved the focus ring never reads `changed`; unreadable is `unknown`.
+    public static func toggle(before: String?, after: String?) -> StepEffect {
+        guard let before, let after else { return .unknown }
+        return before == after ? .none : .changed
     }
 }

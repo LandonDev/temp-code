@@ -25,8 +25,9 @@ let package = Package(
         // AX tree → indexed text, the diff, the element map, the change monitor. Every file sits under
         // `#if canImport(ApplicationServices)`, so the package still builds on Linux.
         .target(name: "AXReader", dependencies: ["ComputerCore", "AXText"]),
-        // The AX reader's dev tool for the live proof and the timings (scripts/mac/ax-reader-proof.sh); never shipped.
-        .executableTarget(name: "tc-ax", dependencies: ["AXReader", "AXText", "ComputerCore"]),
+        // The AX reader's dev tool for the live proof and the timings (scripts/mac/ax-reader-proof.sh), and web
+        // controls' hand run through Input's routes; never shipped.
+        .executableTarget(name: "tc-ax", dependencies: ["AXReader", "AXText", "ComputerCore", "Input"]),
         // The ax, process and session tiers, the key table, the clipboard paste.
         .target(
             name: "Input",

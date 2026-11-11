@@ -87,8 +87,10 @@ public struct AXNode: Sendable {
     public var children: [AXNode]
     /// children of this node left unread by the viewport cut
     public var hidden: Hidden?
+    /// AXURL, read on web areas only (§25.2: an untitled page is matched to its tab by it)
+    public var url: String?
 
-    public init(id: NodeID, role: String, subrole: String? = nil, title: String? = nil, description: String? = nil, titleElementValue: String? = nil, placeholder: String? = nil, value: AXScalar? = nil, valueLength: Int? = nil, identifier: String? = nil, domIdentifier: String? = nil, flags: AXFlags = AXFlags(), frame: Rect? = nil, actions: [String] = [], settable: Set<String>? = nil, selectedTextRange: [Int]? = nil, children: [AXNode] = [], hidden: Hidden? = nil) {
+    public init(id: NodeID, role: String, subrole: String? = nil, title: String? = nil, description: String? = nil, titleElementValue: String? = nil, placeholder: String? = nil, value: AXScalar? = nil, valueLength: Int? = nil, identifier: String? = nil, domIdentifier: String? = nil, flags: AXFlags = AXFlags(), frame: Rect? = nil, actions: [String] = [], settable: Set<String>? = nil, selectedTextRange: [Int]? = nil, children: [AXNode] = [], hidden: Hidden? = nil, url: String? = nil) {
         self.id = id
         self.role = role
         self.subrole = subrole
@@ -107,6 +109,7 @@ public struct AXNode: Sendable {
         self.selectedTextRange = selectedTextRange
         self.children = children
         self.hidden = hidden
+        self.url = url
     }
 }
 

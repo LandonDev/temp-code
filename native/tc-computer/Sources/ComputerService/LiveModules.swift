@@ -95,4 +95,18 @@ struct LiveWindows: WindowSource {
     func resolve(pid: pid_t, ref: WindowRef?) throws -> (element: AXUIElement, info: WindowInfo) { try AppWindows.resolve(pid: pid, ref: ref) }
     func list(pid: pid_t) throws -> [WindowInfo] { AppWindows.list(pid: pid) }
     func windowID(of element: AXUIElement, pid: pid_t) -> UInt32? { AppWindows.windowID(of: element, pid: pid).flatMap { UInt32(exactly: $0) } }
+
+    func resolveTab(pid: pid_t, ref: WindowRef?) throws -> (element: AXUIElement, info: WindowInfo, tab: TabHandle?) {
+        let found = try AppWindows.resolveTarget(pid: pid, ref: ref)
+        return (found.element, found.info, found.tab.map { TabHandle(element: $0.element, title: $0.title, selected: $0.selected) })
+    }
+
+    func selectTab(pid: pid_t, window: AXUIElement, tab: TabHandle, mode: TabsMode, waitMs: Int) throws -> TabSelection {
+        let done = try TabSelect.select(pid: pid, window: window, tab: tab.element, tabs: mode, waitMs: waitMs)
+        return TabSelection(title: done.title, switched: done.switched, page: done.page)
+    }
+
+    func tabSelected(_ tab: TabHandle) -> Bool { AppWindows.tabSelected(tab.element) }
+
+    func chromium(pid: pid_t) -> Bool { AppWindows.isChromium(pid: pid) }
 }

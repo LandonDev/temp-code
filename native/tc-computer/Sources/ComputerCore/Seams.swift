@@ -89,8 +89,11 @@ public struct InputOutcome: Sendable {
     public var clickAt: [Int]?
     /// what a fallback route acted on (§24.8): `File › Close`, `button "Save"`; the shell puts it on the step's `input.on`
     public var on: String?
+    /// the step's effect when Input read it itself (§25.7: a web checkbox's or radio's value read back);
+    /// the shell puts it on the step in place of the smart wait's
+    public var effect: StepEffect?
 
-    public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?, session: SessionChange? = nil, lastInputAt: UInt64? = nil, clickAt: [Int]? = nil, on: String? = nil) {
+    public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?, session: SessionChange? = nil, lastInputAt: UInt64? = nil, clickAt: [Int]? = nil, on: String? = nil, effect: StepEffect? = nil) {
         self.tier = tier
         self.via = via
         self.clipboard = clipboard
@@ -99,6 +102,7 @@ public struct InputOutcome: Sendable {
         self.lastInputAt = lastInputAt
         self.clickAt = clickAt
         self.on = on
+        self.effect = effect
     }
 }
 
@@ -282,8 +286,18 @@ public struct InputTarget {
     public let callToken: Int?
     /// the call's `personIdleMs`: the person guard gives typing back only when it was under 5 s (§14.9.4)
     public let personIdleMs: Int?
+    /// §25.1: the process is Chromium (AXText `ChromiumBundle`); §25.6 to §25.9 apply inside its web areas
+    /// and to its keys, and nowhere else
+    public let chromium: Bool
+    /// §25.9: the element the model's latest read showed focused (`expectFocus`, resolved), set only on the
+    /// step it binds (Input's `FocusCheck.bindsExpectation`): a call's first step that sends keys or text,
+    /// with no acting step before it, and on a retry only when no step of the call ran
+    public let expectFocus: ResolvedElement?
+    /// the reader's index and line for a live element, nil when the model's latest read never listed it:
+    /// `focus_moved` names the focused element by them
+    public let briefOf: (AXUIElement) -> ElementBrief?
 
-    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, callToken: Int? = nil, personIdleMs: Int? = nil) {
+    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, callToken: Int? = nil, personIdleMs: Int? = nil, chromium: Bool = false, expectFocus: ResolvedElement? = nil, briefOf: @escaping (AXUIElement) -> ElementBrief? = { _ in nil }) {
         self.pid = pid
         self.windowID = windowID
         self.windowFrame = windowFrame
@@ -297,6 +311,9 @@ public struct InputTarget {
         self.ignored = ignored
         self.callToken = callToken
         self.personIdleMs = personIdleMs
+        self.chromium = chromium
+        self.expectFocus = expectFocus
+        self.briefOf = briefOf
     }
 }
 
@@ -310,6 +327,19 @@ public protocol AppReading: AnyObject {
     func resetBase()
     /// stop the change monitor and free the element handles
     func close()
+    /// §25.2: the last window read's page (its selected tab and state); nil for a window with no tab strip,
+    /// a process that is not Chromium, or an element read
+    var lastPage: Page? { get }
+    /// §25.9: the index and line the model's latest read gave a live element; nil when it listed none
+    func brief(of element: AXUIElement) -> ElementBrief?
+    /// §25.2: after a tab switch, the window's page holds the smart wait until it is there and loaded
+    func watchPage(window: AXUIElement)
+}
+
+extension AppReading {
+    public var lastPage: Page? { nil }
+    public func brief(of element: AXUIElement) -> ElementBrief? { nil }
+    public func watchPage(window: AXUIElement) {}
 }
 
 /// Input. Every call is synchronous and runs off the main thread; every failure is a `ComputerFailure`.

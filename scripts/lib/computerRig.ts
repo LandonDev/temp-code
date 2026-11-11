@@ -26,6 +26,9 @@ import type { HostCall, MacProbe } from './benchRun'
 import { keepFront } from './benchRun'
 import { exec } from './benchChecks'
 import type { TaskApp, TaskReader } from './computerTasks'
+import { SCRATCH_CHROME_FRAME } from './chromiumForTests'
+import { windowCoverage, type CoverWindow, type CoverageNote } from './windowCover'
+import { buildProbeApp, cleanupProbeApp, launchProbe, type ProbeAppBuild } from './tcProbeApp'
 
 /**
  * The checkout a rig script runs in: the first folder up from `from` holding
@@ -74,12 +77,13 @@ const ADOPTED_APPS: readonly TaskApp[] = ['Finder']
 /**
  * The one launcher's arguments, the spec's fixture recording's (docs/computer-protocol.md
  * §10.1): Chrome as a second instance on its own profile with the renderer's
- * accessibility forced on (else the page never reaches the AX tree); TextEdit
+ * accessibility forced on for the gate baseline; the field set uses plainChrome,
+ * without that flag, at the fixed cover frame. TextEdit
  * as a separate instance on a file under /tmp that restores none of the
  * person's documents, never saves to iCloud and adds nothing to Open Recent;
  * System Settings in the background (it runs one instance).
  */
-export function scratchArgs(app: TaskApp, target: string, chromeProfile: string, extra: readonly string[] = []): string[] {
+export function scratchArgs(app: TaskApp, target: string, chromeProfile: string, extra: readonly string[] = [], opts: { plainChrome?: boolean } = {}): string[] {
   switch (app) {
     case 'TextEdit':
       return [
@@ -99,7 +103,7 @@ export function scratchArgs(app: TaskApp, target: string, chromeProfile: string,
       ]
     case 'Google Chrome':
       // extra: more URLs, opened as later tabs of the same window
-      return ['-n', '-g', '-a', 'Google Chrome', '--args', `--user-data-dir=${chromeProfile}`, '--no-first-run', '--no-default-browser-check', '--force-renderer-accessibility', target, ...extra]
+      return ['-n', '-g', '-a', 'Google Chrome', '--args', `--user-data-dir=${chromeProfile}`, '--no-first-run', '--no-default-browser-check', ...(opts.plainChrome ? [`--window-position=${SCRATCH_CHROME_FRAME.x},${SCRATCH_CHROME_FRAME.y}`, `--window-size=${SCRATCH_CHROME_FRAME.w},${SCRATCH_CHROME_FRAME.h}`] : ['--force-renderer-accessibility']), target, ...extra]
     case 'System Settings':
       return ['-g', '-b', RIG_BUNDLES['System Settings'], ...(target ? [target] : [])]
     case 'Calculator':
@@ -172,14 +176,15 @@ export class LanePins {
  * inside), its step lines, its shots, isError. Claude's in-process tools and
  * the bridge's app.computer both reach this one `run`.
  */
-export function recordCalls(sessions: ComputerSessions, pins: LanePins, now: () => number = Date.now): { calls(threadId: string): HostCall[]; clear(threadId: string): void } {
+export function recordCalls(sessions: ComputerSessions, pins: LanePins, now: () => number = Date.now, coverage?: (threadId: string, args: unknown, tool: string) => CoverageNote | null): { calls(threadId: string): HostCall[]; clear(threadId: string): void } {
   const byThread = new Map<string, HostCall[]>()
   const run = sessions.run.bind(sessions)
   sessions.run = (ctx, tool, args) => {
     const startedAt = now()
+    const covered = coverage ? coverage(ctx.threadId, args, tool) : undefined
     const note = (call: Omit<HostCall, 'tool' | 'args' | 'startedAt' | 'hostMs'>): void => {
       const list = byThread.get(ctx.threadId) ?? []
-      list.push({ tool, args, startedAt, hostMs: now() - startedAt, ...call })
+      list.push({ tool, args, startedAt, hostMs: now() - startedAt, ...(covered !== undefined ? { coverage: covered } : {}), ...call })
       byThread.set(ctx.threadId, list)
     }
     return pins.within(ctx.threadId, () => run(ctx, tool, args)).then(
@@ -301,6 +306,8 @@ export async function startRig(opts: {
   sessionTier: 'refused' | 'scheduled'
   proofSession: string
   log?: (line: string) => void
+  plainChrome?: boolean
+  cover?: boolean
 }): Promise<Rig> {
   // Loaded here, not at the top: the lanes and the call wrapper are tested without a server or a Swift build.
   const { startServer } = await import('../../src/main/server/index')
@@ -311,7 +318,7 @@ export async function startRig(opts: {
   const build = buildTcComputer({ root: opts.root, require: true })
   log(`tc-computer: ${build.built ? `built in ${build.ms} ms` : build.skipped}`)
   execFileSync('xcrun', ['swiftc', '-O', '-o', probeBin, join(opts.root, 'scripts/mac/computer-proof-probe.swift')], { stdio: 'pipe' })
-  const probe = <T>(command: string): T => JSON.parse(execFileSync(probeBin, [command], { encoding: 'utf8', timeout: 10_000 })) as T
+  const probe = <T>(command: string, args: string[] = []): T => JSON.parse(execFileSync(probeBin, [command, ...args], { encoding: 'utf8', timeout: 10_000 })) as T
   const mac: MacReads = {
     frontmost: () => probe('frontmost'),
     pointer: () => probe('pointer'),
@@ -368,7 +375,17 @@ export async function startRig(opts: {
       throw e
     }
   }) as typeof host.service.request
-  const recorded = recordCalls(host.sessions, pins)
+  const lastPid = new Map<string, number>()
+  const recorded = recordCalls(host.sessions, pins, Date.now, opts.plainChrome ? (threadId, args, tool) => {
+    if (tool.endsWith('computer_apps')) return null
+    const app = (args as { app?: string } | null)?.app
+    const pid = app ? pins.within(threadId, () => pins.resolve(app)?.pid) : lastPid.get(threadId)
+    if (!pid) return null
+    lastPid.set(threadId, pid)
+    try { return windowCoverage(probe<CoverWindow[]>('windows'), pid) } catch { return null }
+  } : undefined)
+  const coverBuilds = new Map<string, ProbeAppBuild>()
+  const coverPids = new Map<string, number>()
 
   const proof = async <M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> => {
     try {
@@ -399,12 +416,12 @@ export async function startRig(opts: {
         // Finder always runs: open the window, adopt the running pid.
         const pid = [...pidsOf(name)][0]
         if (!pid) throw new Error(`${name} is not running`)
-        execFileSync('open', scratchArgs(app, target, profileOf(lane), extra))
+        execFileSync('open', scratchArgs(app, target, profileOf(lane), extra, { plainChrome: opts.plainChrome }))
         adopted.add(pid)
         return pid
       }
       const before = pidsOf(name)
-      execFileSync('open', scratchArgs(app, target, profileOf(lane), extra))
+      execFileSync('open', scratchArgs(app, target, profileOf(lane), extra, { plainChrome: opts.plainChrome }))
       for (let i = 0; i < 60; i++) {
         await sleep(250)
         const pid = [...pidsOf(name)].find((p) => !before.has(p))
@@ -417,14 +434,35 @@ export async function startRig(opts: {
   }
   const launch = async (lane: string, app: TaskApp, target: string, o?: { args?: string[] }): Promise<{ pid: number; front: 'kept' | 'bounced' | 'took' }> => {
     const personFront = mac.frontmost()
+    const personWindow = opts.plainChrome ? probe<{ pid: number; window: number }>('frontwindow') : null
     const pid = await newPid(lane, app, target, o?.args ?? [])
     pins.pin(lane, app, pid)
     await sleep(app === 'TextEdit' ? 1_000 : 3_000)
     // An adopted app that was already in front is the person's own front, not a take.
     if (adopted.has(pid) && personFront.pid === pid) return { pid, front: 'kept' }
-    return { pid, front: await keepFront(asProbe(mac), pid, personFront) }
+    let front = await keepFront(asProbe(mac), pid, personFront)
+    if (front === 'bounced' && personWindow) {
+      probe('restore-front', [String(personWindow.pid), String(personWindow.window)])
+      const after = probe<{ pid: number; window: number }>('frontwindow')
+      if (after.pid !== personWindow.pid || after.window !== personWindow.window) front = 'took'
+    }
+    if (app === 'Google Chrome' && opts.cover) {
+      const coverBuild = buildProbeApp(opts.root, join(opts.work, `cover-${lane}`), 'dev.landon.tempcode.field-cover')
+      coverBuilds.set(lane, coverBuild)
+      const f = probe<CoverWindow[]>('windows').find((w) => w.pid === pid && w.layer === 0)
+      if (!f) throw new Error('scratch Chrome has no on-screen frame to cover')
+      const cover = await launchProbe(coverBuild, ['--cover', `${f.x},${f.y},${f.w},${f.h}`], () => mac.frontmost())
+      coverPids.set(lane, cover.pid)
+    }
+    return { pid, front }
   }
   const closeLane = (lane: string): void => {
+    const coverBuild = coverBuilds.get(lane)
+    if (coverBuild) {
+      cleanupProbeApp(coverBuild, coverPids.get(lane) ?? 0)
+      coverPids.delete(lane)
+      coverBuilds.delete(lane)
+    }
     for (const pid of pins.pids(lane)) {
       if (adopted.has(pid)) continue
       try {

@@ -48,9 +48,10 @@ extension InputEngine {
             throw ComputerFailure(ComputerError(kind: .needsTier, message: "type needs the process tier here, which is not allowed now.", needed: held ?? .process))
         }
 
-        // rung 3: keys; rung 4: paste, plain text
-        switch try core.typeByEvents(text, keys: { try keys(text, tier: tier, target: target, dest: dest) }, paste: {
-            let (r, change, last) = try pasteStep(PasteContent(plain: text), tier: tier, target: target, insertFirst: false)
+        // rung 3: keys; rung 4: paste, plain text; inside a session step the focus is checked again after activation (§25.9)
+        let recheck = { try self.checkFocus(action, target: target) }
+        switch try core.typeByEvents(text, keys: { try keys(text, tier: tier, target: target, dest: dest, recheck: recheck) }, paste: {
+            let (r, change, last) = try pasteStep(PasteContent(plain: text), tier: tier, target: target, insertFirst: false, recheck: recheck)
             return (r.clipboard ?? .restored, change, last)
         }) {
         case .keys(let change, let last):
@@ -61,7 +62,7 @@ extension InputEngine {
     }
 
     /// Unicode key events into the destination, with the evidence before and after.
-    private func keys(_ text: String, tier: Tier, target: InputTarget, dest: AXUIElement?) throws -> (StepEffect, SessionChange?, UInt64?) {
+    private func keys(_ text: String, tier: Tier, target: InputTarget, dest: AXUIElement?, recheck: () throws -> Void) throws -> (StepEffect, SessionChange?, UInt64?) {
         let pid = target.pid
         if tier == .process {
             if let e = target.element { try ProcessTier.confirmFocus(e, pid: pid, clock: clock) }
@@ -70,6 +71,7 @@ extension InputEngine {
         var effect: StepEffect = .unknown
         let (_, change, last) = try core.step(tier: tier, pid: pid, windowID: target.windowID, window: target.window, keys: true, call: target.sessionCall, cancelled: target.cancelled) { ctx in
             if tier == .session, let e = target.element { try ProcessTier.confirmFocus(e, pid: pid, clock: clock) }
+            if tier == .session, target.element == nil { try recheck() }
             // activation may move focus: the evidence is read where the keys go, the app's focused element now
             let into = tier == .session && target.element == nil ? AX.element(AX.app(pid), "AXFocusedUIElement") : dest
             let before = evidence(into)
@@ -83,8 +85,8 @@ extension InputEngine {
     /// tier posted to the pid, the destination and the key window checked before the clipboard
     /// is touched and again before Command-V. With `insertFirst`, the AX insert of the plain text
     /// is its first rung (§24.6): one that changed the destination never touches the clipboard.
-    func paste(_ content: PasteContent, tier: Tier, target: InputTarget, insertFirst: Bool = false) throws -> InputOutcome {
-        let (r, change, last) = try pasteStep(content, tier: tier, target: target, insertFirst: insertFirst)
+    func paste(_ content: PasteContent, tier: Tier, target: InputTarget, insertFirst: Bool = false, recheck: @escaping () throws -> Void = {}) throws -> InputOutcome {
+        let (r, change, last) = try pasteStep(content, tier: tier, target: target, insertFirst: insertFirst, recheck: recheck)
         if r.via == .axInsert {
             // nothing posted: at the process tier the insert was AX alone; the session tier activated first
             return InputOutcome(tier: tier == .session ? .session : .ax, via: .axInsert, clipboard: nil, cursor: target.cursor, session: change, lastInputAt: last ?? clock.ticks())
@@ -103,7 +105,7 @@ extension InputEngine {
         return text.isEmpty ? .unknown : effect(of: dest, since: before, within: InputTiming.keysEffectMs, cancelled: target.cancelled)
     }
 
-    private func pasteStep(_ content: PasteContent, tier: Tier, target: InputTarget, insertFirst: Bool) throws -> (PasteResult, SessionChange?, UInt64?) {
+    private func pasteStep(_ content: PasteContent, tier: Tier, target: InputTarget, insertFirst: Bool, recheck focusRecheck: @escaping () throws -> Void = {}) throws -> (PasteResult, SessionChange?, UInt64?) {
         let pid = target.pid
         let flow = PasteFlow(store: pasteboard, lock: clipboardLock, clock: clock, recentForeignCopy: recentForeignCopy)
         var focusedAtCheck: AXUIElement?
@@ -111,6 +113,8 @@ extension InputEngine {
         var pasteItem: (AXUIElement, MenuMatch)?
         let checks: () throws -> Void = { [self] in
             if let e = target.element { try ProcessTier.confirmFocus(e, pid: pid, clock: clock) }
+            // §25.9: after the session step's activation, before the clipboard is touched
+            if tier == .session, target.element == nil { try focusRecheck() }
             if tier == .process {
                 try ProcessTier.requireKeyWindow(pid: pid, window: target.window)
             } else if !host.isFocusedWindow(target.window, pid: pid) {

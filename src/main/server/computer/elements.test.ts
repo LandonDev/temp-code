@@ -53,3 +53,19 @@ describe('ElementBook', () => {
     expect(book.brief(14)).toBeNull()
   })
 })
+
+describe('the focused index', () => {
+  it('takes the latest header, including diffs, unchanged and subtree reads, and clears missing focus', () => {
+    const book = new ElementBook()
+    book.apply(fixture('full.txt'), 'full')
+    expect(book.focused).toBe(3)
+    for (const kind of ['diff', 'unchanged', 'subtree'] as const) {
+      book.apply('app "App" · window "W" · 1×1 · focused [9]\n[9] input "Field"', kind)
+      expect(book.focused).toBe(9)
+      book.apply('app "App" · window "W" · 1×1\n[9] input "Field"', kind)
+      expect(book.focused).toBeNull()
+    }
+    book.clear()
+    expect(book.focused).toBeNull()
+  })
+})

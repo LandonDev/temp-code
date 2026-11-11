@@ -338,6 +338,7 @@ export class ComputerSessions {
       await this.opts.service.request('session.close', { session: t.serviceSession }).catch(() => undefined)
     t.openedIn = null
     t.apps.clear()
+    t.listedApps = undefined
     t.used = []
     this.targetChanged(t.threadId)
     await pruneServiceShots(this.opts.dataDir, t.serviceSession).catch(() => undefined)

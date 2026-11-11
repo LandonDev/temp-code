@@ -65,7 +65,7 @@ func check<M: ContractMethod>(_ method: M.Type) throws {
 
     @Test func everyErrorKindHasAFixtureThatDecodes() throws {
         let kinds = try WireFixtures.names().filter { $0.hasPrefix("error-") }
-        #expect(kinds.count == 24) // every ComputerErrorKind but `unknown`
+        #expect(kinds.count == 27) // every ComputerErrorKind but `unknown`
         for name in kinds {
             let kind = String(name.dropFirst("error-".count).dropLast(".json".count))
             switch try WireFixtures.frame(name) {
@@ -119,6 +119,33 @@ func check<M: ContractMethod>(_ method: M.Type) throws {
             Methods.AppsLaunch.Output.self,
             from: Data(#"{"pid":1,"launched":false,"front":{"raised":true,"restored":"hid-app"}}"#.utf8))
         #expect(now.front == FrontReport(raised: true, restored: .hidApp))
+    }
+
+    @Test func aBrowserWindowsTabsAndPageDecode() throws {
+        guard case .result(_, let apps) = try WireFixtures.frame("apps.list.tabs.response.json") else {
+            Issue.record("apps.list.tabs.response.json is not a result")
+            return
+        }
+        let listed = try roundTrip(Methods.AppsList.Output.self, apps)
+        let tabs = try #require(listed.apps.first?.windows?.first?.tabs)
+        #expect(tabs.map(\.title) == ["TC field front", "TC field report", "TC field form"])
+        #expect(tabs.map(\.selected) == [true, false, false])
+        guard case .result(_, let state) = try WireFixtures.frame("state.get.tab.response.json") else {
+            Issue.record("state.get.tab.response.json is not a result")
+            return
+        }
+        let observation = try roundTrip(Methods.StateGet.Output.self, state)
+        #expect(observation.page == Page(tab: "TC field report", state: .notDrawn))
+        #expect(observation.selectedTab == "TC field report")
+        for name in ["state.get.tab.request.json", "action.run.expect-focus.request.json"] {
+            guard case .request = try WireFixtures.frame(name) else {
+                Issue.record("\(name) is not a request")
+                continue
+            }
+        }
+        guard case .request(_, _, let params) = try WireFixtures.frame("action.run.expect-focus.request.json") else { return }
+        let run = try roundTrip(Methods.ActionRun.Params.self, params)
+        #expect(run.expectFocus == 14 && run.tabs == .background && run.action.element == 14)
     }
 
     @Test func anUnknownEnumValueIsKept() throws {
