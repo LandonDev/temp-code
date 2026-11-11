@@ -11,8 +11,8 @@ private let home = "/Users/me"
 /// 2026-11-10 14:02:11 UTC
 private let mtime = 1_794_319_331.0
 
-private func doc(_ url: String?, edited: Bool = false, mtime: Double? = mtime) -> WindowDocument? {
-    WindowDocument.from(url: url, mtime: mtime, edited: edited, home: home, timeZone: utc)
+private func doc(_ url: String?, edited: Bool = false, mtime: Double? = mtime) -> DocumentLine? {
+    DocumentLine.from(url: url, mtime: mtime, edited: edited, home: home, timeZone: utc)
 }
 
 @Suite struct DocumentLineTests {
@@ -28,7 +28,7 @@ private func doc(_ url: String?, edited: Bool = false, mtime: Double? = mtime) -
 
     @Test func aFolderIsNeverEditedAndNothingIsSaidOfNothing() {
         #expect(doc("file:///Users/me/run/", edited: true)?.line() == #"folder "~/run""#)
-        #expect(WindowDocument(kind: .folder, path: "~/run", edited: true).line() == #"folder "~/run""#)
+        #expect(DocumentLine(kind: .folder, path: "~/run", edited: true).line() == #"folder "~/run""#)
         #expect(doc(nil) == nil)
         #expect(doc("https://example.com/a.txt", edited: true) == nil)
     }
@@ -44,9 +44,9 @@ private func doc(_ url: String?, edited: Bool = false, mtime: Double? = mtime) -
     }
 
     @Test func writtenIsTheLocalClock() {
-        #expect(WindowDocument.clock(mtime, timeZone: utc) == "14:02:11")
-        #expect(WindowDocument.clock(mtime, timeZone: TimeZone(secondsFromGMT: -5 * 3600)!) == "09:02:11")
-        #expect(WindowDocument.clock(0, timeZone: utc) == "00:00:00")
+        #expect(DocumentLine.clock(mtime, timeZone: utc) == "14:02:11")
+        #expect(DocumentLine.clock(mtime, timeZone: TimeZone(secondsFromGMT: -5 * 3600)!) == "09:02:11")
+        #expect(DocumentLine.clock(0, timeZone: utc) == "00:00:00")
     }
 
     @Test func theLineSitsAfterTheHeaderAndBeforeOtherWindows() {

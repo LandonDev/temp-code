@@ -46,7 +46,7 @@ public enum RawTree {
             partial: tree.walk.capped,
             walkMs: tree.walk.ms,
             document: tree.document.flatMap {
-                WindowDocument.from(url: $0.url, mtime: $0.mtime, edited: $0.edited ?? false, home: home, timeZone: timeZone)
+                DocumentLine.from(url: $0.url, mtime: $0.mtime, edited: $0.edited ?? false, home: home, timeZone: timeZone)
             }
         )
     }

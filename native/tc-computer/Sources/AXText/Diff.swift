@@ -29,7 +29,7 @@ public struct Base: Sendable {
     public var others: [OtherWindow]
     public var fullBytes: Int
     /// the document line's facts the model was shown (§25.10)
-    public var document: WindowDocument? = nil
+    public var document: DocumentLine? = nil
     /// the containers shown with the closed-menu note under them (§25.11)
     public var notes: Set<Int> = []
 }

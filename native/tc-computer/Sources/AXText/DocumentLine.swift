@@ -5,7 +5,7 @@ private typealias T = ObservationTables
 
 /// What is behind the window on disk, as its document line says it (docs/computer-protocol.md
 /// §25.10): the window's AXDocument and the close button's AXEdited (E5), read in the walk's stage B.
-public struct WindowDocument: Sendable, Equatable {
+public struct DocumentLine: Sendable, Equatable {
     public enum Kind: Sendable, Equatable { case file, folder, unsaved }
 
     public var kind: Kind
@@ -25,13 +25,13 @@ public struct WindowDocument: Sendable, Equatable {
     /// From what the walk read: AXDocument's URL (a `file:` URL; a folder's ends in /), the file's
     /// mtime (seconds since 1970), the edited flag. A window with no document says something only
     /// while it is edited; a URL of another scheme says nothing.
-    public static func from(url: String?, mtime: Double?, edited: Bool, home: String, timeZone: TimeZone) -> WindowDocument? {
-        guard let url else { return edited ? WindowDocument(kind: .unsaved, edited: true) : nil }
+    public static func from(url: String?, mtime: Double?, edited: Bool, home: String, timeZone: TimeZone) -> DocumentLine? {
+        guard let url else { return edited ? DocumentLine(kind: .unsaved, edited: true) : nil }
         guard let path = filePath(url) else { return nil }
         let folder = url.hasSuffix("/")
         let shown = tilde(folder && path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path, home: home)
-        if folder { return WindowDocument(kind: .folder, path: shown) }
-        return WindowDocument(kind: .file, path: shown, written: mtime.map { clock($0, timeZone: timeZone) }, edited: edited)
+        if folder { return DocumentLine(kind: .folder, path: shown) }
+        return DocumentLine(kind: .file, path: shown, written: mtime.map { clock($0, timeZone: timeZone) }, edited: edited)
     }
 
     /// The line, as src/shared/computer/observation.ts formatDocumentLine writes it; `changed` is a

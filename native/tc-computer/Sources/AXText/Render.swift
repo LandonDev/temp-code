@@ -107,7 +107,7 @@ public struct Layout: Sendable {
     public var others: [OtherWindow]
     public var showOthers = true
     /// the document line's facts (§25.10); always printed, the budget never drops it
-    public var document: WindowDocument?
+    public var document: DocumentLine?
     public var space: CoordinateSpace
     public var windowFrame: Rect
     public var geometry: Bool
