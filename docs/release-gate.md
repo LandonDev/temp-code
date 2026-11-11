@@ -397,7 +397,7 @@ system, never the model's word.
   skipped by its preflight, named in the report. The scratch Chrome now
   launches with the web leg's switches. The baseline was not touched.
   Then two `--gate` runs in a row on a scratch clone at origin/master
-  9a47aec4 plus the fix (83934438) passed: 219 s and 167 s, Opus 5 of 5
+  9a47aec4 plus the fix (1fae26a29 on master) passed: 219 s and 167 s, Opus 5 of 5
   tasks and GPT-6.1 Sol 5 of 5 each time, no run took the front (3
   launches per model put back each time), Muse skipped by its preflight,
   settings-toggle skipped (System Settings open) and save-dialog the hand
@@ -547,7 +547,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 | e2e-tc-computer | 19 s (three runs) | | n/a | 11 min | Mac only; the `computer` lane, before the bench |
 | e2e-computer-bridge | 96 s, 60/60 before the schema rebase; 90 s, 59/60 after it (stale check since corrected); final commit not run: the Mac was locked | | n/a | 12 min | Mac only; both halves on the Mac; proof record in §18 |
 | e2e-computer-preview | 23 to 24 s (three runs); 24.7 s on 2026-11-11 | | n/a | 12 min | Mac only; the Escape leg skipped |
-| computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run") | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
+| computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run"); `--gate` passed twice on 2026-11-11 after the rig fix, 219 s and 167 s: Opus 5/5, GPT-6.1 Sol 5/5, took the front 0, Muse skipped by its preflight, baseline unchanged | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
 
 The box's share of the publish tier with the store rows (2026-11-09,
 `bun run gate --tier all --skip typecheck,vitest`, three runs: 205 s, 218 s
