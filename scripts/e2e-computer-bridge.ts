@@ -53,7 +53,7 @@ import { createInterface } from 'node:readline'
 import { proofDescendants } from './lib/proofProcesses'
 import { cleanupProbeApp } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
-import { bridgeHeldId, bridgeProbePing, waitForBridgeProofCall } from './lib/computerBridgeProof'
+import { bridgeCancelledProbeRead, bridgeHeldId, bridgeProbePing, waitForBridgeProofCall } from './lib/computerBridgeProof'
 import { shortHostName } from '../src/shared/hostNames'
 import { BRIDGE_TIMING_RULE, judgeBridgeTiming, median, timingTable, type TimingKind, type TimingSample } from './lib/computerBridgeTiming'
 import { parseTimingLine } from '../src/shared/computer/bridgeTiming'
@@ -900,8 +900,9 @@ async function orchestrator(): Promise<void> {
     check('held: left unread, it is cancelled on the Mac after 8 s', cancelledOnMac && Date.now() - secondAt >= 8_000, `${Date.now() - unreadAt} ms after it was seen held`)
     await boxCall('session.markStatus', { sessionId: t1, status: 'idle' })
     check('held: the unread click never ran', macRuns() === runsUnread)
-    const opened = textOf(await ask('computer_observe', { app: APP, window: APP }))
-    check("held: t2's next answer opens with the cancelled line", /^Cancelled c\d+ \(left_click \[\d+\] in TC Probe\) before it ran\./.test(opened), opened.slice(0, 300))
+    const openedOut = await ask('computer_observe', { app: APP, window: APP })
+    const opened = textOf(openedOut)
+    check("held: t2's next answer opens with the cancelled line", bridgeCancelledProbeRead(opened, openedOut.isError), opened.slice(0, 300))
     await boxCall('bridge.close', { key: session })
     await boxCall('session.markStatus', { sessionId: t2, status: 'idle' })
     await rpc(mac, 'macBridge.limits.set', { environmentId: boxId, maxComputer: null })

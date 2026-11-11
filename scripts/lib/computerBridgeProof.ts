@@ -12,6 +12,11 @@ export function bridgeHeldId(text: string): string {
   return id
 }
 
+/** The cancellation notice must not hide a failure of the read that follows it. */
+export function bridgeCancelledProbeRead(text: string, isError: boolean | undefined): boolean {
+  return !isError && /^Cancelled c\d+ \(left_click \[\d+\] in TC Probe\) before it ran\./.test(text)
+}
+
 /** Wait through a real Mac load/cap hold without ending the proof's synthetic turn. */
 export async function waitForBridgeProofCall<T>(
   answer: Promise<T>,

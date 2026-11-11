@@ -284,7 +284,7 @@ otherwise.
 | `script:e2e-computer-images` | Mac | the same on the real service | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-tc-computer` (whole) | Mac | 5 idle minutes (TextEdit and the paste come forward) | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-computer` | Mac | real Sonnet turns | — | not run: the Mac was locked, the person away (2026-11-09) |
-| `script:e2e-computer-bridge` over SSH | Mac and box | both clones built at one commit | — | not run: the Mac was locked, the person away (2026-11-09); its timing leg (the full mode: a call without a picture adds at most the run's own round trip plus 40 ms, median; pictures reported with their bytes and the upload rate) is to measure |
+| `script:e2e-computer-bridge` over SSH | Mac and box | both clones built at one commit | — | SSH full mode has not run; its bound is the run's own round trip plus 40 ms median without a picture, with picture bytes and upload rate reported. The separate loopback `--gate` timing passed on 2026-11-10: added p50 3–10 ms, p90 19–42 ms; 95 s overall |
 | `script:e2e-computer-ax` | Mac | the person away; IntelliJ only with `TC_AX_INTELLIJ=1` | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-computer-input -- --session` | Mac | the person away | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-computer-capture -- --keep <dir>` | Mac | Screen Recording; minutes of watch scenes on its own inert windows | — | not run: the Mac was locked, the person away (2026-11-09) |

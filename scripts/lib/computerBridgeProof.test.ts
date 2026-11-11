@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { bridgeHeldId, bridgeProbePing, waitForBridgeProofCall } from './computerBridgeProof'
+import { bridgeCancelledProbeRead, bridgeHeldId, bridgeProbePing, waitForBridgeProofCall } from './computerBridgeProof'
 import { ComputerActInputSchema, ComputerResultInputSchema } from '../../src/shared/computer/tools'
 import { heldAnswerLine } from '../../src/shared/computer/heldCalls'
 
@@ -20,6 +20,13 @@ it('stops on a change-only tree instead of serializing NaN as a null element', (
 it('stops on a refused click instead of sending computer_result without an id', () => {
   expect(() => bridgeHeldId('invalid arguments: element: expected number, received null')).toThrow('did not answer held with an id')
   expect(() => bridgeHeldId('left_click [3] button "Ping" · ax · changed')).toThrow('did not answer held with an id')
+})
+
+it('does not pass a cancellation-prefixed observation that lost TC Probe', () => {
+  const cancelled = 'Cancelled c2 (left_click [3] in TC Probe) before it ran.'
+  expect(bridgeCancelledProbeRead(`${cancelled}\n\nno app matches "TC Probe"`, true)).toBe(false)
+  expect(bridgeCancelledProbeRead(`${cancelled}\n\napp "TC Probe" · window "TC Probe"`, false)).toBe(true)
+  expect(bridgeCancelledProbeRead('app "TC Probe" · window "TC Probe"', false)).toBe(false)
 })
 
 it('keeps waiting through a load hold longer than the harness grace, then returns the real answer', async () => {
