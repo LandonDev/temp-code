@@ -378,6 +378,35 @@ const hidIdleSeconds = (ioreg: string): number => {
 const personIdleSeconds = (): number =>
   hidIdleSeconds(execFileSync('ioreg', ['-c', 'IOHIDSystem'], { encoding: 'utf8' }))
 const execFileAsync = promisify(execFile)
+
+/**
+ * One more TC Probe in the background (scripts/lib/tcProbeApp.ts launchProbe). An instance that came to
+ * the front anyway is put back at once, the person's app and its front window restored by pid
+ * (`restore-front`: launchProbe's own put-back needs a bundle id), and `raised` says it happened.
+ */
+async function launchProbeBack(flags: string[]): Promise<{ pid: number; raised: boolean }> {
+  const before = frontWindow()
+  const { pid } = await launchProbe(PROBE_BUILD, flags, () => ({ pid: frontWindow().pid, bundleId: null }))
+  const raised = frontWindow().pid === pid
+  if (raised) probe('restore-front', [String(before.pid), String(before.window)])
+  return { pid, raised }
+}
+
+/** A step that may bring an app forward over the person's (a `front` hold, the stealer) waits for this much quiet in a hand run. */
+const FRONT_QUIET_S = 5
+/** How long such a step waits for its quiet before it is skipped as the person being active. */
+const FRONT_QUIET_WAIT_MS = 120_000
+/**
+ * Waits for `seconds` without the person's input, read every 250 ms, at most `waitMs`; true once
+ * there was that much quiet. A hand run's rule for every step that may take the front (TC_PROOF_UNGATED).
+ */
+async function awaitQuiet(seconds = FRONT_QUIET_S, waitMs = FRONT_QUIET_WAIT_MS): Promise<boolean> {
+  for (const end = Date.now() + waitMs; ; ) {
+    if ((await personIdleSecondsAsync()) >= seconds) return true
+    if (Date.now() >= end) return false
+    await sleep(250)
+  }
+}
 const personIdleSecondsAsync = async (): Promise<number> =>
   hidIdleSeconds((await execFileAsync('ioreg', ['-c', 'IOHIDSystem'], { encoding: 'utf8' })).stdout)
 
@@ -1061,12 +1090,11 @@ async function windowLeg(a: Service, mayLaunch: () => void): Promise<void> {
     a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
   const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'session')[]) =>
     a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
-  const frontmost = () => ({ pid: probe<{ pid: number }>('frontmost').pid, bundleId: null })
 
   await leg.step('windows: launch a TC Probe with --windows in the background', async (data) => {
     const before = personState()
     mayLaunch()
-    pid = (await launchProbe(PROBE_BUILD, ['--windows'], frontmost)).pid
+    pid = (await launchProbeBack(['--windows'])).pid
     data.pid = pid
     await until(async () => ((await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows?.length ?? 0) >= 4 || null, 10_000, 'four probe windows')
     data.person = assertPersonUntouched(before, 'after the launch', pid)
@@ -1147,7 +1175,7 @@ async function windowLeg(a: Service, mayLaunch: () => void): Promise<void> {
   await leg.step('windows 7: a last window closed quits its app', async (data) => {
     const before = personState()
     mayLaunch()
-    pid = (await launchProbe(PROBE_BUILD, [], frontmost)).pid
+    pid = (await launchProbeBack([])).pid
     data.launch = assertPersonUntouched(before, 'after the launch', pid)
     const o = await until(async () => (await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows?.length ? read('TC Probe') : null, 10_000, 'the third probe window')
     const close = findElement(o, 'the close button', (e) => e.role === 'button' && e.name === 'close')
@@ -1179,7 +1207,6 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
     a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', geometry: true, wait: COMPUTER_WAIT.observe })
   const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process')[]) =>
     a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
-  const frontmost = () => ({ pid: probe<{ pid: number }>('frontmost').pid, bundleId: null })
   const via = (step: OkStep): string | undefined => step.input?.via
   let o: Observation | null = null
 
@@ -1187,7 +1214,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
     mkdirSync(scratch, { recursive: true })
     const before = personState()
     mayLaunch()
-    pid = (await launchProbe(PROBE_BUILD, ['--fallbacks', scratch], frontmost)).pid
+    pid = (await launchProbeBack(['--fallbacks', scratch])).pid
     data.pid = pid
     o = await until(async () => ((await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows?.some((w) => w.title === title) ? read() : null), 10_000, 'the fallbacks window')
     data.person = assertPersonUntouched(before, 'after the launch', pid)
@@ -1655,9 +1682,9 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
   const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'front')[]) =>
     a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
-  const frontmost = () => ({ pid: probe<{ pid: number }>('frontmost').pid, bundleId: null })
-  const awayLongEnough = (): void => {
-    if (!UNGATED && personIdleSeconds() < FRONT_IDLE_S) throw skip(PERSON_ACTIVE)
+  // a hand run brings TC Probe forward only after FRONT_QUIET_S of quiet; the unattended run after FRONT_IDLE_S
+  const awayLongEnough = async (): Promise<void> => {
+    if (UNGATED ? !(await awaitQuiet()) : personIdleSeconds() < FRONT_IDLE_S) throw skip(PERSON_ACTIVE)
   }
   const nameField = (o: Observation, name: string) =>
     findElement(o, `the ${name} row's name`, (e) => e.role === 'input' && (e.value === name || e.name === name))
@@ -1670,13 +1697,16 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     mkdirSync(scratch, { recursive: true })
     const before = personState()
     mayLaunch()
-    pid = (await launchProbe(PROBE_BUILD, ['--active', scratch], frontmost)).pid
-    data.pid = pid
+    const launched = await launchProbeBack(['--active', scratch])
+    pid = data.pid = launched.pid
+    // an active probe would enable its responder-chain items and void every background step after this
+    check(!launched.raised, 'the --active probe stayed in the background', launched)
     const shown = async () => (await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows ?? []
     await until(async () => ((await shown()).some((w) => w.title === 'doc.txt') && (await shown()).some((w) => w.title === 'files') ? true : null), 10_000, 'the document and the file list')
     doc = await read('doc.txt')
     list = await read('files')
     data.person = assertPersonUntouched(before, 'after the launch', pid)
+    check(data.person !== 'raised at launch', 'the --active probe stayed in the background', data.person)
   })
   await leg.step('active 1: ⌘S at ax and process asks for front, naming File › Save', async (data) => {
     const before = personState()
@@ -1716,7 +1746,7 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     list = again
   })
   await leg.step('active 5: ⌘S at front saves', async (data) => {
-    awayLongEnough()
+    await awayLongEnough()
     const mtime0 = statSync(join(scratch, 'doc.txt')).mtimeMs
     const before = personState()
     const r = await act(doc!, { action: 'key', text: 'super+s' }, ['ax', 'process', 'front'])
@@ -1730,7 +1760,7 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     doc = r.observation ?? (await read('doc.txt'))
   })
   await leg.step('active 6: the rename is committed by Return at front', async (data) => {
-    awayLongEnough()
+    await awayLongEnough()
     const ino = inode(join(files, 'alpha.txt'))
     list = await read('files')
     const field = findElement(list, 'the edited name', (e) => e.role === 'input' && (e.value === 'gamma.txt' || e.name === 'gamma.txt'))
@@ -1745,7 +1775,7 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     list = r.observation ?? (await read('files'))
   })
   await leg.step('active 7: ⇧⌘N, a name and Return make a folder', async (data) => {
-    awayLongEnough()
+    await awayLongEnough()
     const before = personState()
     const r = await act(list!, { action: 'key', text: 'super+shift+n' }, ['ax', 'process', 'front'])
     const step = okStep(r.step)
@@ -1763,7 +1793,7 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     list = commit.observation ?? (await read('files'))
   })
   await leg.step('active 8: ⌘⌫ moves the file into <scratch>/Trash', async (data) => {
-    awayLongEnough()
+    await awayLongEnough()
     const row = findElement(list!, 'the beta.txt row', (e) => (e.role === 'row' || e.role === 'cell') && JSON.stringify(e).includes('beta.txt'))
     okStep((await act(list!, { action: 'left_click', element: row.index }, ['ax'])).step)
     list = await read('files')
@@ -1777,7 +1807,7 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     list = r.observation ?? (await read('files'))
   })
   await leg.step('active 9: save_as into <scratch>/out/note.txt, then again with replace', async (data) => {
-    awayLongEnough()
+    await awayLongEnough()
     const out = join(scratch, 'out')
     mkdirSync(out, { recursive: true })
     const target = join(out, 'note.txt')
@@ -2486,7 +2516,12 @@ async function stealerSection(mayLaunch: () => void): Promise<void> {
   })
   const a = built.svc
   if (!built.app || !a || a.done) return
+  // each of these brings the stealer forward over the person's app for a moment
+  const quiet = async (): Promise<void> => {
+    if (UNGATED && !(await awaitQuiet())) throw skip(PERSON_ACTIVE)
+  }
   await chain.step('apps.launch TC Probe Steal: the guard puts the front back', async (data) => {
+    await quiet()
     const before = frontWindow()
     const at = Date.now()
     const since = a.notes.length
@@ -2504,6 +2539,7 @@ async function stealerSection(mayLaunch: () => void): Promise<void> {
   await chain.step('open a .tcprobe into it: its window, and the front back', async (data) => {
     const doc = join(WORK, `probe-${process.pid}.tcprobe`)
     writeFileSync(doc, RUN_MARK)
+    await quiet()
     const before = frontWindow()
     const at = Date.now()
     const since = a.notes.length
@@ -2517,6 +2553,7 @@ async function stealerSection(mayLaunch: () => void): Promise<void> {
     const target = { session: SESSION, app: { pid: stealPid }, window: { title: 'TC Probe' } }
     const read = await a.call('state.get', { ...target, mode: 'full', screenshot: 'never', wait: COMPUTER_WAIT.observe })
     const ping = findElement(read, 'Ping', (e) => e.role === 'button' && e.name === 'Ping')
+    await quiet()
     const before = frontWindow()
     const at = Date.now()
     const since = a.notes.length
