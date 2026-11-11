@@ -322,6 +322,41 @@ routed to (aliax-core's `forward`). Two listeners:
   `bun run script:e2e-quota-routing` (an in-process server over a fake
   Anthropic: one account throttled, ten turns spread over the other ten).
 
+- **Usage reset recovery** (accounts.ts, headroom.ts, remote/accountSync.ts):
+  the Accounts page's existing Refresh usage button asks `accounts.refresh`.
+  The host forces its own provider sweep and calls `accounts.refreshLocal`
+  (admin, no fanout) on every connected peer, then exchanges headroom in both
+  directions. A failed host produces one toast with its name and reason;
+  other hosts still finish. The five-minute page timer only reloads views.
+  The regular host poll uses the same recovery path without a click.
+  Core's `onUsageSample` hook supplies timestamped windows through
+  `usageSamples.ts`; cached answers and failed polls supply no proof.
+  Each host keeps those samples in its own headroom entry and shares them
+  over `accounts.headroom`. Newer samples replace stale usage windows in
+  the accounts snapshot. A 429's `quotaWindow` names the exhausted window:
+  only a later sample with room there, or that window's reset passing after
+  the refusal, retires it. A legacy event without a scope requires proof
+  for every window of its model. A full or missing report grants nothing.
+  Transient 429s, 529 overloads and Meta's request limits keep their cooldowns.
+  The 401 out marks stay separate: usage never clears a dead sign-in.
+  The owner retires its own events; other hosts mask older events with the
+  proof until that owner's next answer replaces them. Newer empty entries
+  beat older snapshots even when the older one holds more events, and a
+  peer can never write this host's own entry. Samples persist with headroom,
+  so an offline peer catches up at link-up. A later refusal beats older room.
+  Pickable changes recheck cap-held threads, including watching threads and
+  those whose *other* account recovered. The hold lifts, parked report and
+  batch wakes drain, and the accounts push updates the meter and Limited
+  state. The latest failure's Route automatically action follows host state.
+  A failed idle batch child still needs Retry/Continue from its master;
+  refreshing does not replay failed work, which may have changed files or
+  run tools before it failed. Muse uses only real observed `usage/changed`
+  windows; refresh never runs `muse usage` against a copy. Meta's existing
+  key probe has no quota windows and cannot prove a quota refill.
+  Tests: accounts.recovery.test.ts, headroom.test.ts,
+  remote/accountSync.headroom.test.ts, sessions-limits.test.ts and the
+  Accounts page and FailureCard jsdom tests.
+
 - Upstream connections (src/main/server/upstream.ts, the fetch aliax-core
   is configured with; core itself needed no change): api.anthropic.com rides
   undici pools, one per (origin, Authorization digest) so an account's turns

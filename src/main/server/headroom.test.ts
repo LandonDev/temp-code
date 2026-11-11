@@ -240,3 +240,90 @@ describe('HeadroomStore', () => {
     })
   })
 })
+
+describe('quota recovery evidence', () => {
+  it('persists the lift and rejects an older, longer throttle snapshot', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-headroom-recovery-'))
+    const file = join(dir, 'headroom.json')
+    let now = NOW
+    try {
+      const mac = new HeadroomStore({ environmentId: 'mac', file, now: () => now })
+      mac.observe({ service: 'claude-code', account: 'a', model: null, status: 429, quotaWindow: 'Weekly', headers: headers({ 'retry-after': '604800' }) })
+      const stale = mac.own()
+      const box = new HeadroomStore({ environmentId: 'box', now: () => now })
+      box.merge('mac', stale)
+      now += 1000
+      mac.observeUsage('claude-code', 'a', { label: 'Weekly', usedPercent: 20 })
+      mac.reconcileUsage('claude-code', [{ profileName: 'a', windows: [] }])
+      expect(mac.own().hosts.mac['claude-code:a'].throttles).toEqual([])
+      box.merge('mac', mac.own())
+      expect(box.merge('mac', stale)).toBe(false)
+      expect(box.view('claude-code', 'a').throttledUntil).toBeUndefined()
+      // A peer's stale copy of our own entry is never authoritative.
+      expect(mac.merge('box', { version: 1, hosts: { mac: stale.hosts.mac, box: {} } })).toBe(false)
+      mac.flush()
+      const restarted = new HeadroomStore({ environmentId: 'mac', file, now: () => now })
+      expect(restarted.view('claude-code', 'a').throttledUntil).toBeUndefined()
+      expect(restarted.own().hosts.mac['claude-code:a'].usage).toHaveLength(1)
+      // A new refusal wins over old room evidence.
+      now += 1000
+      box.observe({ service: 'claude-code', account: 'a', model: null, status: 429, quotaWindow: 'Weekly', headers: headers({ 'retry-after': '60' }) })
+      restarted.merge('box', box.own())
+      expect(restarted.view('claude-code', 'a').throttledUntil).toBe(now + 60_000)
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('only the exhausted window can lift a model quota; transient and overloaded events stay', () => {
+    let now = NOW
+    const store = new HeadroomStore({ environmentId: 'mac', now: () => now })
+    const observe = (account: string, status: number, quotaWindow?: string | null) => store.observe({ service: 'claude-code', account, model: 'claude-fable-5-1', status, quotaWindow, headers: headers({ 'retry-after': '604800' }) })
+    observe('a', 429, 'Fable')
+    observe('transient', 429, null)
+    observe('overloaded', 529)
+    now += 1000
+    for (const account of ['a', 'transient', 'overloaded']) {
+      for (const label of ['5h', 'Weekly']) store.observeUsage('claude-code', account, { label, usedPercent: 20 })
+      expect(store.view('claude-code', account).throttledUntil).toBeGreaterThan(now)
+      store.observeUsage('claude-code', account, { label: 'Fable', usedPercent: 20 })
+    }
+    expect(store.view('claude-code', 'a').throttledUntil).toBeUndefined()
+    expect(store.view('claude-code', 'transient').throttledUntil).toBeGreaterThan(now)
+    expect(store.view('claude-code', 'overloaded').throttledUntil).toBeGreaterThan(now)
+  })
+
+  it('a passed exhausted-window reset is proof; missing, equal-time and full reports are not', () => {
+    let now = NOW
+    const store = new HeadroomStore({ environmentId: 'mac', now: () => now })
+    store.observe({ service: 'codex', account: 'c', model: null, status: 429, quotaWindow: 'week', headers: headers({ 'retry-after': '604800' }) })
+    store.observeUsage('codex', 'c', { label: 'week', usedPercent: 20 })
+    expect(store.view('codex', 'c').throttledUntil).toBeGreaterThan(now)
+    now += 1000
+    store.observeUsage('codex', 'c', { label: 'week', usedPercent: 100, resetsAt: now + 1000 })
+    expect(store.view('codex', 'c').throttledUntil).toBeGreaterThan(now)
+    now += 1000
+    expect(store.view('codex', 'c').throttledUntil).toBeUndefined()
+  })
+
+  it('pay as you go and observed-only services gain no invented usage proof', () => {
+    let now = NOW
+    const store = new HeadroomStore({ environmentId: 'mac', now: () => now })
+    for (const service of ['meta', 'muse-code'] as const) store.observe({ service, account: 'a', model: null, status: 429, headers: headers({ 'retry-after': '60' }) })
+    now += 1000
+    expect(store.reconcileUsage('muse-code', [{ profileName: 'a', windows: [], note: 'usage observed only' }])[0].windows).toEqual([])
+    expect(store.view('muse-code', 'a').throttledUntil).toBeGreaterThan(now)
+    for (const label of ['5h', 'Weekly']) store.observeUsage('meta', 'a', { label, usedPercent: 0 })
+    expect(store.view('meta', 'a').throttledUntil).toBeGreaterThan(now)
+  })
+})
+
+
+it('a named weekly cooldown lifts at its reset without requiring a new poll', () => {
+  let now = NOW
+  const store = new HeadroomStore({ environmentId: 'mac', now: () => now })
+  store.observe({ service: 'claude-code', account: 'a', model: null, status: 429, quotaWindow: 'Weekly', headers: headers({ 'retry-after': '604800' }) })
+  now += 2000
+  store.reconcileUsage('claude-code', [{ profileName: 'a', windows: [
+    { label: '5h', usedPercent: 20 }, { label: 'Weekly', usedPercent: 100, resetsAt: NOW + 1000 }
+  ] }])
+  expect(store.view('claude-code', 'a').throttledUntil).toBeUndefined()
+})

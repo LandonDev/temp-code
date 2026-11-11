@@ -140,12 +140,15 @@ export function FailureCard({
   const meta = useSessionMeta(sessionId);
   const environmentId = meta?.environmentId ?? LOCAL_ENVIRONMENT_ID;
   const provider = meta?.provider ?? "claude";
+  const latest = canRetry && meta?.failure?.kind === failure.kind && meta.failure.account === failure.account
+    ? meta.failure
+    : failure;
   const ctx: FailureActionContext = {
     provider,
     model: meta?.model ?? null,
     signInHere: canSignInHere(environmentId),
     offers1m: !!meta?.model && !meta.context1m && supportsContext1m(provider, nativeModelId(meta.model)),
-    ...(failure.roomElsewhere === undefined ? {} : { roomElsewhere: failure.roomElsewhere }),
+    ...(latest.roomElsewhere === undefined ? {} : { roomElsewhere: latest.roomElsewhere }),
   };
   // These continue the work, which only a host that can continue does.
   const actions = failureActions(failure.kind, ctx).filter((a) => canRetry || (a.id !== "retry" && a.id !== "pick-model" && a.id !== "use-1m"));

@@ -185,3 +185,16 @@ describe('observeHooks → headroom', () => {
     expect(seen).toEqual(['claude-code work 200', 'codex cx 429'])
   })
 })
+
+it('records the provider-named quota window and keeps transient 429s distinct', () => {
+  const { logDir } = setup()
+  const observe = vi.fn()
+  const hooks = observeHooks({ logDir, headroom: { observe } })
+  const response = { service: 'claude', path: '/v1/messages', status: 429, account: 'work', model: 'claude-fable-5-1' }
+  for (const [claim, expected] of [['seven_day', 'Weekly'], ['seven_day_overage_included', 'Fable']] as const) {
+    hooks.onResponse!({ ...response, headers: new Headers({ [`${H}-status`]: 'rejected', [`${H}-representative-claim`]: claim }) })
+    expect(observe.mock.calls.at(-1)?.[0].quotaWindow).toBe(expected)
+  }
+  hooks.onResponse!({ ...response, headers: new Headers({ 'retry-after': '5' }) })
+  expect(observe.mock.calls.at(-1)?.[0].quotaWindow).toBeNull()
+})

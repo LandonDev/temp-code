@@ -64,7 +64,7 @@ export interface AccountsDeps {
   /** The account-sync links to other hosts, by environment id. */
   peers: () => Record<string, PeerState>
   /** What the gateways of every host have seen of each account's rate limits (headroom.ts); null routes the older way. */
-  headroom: () => Pick<HeadroomStore, 'summary'> | null
+  headroom: () => Pick<HeadroomStore, 'summary'> & Partial<Pick<HeadroomStore, 'observeUsage' | 'reconcileUsage'>> | null
   dataDir: () => string
   pollMs: number
   now: () => number
@@ -558,6 +558,22 @@ export class AccountsService {
     void this.rebuild(true, provider)
   }
 
+  /** A real provider sample, including regular polls; cached fallbacks never reach this path. */
+  observeFreshWindow(service: ServiceId, account: string, window: UsageWindow): void {
+    this.deps.headroom()?.observeUsage?.(service, account, window)
+    this.nudge()
+  }
+
+  /** Whether this account itself can spend on the model now. */
+  hasRoom(provider: AccountProvider, model: string | null, account: string | null): boolean {
+    if (!account) return false
+    const snap = this.snap.providers[provider]
+    return snap.profiles.some(p => p.name === account) && eligible(account, {
+      serviceId: SERVICE_OF[provider], out: this.outFor(provider), reports: snap.reports,
+      headroom: this.headroomFor(provider, model), tiers: tiersFor(SERVICE_OF[provider], model), now: this.deps.now()
+    })
+  }
+
   /** The provider refused the account until `resetsAt` (Muse's quota stop): charge the window so the picks leave it out. */
   observeQuota(provider: AccountProvider, account: string, window: Limit['window'], resetsAt: number): void {
     this.deps.observeLimit(SERVICE_OF[provider], account, { window, ...(resetsAt ? { resetsAt } : {}) })
@@ -639,6 +655,8 @@ export class AccountsService {
   /** The user's Refresh: force a poll (forwarded to the owner when standby). */
   async refresh(provider: AccountProvider): Promise<AccountsSnapshot> {
     await this.rebuild(true, provider)
+    const note = this.snap.providers[provider].note
+    if (note?.startsWith('usage unavailable (')) throw new Error(note)
     return this.snap
   }
 
@@ -678,7 +696,7 @@ export class AccountsService {
         providers[p] = {
           pinned: live?.profile.name ?? null,
           profiles: live ? [live.profile] : [],
-          reports: live ? [live.report] : [],
+          reports: live ? (d.headroom()?.reconcileUsage?.(SERVICE_OF[p], [live.report]) ?? [live.report]) : [],
           owner,
           note
         }
@@ -700,6 +718,7 @@ export class AccountsService {
         }
       }
       const headroom = d.headroom()
+      reports = headroom?.reconcileUsage?.(id, reports) ?? reports
       providers[p] = {
         pinned: d.pinned(id) ?? profiles.find((x) => x.active)?.name ?? null,
         profiles,

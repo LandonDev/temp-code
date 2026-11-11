@@ -110,3 +110,51 @@ describe('accounts.headroom', () => {
     mac.sync.close()
   })
 })
+
+it('manual refresh forces every connected host once, exchanges proof, and reports a failed host', async () => {
+  const refresh = vi.fn(async () => {})
+  const rebuilt = vi.fn(async () => {})
+  const called: string[] = []
+  const store = new HeadroomStore({ environmentId: 'mac', now: () => NOW + 1000 })
+  const box = new HeadroomStore({ environmentId: 'box', now: () => NOW + 1000 })
+  box.observe({ service: 'claude-code', account: 'a', model: null, status: 429, quotaWindow: 'Weekly', now: NOW, headers: headers({ 'retry-after': '604800' }) })
+  const link = (id: string, connected = true) => ({
+    id, env: { name: id }, connected,
+    request: async (method: string, params: { provider?: string; from?: string; snapshot?: never }) => {
+      called.push(`${id}:${method}`)
+      if (id === 'broken') throw new Error('key revoked')
+      if (method === 'accounts.refreshLocal') {
+        expect(params.provider).toBe('claude')
+        box.observeUsage('claude-code', 'a', { label: 'Weekly', usedPercent: 20 })
+        return null
+      }
+      box.merge(params.from!, params.snapshot)
+      return { snapshot: box.own() }
+    }
+  })
+  const links = [link('box'), link('broken'), link('offline', false)]
+  const sync = new AccountSync({ environmentId: 'mac', store: memoryStore(), peers: { get: () => undefined, all: () => links as never }, nudge: vi.fn(), headroom: store, refreshUsage: refresh, refreshNow: rebuilt, log: () => {} })
+  try {
+    await expect(sync.refreshUsage('claude')).rejects.toThrow('broken: key revoked')
+    expect(refresh).toHaveBeenCalledExactlyOnceWith('claude')
+    expect(called.filter(c => c.endsWith('refreshLocal'))).toEqual(['box:accounts.refreshLocal', 'broken:accounts.refreshLocal'])
+    expect(called.some(c => c.startsWith('offline:'))).toBe(false)
+    expect(store.view('claude-code', 'a').throttledUntil).toBeUndefined()
+    expect(rebuilt).toHaveBeenCalledOnce()
+  } finally { sync.close() }
+})
+
+it('an offline host takes the durable recovery evidence at link-up without accepting its own stale copy', async () => {
+  const mac = host('mac', [])
+  const box = host('box', [])
+  try {
+    box.store.observe({ service: 'claude-code', account: 'a', model: null, status: 429, quotaWindow: 'Weekly', now: NOW - 1000, headers: headers({ 'retry-after': '604800' }) })
+    mac.store.merge('box', box.store.own())
+    mac.store.observeUsage('claude-code', 'a', { label: 'Weekly', usedPercent: 20 })
+    const answer = box.sync.handleHeadroom('mac', mac.store.snapshot())
+    expect(box.store.view('claude-code', 'a').throttledUntil).toBeUndefined()
+    expect(box.nudge).toHaveBeenCalledOnce()
+    // The owner clears its own entry before answering; an old snapshot cannot restore it.
+    expect(answer.snapshot?.hosts.box['claude-code:a'].throttles).toHaveLength(0)
+  } finally { mac.sync.close(); box.sync.close() }
+})

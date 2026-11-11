@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { ServiceId } from 'aliax-core'
+import { tiersFor, type ServiceId, type UsageReport, type UsageWindow } from 'aliax-core'
 import { whenLoopIdle } from './stalls'
 import type { AccountHeadroom } from '@shared/accounts'
 
@@ -47,12 +47,16 @@ export interface ThrottleEvent {
   status: number
   until: number
   model: string | null
+  /** Null means a transient rate limit; absent is a legacy event with unknown scope. */
+  quotaWindow?: string | null
 }
 
 /** One host's view of one account. */
 export interface HostObservation {
   /** The newest answer this host saw from the account. */
   seenAt: number
+  /** Fresh provider samples, timestamped per window; also the durable proof of a quota lift. */
+  usage?: (UsageWindow & { at: number })[]
   requests?: LimitField
   tokens?: LimitField
   inputTokens?: LimitField
@@ -80,6 +84,7 @@ export interface ObserveInput {
   status: number
   headers: Pick<Headers, 'get'>
   now?: number
+  quotaWindow?: string | null
 }
 
 export interface HeadroomDeps {
@@ -213,17 +218,17 @@ export class HeadroomStore {
   }
 
   /** One upstream answer, as the gateway's onResponse hands it over. */
-  observe({ service, account, model, status, headers, now = this.now() }: ObserveInput): void {
+  observe({ service, account, model, status, headers, now = this.now(), quotaWindow }: ObserveInput): void {
     const key = accountKey(service, account)
     const mine = this.mine()
     const prior = mine.get(key) ?? emptyObservation(now)
     const parsed = parseLimitHeaders(headers, now)
-    const next: HostObservation = { ...prior, seenAt: Math.max(prior.seenAt, now) }
+    const next: HostObservation = { ...prior, seenAt: Math.max(prior.seenAt + 1, now) }
     for (const name of LIMIT_FIELDS) if (parsed[name]) next[name] = parsed[name]
     if (parsed.tier) next.tier = parsed.tier
     next.recent = [...prior.recent.filter((t) => now - t < RATE_WINDOW_MS), now]
     if (status === 429 || status === 529) {
-      const event: ThrottleEvent = { at: now, status, until: throttleUntil(status, headers, parsed, now), model }
+      const event: ThrottleEvent = { at: now, status, until: throttleUntil(status, headers, parsed, now), model, ...(quotaWindow !== undefined ? { quotaWindow } : {}) }
       next.throttles = [...prior.throttles, event].slice(-THROTTLES_KEPT)
       mine.set(key, next)
       this.touched()
@@ -232,6 +237,68 @@ export class HeadroomStore {
     }
     mine.set(key, next)
     this.touched()
+  }
+
+  /** File a real provider sample. A cache hit or a failed poll must never call this. */
+  observeUsage(service: ServiceId, account: string, window: UsageWindow): void {
+    const key = accountKey(service, account)
+    const prior = this.mine().get(key) ?? emptyObservation(this.now())
+    const usage = [...(prior.usage ?? []).filter(w => w.label !== window.label), { ...window, at: this.now() }]
+    this.mine().set(key, { ...prior, seenAt: Math.max(this.now(), prior.seenAt + 1), usage })
+    this.touched()
+    this.reconcileUsage(service, [{ profileName: account, windows: [] }])
+  }
+
+  private windows(service: ServiceId, account: string): NonNullable<HostObservation['usage']> {
+    const latest = new Map<string, NonNullable<HostObservation['usage']>[number]>()
+    for (const rows of this.hosts.values()) for (const w of rows.get(accountKey(service, account))?.usage ?? []) {
+      const prior = latest.get(w.label)
+      // Equal clocks prefer the full window: ambiguity must never grant room.
+      if (!prior || w.at > prior.at || (w.at === prior.at && w.usedPercent > prior.usedPercent)) latest.set(w.label, w)
+    }
+    return [...latest.values()]
+  }
+
+  /** Apply newer provider windows over a peer's stale cache, and retire proven quota cooldowns.
+   *  Evidence stays in the snapshot so an offline host can recover on link-up. */
+  reconcileUsage(service: ServiceId, reports: UsageReport[]): UsageReport[] {
+    return reports.map(report => {
+      const key = accountKey(service, report.profileName)
+      let evidence = this.windows(service, report.profileName)
+      const expiredWindows = report.windows.filter(w => w.usedPercent >= 100 && w.resetsAt !== undefined && w.resetsAt <= this.now() && !evidence.some(e => e.label === w.label))
+      if (expiredWindows.length) {
+        const prior = this.mine().get(key) ?? emptyObservation(this.now())
+        this.mine().set(key, { ...prior, seenAt: Math.max(this.now(), prior.seenAt + 1), usage: [...(prior.usage ?? []), ...expiredWindows.map(w => ({ ...w, at: 0 }))] })
+        this.touched()
+        evidence = this.windows(service, report.profileName)
+      }
+      const windows = report.windows.map(w => {
+        const sample = evidence.find(e => e.label === w.label)
+        return sample ? withoutAt(sample) : w
+      })
+      for (const sample of evidence) if (!windows.some(w => w.label === sample.label)) windows.push(withoutAt(sample))
+      const obs = this.mine().get(key)
+      if (obs) {
+        const throttles = obs.throttles.filter(t => !this.quotaLifted(service, t, evidence, report.windows))
+        if (throttles.length !== obs.throttles.length) {
+          this.mine().set(key, { ...obs, throttles, seenAt: Math.max(this.now(), obs.seenAt + 1) })
+          this.touched()
+        }
+      }
+      return { ...report, windows }
+    })
+  }
+
+  private quotaLifted(service: ServiceId, event: ThrottleEvent, evidence: NonNullable<HostObservation['usage']>, fallback: UsageWindow[] = []): boolean {
+    if (event.status !== 429 || event.quotaWindow === null || service === 'meta') return false
+    const labels = event.quotaWindow ? [event.quotaWindow] : tiersFor(service, event.model)
+    return labels.length > 0 && labels.every(label => {
+      const sample = evidence.find(w => w.label === label)
+      const window = sample ?? fallback.find(w => w.label === label)
+      if (!window) return false
+      if (window.resetsAt !== undefined && window.resetsAt > event.at && window.resetsAt <= this.now()) return true
+      return !!sample && sample.at > event.at && sample.usedPercent < 100
+    })
   }
 
   /** Forget a host's observations of an account (the account left the vault). */
@@ -256,13 +323,18 @@ export class HeadroomStore {
     for (const [key, obs] of Object.entries(theirs)) {
       if (!isObservation(obs) || now - obs.seenAt > OBSERVATION_TTL_MS) continue
       const have = mine.get(key)
-      if (have && have.seenAt >= obs.seenAt && have.throttles.length >= obs.throttles.length) continue
+      if (have && have.seenAt >= obs.seenAt) continue
       mine.set(key, trim(obs, now))
       changed = true
     }
     if (changed) {
       this.hosts.set(from, mine)
       this.touched()
+      // The owner retires its own events before answering the peer exchange.
+      for (const key of this.mine().keys()) {
+        const split = key.indexOf(':')
+        this.reconcileUsage(key.slice(0, split) as ServiceId, [{ profileName: key.slice(split + 1), windows: [] }])
+      }
     }
     return changed
   }
@@ -283,7 +355,8 @@ export class HeadroomStore {
   view(service: ServiceId, account: string, now = this.now(), model: string | null = null): AccountHeadroom {
     const key = accountKey(service, account)
     const observations = [...this.hosts.values()].map((m) => m.get(key)).filter((o): o is HostObservation => !!o)
-    return mergeViews(observations, now, model)
+    const evidence = this.windows(service, account)
+    return mergeViews(observations.map(o => ({ ...o, throttles: o.throttles.filter(t => !this.quotaLifted(service, t, evidence)) })), now, model)
   }
 
   /** Every account any host has seen for a service, for the snapshot the renderer paints. */
@@ -343,6 +416,10 @@ export class HeadroomStore {
       if (m.size) this.hosts.set(host, m)
     }
   }
+}
+
+function withoutAt({ at: _at, ...window }: NonNullable<HostObservation['usage']>[number]): UsageWindow {
+  return window
 }
 
 function isObservation(v: unknown): v is HostObservation {

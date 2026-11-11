@@ -1,3 +1,4 @@
+import { METHOD_CAPABILITY } from './capabilities'
 import { describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from './contract'
 import { ServiceIdSchema } from './contract-m3a'
@@ -34,4 +35,14 @@ describe('ServiceIdSchema over the wire', () => {
     expect(ServiceIdSchema.options).toEqual(['claude-code', 'codex', 'cursor', 'meta', 'muse-code', 'addon'])
     expect(ServiceIdSchema.safeParse('gemini').success).toBe(false)
   })
+})
+
+
+it('manual refresh and the admin peer sweep accept every account provider', () => {
+  for (const provider of ['claude', 'codex', 'cursor', 'meta', 'muse']) {
+    for (const method of ['accounts.refresh', 'accounts.refreshLocal']) {
+      expect(ClientRequestSchema.safeParse({ id: 'r', method, params: { provider } }).success).toBe(true)
+    }
+  }
+  expect(METHOD_CAPABILITY['accounts.refreshLocal']).toBe('admin')
 })

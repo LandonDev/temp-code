@@ -58,6 +58,9 @@ export async function handleM3a(
     case 'accounts.list':
       return done(await ctx.accounts.list())
     case 'accounts.refresh':
+      await ctx.accountSync.refreshUsage(req.params.provider)
+      return done(await ctx.accounts.list())
+    case 'accounts.refreshLocal':
       return done(await ctx.accounts.refresh(req.params.provider))
     case 'accounts.push':
       return done(await ctx.accountSync.handlePush(req.params.from, req.params.transfer))

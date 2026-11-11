@@ -364,6 +364,40 @@ describe('a cap with no other account for the model', () => {
     expect(sends.at(-1)).toContain('try again')
   })
 
+  it('fresh room on the held account releases parked report and batch wakes without a new card', async () => {
+    const id = await capped()
+    registry.deliverAgentReport(id, report(1))
+    registry.deliverAgentReport(id, { agentId: 'batch', title: 'Batch', status: 'watching', text: '<batch-report>batch waiting</batch-report>' })
+    const before = { sends: sends.length, errors: errorRows(id) }
+    registry.limits = { ...byModel(), roomElsewhere: () => false, hasRoom: () => true }
+    registry.refreshAccounts({ claude: new Set(['a@x.com']) })
+    await sleep(30)
+    expect(sends.slice(before.sends)).toHaveLength(1)
+    expect(sends.at(-1)).toContain('child 1 done')
+    expect(sends.at(-1)).toContain('batch waiting')
+    expect(errorRows(id)).toBe(before.errors)
+  })
+
+  it('room on a different account lifts the hold and updates Route automatically', async () => {
+    const id = await capped()
+    registry.deliverAgentReport(id, report(1))
+    const before = sends.length
+    registry.limits = { ...byModel(), roomElsewhere: () => true, hasRoom: () => false }
+    registry.refreshAccounts({ claude: new Set(['other@x.com']) })
+    await sleep(30)
+    expect(sends.slice(before)).toHaveLength(1)
+    expect(registry.get(id)?.failure?.roomElsewhere).toBe(true)
+  })
+
+  it('a refresh with no room keeps parked reports held', async () => {
+    const id = await capped()
+    registry.deliverAgentReport(id, report(1))
+    const before = sends.length
+    registry.refreshAccounts({ claude: new Set(['a@x.com']) })
+    await sleep(30)
+    expect(sends).toHaveLength(before)
+  })
+
   it('the cooldown lifting releases them', async () => {
     const id = await capped(Date.now() + 900)
     registry.deliverAgentReport(id, report(1))

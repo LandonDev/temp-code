@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
+export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor', 'meta', 'muse'])
 export const ServiceIdSchema = z.enum(['claude-code', 'codex', 'cursor', 'meta', 'muse-code', 'addon'])
 
 /** aliax-core sync.ts Transfer, as it crosses the wire. */
@@ -8,13 +8,14 @@ const LimitFieldSchema = z.object({ limit: z.number().optional(), remaining: z.n
 /** One host's view of one account (main/server/headroom.ts HostObservation). */
 export const HostObservationSchema = z.object({
   seenAt: z.number(),
+  usage: z.array(z.object({ label: z.string(), usedPercent: z.number(), resetsAt: z.number().optional(), periodMs: z.number().optional(), at: z.number() })).optional(),
   requests: LimitFieldSchema.optional(),
   tokens: LimitFieldSchema.optional(),
   inputTokens: LimitFieldSchema.optional(),
   outputTokens: LimitFieldSchema.optional(),
   tier: z.string().optional(),
   recent: z.array(z.number()),
-  throttles: z.array(z.object({ at: z.number(), status: z.number(), until: z.number(), model: z.string().nullable() }))
+  throttles: z.array(z.object({ at: z.number(), status: z.number(), until: z.number(), model: z.string().nullable(), quotaWindow: z.string().nullable().optional() }))
 })
 export const HeadroomSnapshotSchema = z.object({
   version: z.literal(1),
@@ -196,6 +197,10 @@ export const M3aRequestSchemas = [
   z.object({
     id: z.string(),
     method: z.literal('accounts.refresh'),
+    params: z.object({ provider: AccountProviderSchema })
+  }),
+  z.object({
+    id: z.string(), method: z.literal('accounts.refreshLocal'),
     params: z.object({ provider: AccountProviderSchema })
   }),
   // One account crossing to another host (aliax-core sync.ts Transfer): a

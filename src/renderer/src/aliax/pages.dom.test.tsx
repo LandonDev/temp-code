@@ -9,6 +9,7 @@ import type { Link } from '@renderer/lib/tcserver/store'
 import type { ServerPush } from '@renderer/lib/tcserver/types'
 import { registry } from '@renderer/lib/connection'
 import { accountsStore } from '@renderer/stores/accounts'
+import { meterFor } from '@shared/usageMeter'
 import { AccountsPage, StatsPage } from './pages'
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
@@ -101,8 +102,11 @@ class FakeLink implements Link {
     if (method === 'accounts.refresh' && heldRefresh) return heldRefresh.then(() => snapshot() as T)
     return Promise.reject(new Error(`unexpected ${method}`))
   }
-  onPush(_listener: (push: ServerPush) => void): () => void {
-    return () => {}
+  listeners: ((push: ServerPush) => void)[] = []
+  push(value: ServerPush): void { for (const listener of this.listeners) listener(value) }
+  onPush(listener: (push: ServerPush) => void): () => void {
+    this.listeners.push(listener)
+    return () => { this.listeners = this.listeners.filter(l => l !== listener) }
   }
   onOpen(): () => void {
     return () => {}
@@ -150,6 +154,47 @@ afterEach(() => {
 })
 
 describe('AccountsPage', () => {
+  it('the existing refresh reports each failed host once and leaves the control usable', async () => {
+    const refresh = vi.spyOn(accountsStore, 'refresh').mockRejectedValue(new Error('Box: key revoked\nMac: timeout\nBox: key revoked'))
+    render(<AccountsPage />)
+    await act(flush)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh usage' })); await flush() })
+    expect(refresh).toHaveBeenCalledWith('local', 'claude')
+    expect(toasts.error.mock.calls.map(c => c[0])).toEqual(['Box: key revoked', 'Mac: timeout'])
+    expect(screen.getByRole('button', { name: 'Refresh usage' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('the five-minute poll only reads views and never clears cooldowns through a manual refresh', async () => {
+    vi.useFakeTimers()
+    try {
+      const refresh = vi.spyOn(accountsStore, 'refresh')
+      render(<AccountsPage />)
+      await act(async () => { await Promise.resolve() })
+      await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60_000) })
+      expect(aliax.listServices).toHaveBeenCalledTimes(2)
+      expect(refresh).not.toHaveBeenCalled()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('a recovery push removes Limited and restores the rail meter without reloading views', async () => {
+    const link = registry.primary() as unknown as FakeLink
+    render(<AccountsPage />)
+    await act(flush)
+    const limited = snapshot()
+    limited.updatedAt = 2
+    limited.providers.claude.reports = [{ profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 100 }, { label: 'Weekly', usedPercent: 100 }] }]
+    limited.providers.claude.headroom = { 'a@x.com': { room: null, ratePerMin: 0, seenAt: now, throttledUntil: now + HOUR } }
+    await act(async () => { link.push({ push: 'accounts', snapshot: limited }) })
+    expect(screen.getAllByText('Limited').length).toBeGreaterThan(0)
+    expect(meterFor('claude', accountsStore.get('local').snapshot, now)!.limited).not.toBeNull()
+    const recovered = snapshot()
+    recovered.updatedAt = 3
+    await act(async () => { link.push({ push: 'accounts', snapshot: recovered }) })
+    expect(screen.queryByText('Limited')).toBeNull()
+    expect(meterFor('claude', accountsStore.get('local').snapshot, now)!.withRoom).toBe(1)
+    expect(aliax.listServices).toHaveBeenCalledTimes(1)
+  })
+
   it('renders each service section with the live usage from the shared snapshot', async () => {
     render(<AccountsPage />)
     await act(flush)

@@ -526,6 +526,23 @@ WorkingStrip.dom.test.tsx.
 
 ### Accounts: sign in on the Mac once
 
+After resetting provider usage, click **Refresh usage** on Accounts once.
+The Mac and every connected box fetch the provider's usage for their accounts
+and share fresh window evidence over their peer links. Room in the exhausted
+window (or its reset time passing) lifts the saved quota cooldown and cap
+hold; a full report and a dead sign-in stay blocked. An offline host catches
+up when it reconnects. One failed host is one toast with its reason.
+Regular host polls also recover as soon as the provider reports room.
+Parked report and batch wakes resume, but a batch child whose turn failed
+still needs its master to **Continue** it (or the person to **Retry**).
+The host cannot safely replay failed work merely because usage changed.
+Muse has observed windows only: refresh never launches `muse usage` against
+a copy. Meta keys are pay as you go; their key probe gives no quota-refill
+proof, so their request cooldown still follows Retry-After.
+See [Usage reset recovery](agents/provider-traffic.md) for the peer and
+freshness rules.
+
+
 Provider accounts never sign in on the box. The Mac's Accounts page is the
 one place a Claude or Codex sign-in happens, and the box gets what it needs
 over the Mac's admin link to it (thread V; aliax-core `src/sync.ts`,

@@ -558,6 +558,8 @@ export interface AccountRouter {
   observeQuota?(provider: AccountProvider, account: string, window: LimitWindow, resetsAt: number): void
   /** Whether an account other than `account` has room for the model now (eligible()); null when the host cannot say. */
   roomElsewhere?(provider: AccountProvider, model: string | null, account: string | null): boolean | null
+  /** Whether the held account itself has room again. */
+  hasRoom?(provider: AccountProvider, model: string | null, account: string | null): boolean
   /** When the account's cooldown for the model lifts, by the gateway's picture; null when unknown. */
   capLiftsAt?(provider: AccountProvider, model: string | null, account: string | null): number | null
 }
@@ -1965,9 +1967,31 @@ export class SessionRegistry {
     const meta = this.store.getSession(sessionId)
     const routed = meta ? pickedProviderOf(meta.provider, meta.model) : null
     if (!meta || meta.archived || !routed) return
-    if (LIVE_STATUSES.has(meta.status) || this.starting.has(sessionId)) return
+    const fold = this.folds.get(sessionId)
+    const failure = fold?.failure
+    let failureMoved = false
+    if (failure && (failure.kind === 'rate_limited' || failure.kind === 'quota')) {
+      const room = this.limits?.roomElsewhere?.(routed, meta.model ?? null, failure.account) ?? null
+      if (room !== null && room !== failure.roomElsewhere) {
+        this.putFold({ ...fold!, failure: { ...failure, roomElsewhere: room } })
+        failureMoved = true
+      }
+    }
+    if (this.capHolds.has(sessionId) && (
+      this.limits?.hasRoom?.(routed, meta.model ?? null, meta.account ?? null) === true ||
+      this.limits?.roomElsewhere?.(routed, meta.model ?? null, meta.account ?? null) === true
+    )) {
+      this.expectAccount(sessionId, { fresh: true, load: load?.(routed) })
+      this.releaseCapHold(sessionId, { drain: true })
+    }
+    // Watching threads may own background work: keep the process until its next send.
+    if (LIVE_STATUSES.has(meta.status) || this.starting.has(sessionId)) {
+      if (failureMoved) this.notifyMeta(this.store.getSession(sessionId) ?? meta, 'accounts')
+      return
+    }
     const live = this.handles.has(sessionId)
     this.expectAccount(sessionId, { fresh: !live, load: load?.(routed) })
+    if (failureMoved) this.notifyMeta(this.store.getSession(sessionId) ?? meta, 'accounts')
     if (live && (this.store.getSession(sessionId)?.account ?? null) !== (meta.account ?? null)) {
       void this.dropHandle(sessionId)
     }
@@ -1989,7 +2013,7 @@ export class SessionRegistry {
       const routed = routedProviderOf(s.provider, s.model)
       const names = routed ? changed[routed] : undefined
       if (!names) return false
-      return names === 'all' || !s.account || names.has(s.account)
+      return names === 'all' || !s.account || names.has(s.account) || this.capHolds.has(s.id)
     }
     void this.expectAccountsSliced(match)
   }

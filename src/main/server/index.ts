@@ -41,6 +41,7 @@ import { shortHostName } from '@shared/hostNames'
 import type { BuildFacts } from '@shared/deployDrift'
 import type { MediaRange } from '@shared/contract-fsgit'
 import { MasterReleaseWatcher } from '../deployDrift'
+import { usageSamples } from './usageSamples'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
 import { HarnessSync, handleHarness } from './remote/harnessSync'
@@ -697,6 +698,7 @@ export async function startServer(
     peers,
     nudge: () => accounts.nudge(),
     refreshNow: () => accounts.rebuildNow(),
+    refreshUsage: (provider) => accounts.refresh(provider),
     headroom,
     addonHome: (id) => addonGrantsRef?.homeOf(id) ?? null,
     addonKnown: (id) => addonStore.get(id) !== null,
@@ -707,6 +709,10 @@ export async function startServer(
       if (service === ADDON_SERVICE) addonGrantsRef?.onClaimed(name)
     }
   })
+  usageSamples.current = (service, account, window) => {
+    accounts.observeFreshWindow(service, account, window)
+    accountSync.pushHeadroomSoon()
+  }
   accountSyncHooks.current = accountSync
   // The user's Claude Code and Codex config, mirrored onto the same hosts
   // (remote/harnessSync.ts). A headless host (the box) receives and does not send.
@@ -3638,6 +3644,7 @@ export async function startServer(
       await addonHost.stop()
       execBroker.stop()
       clearInterval(syncTimer)
+      usageSamples.current = null
       accountSync.close()
       harnessSync.close()
       hostJobs.deploy.dispose()

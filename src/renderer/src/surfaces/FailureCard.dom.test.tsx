@@ -17,7 +17,7 @@ vi.mock("../lib/tcserver/commands", () => ({
 }));
 
 // The thread the card belongs to: null (a claude thread by default) unless a test names one.
-let threadMeta: { provider: string; model: string; environmentId?: string; context1m?: boolean } | null = null;
+let threadMeta: { provider: string; model: string; environmentId?: string; context1m?: boolean; failure?: Failure } | null = null;
 vi.mock("../lib/tcserver/store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tcserver/store")>()),
   useSessionMeta: () => threadMeta,
@@ -189,6 +189,17 @@ describe("FailureCard wired", () => {
     });
     expect(continueSession).toHaveBeenCalledWith("s1");
     expect(buttons(probe.container)).toEqual(["Route automatically", "Pick another account", "Retrying…"]);
+    probe.unmount();
+  });
+
+  it("a host push offering room restores Route automatically on the failed turn", async () => {
+    const old = failure("rate_limited", { roomElsewhere: false });
+    threadMeta = { provider: "claude", model: "claude-fable-5-1", failure: old };
+    const probe = mountProbe(<FailureCard sessionId="s1" failure={old} />);
+    expect(buttons(probe.container)).not.toContain("Route automatically");
+    threadMeta = { ...threadMeta, failure: { ...old, roomElsewhere: true } };
+    probe.rerender(<FailureCard sessionId="s1" failure={old} />);
+    expect(buttons(probe.container)).toContain("Route automatically");
     probe.unmount();
   });
 

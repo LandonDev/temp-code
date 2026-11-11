@@ -8,6 +8,7 @@ import { gateway } from './server/gateway'
 import { onAddonSecretSaved } from './server/addons/grants'
 import { addonGrantsHook } from './server/addons/addonGrants'
 import { ADDON_SERVICE } from '@shared/addonGrant'
+import { usageSamples } from './server/usageSamples'
 import { accountSyncHooks } from './server/remote/accountSync'
 import { fakeProviderRewrite, Upstream } from './server/upstream'
 
@@ -84,8 +85,10 @@ export function configureAliax(environmentId?: string): void {
     // failover redraws the Accounts page in every window. Vault writes and
     // a consumer's ask go to the account sync once the server made it.
     hooks: {
-      onUsageSample: (s) =>
-        statsHost().sample(s.service, s.account, s.label, s.usedPercent, s.resetsAt, s.periodMs),
+      onUsageSample: (s) => {
+        statsHost().sample(s.service, s.account, s.label, s.usedPercent, s.resetsAt, s.periodMs)
+        usageSamples.current?.(s.service, s.account, { label: s.label, usedPercent: s.usedPercent, resetsAt: s.resetsAt, periodMs: s.periodMs })
+      },
       onAppEvent: (kind, service, account, detail) => statsHost().appEvent(kind, service, account, detail),
       onAccountsChanged: notifyAccountsChanged,
       onSecretSaved: (service, name, origin) => {

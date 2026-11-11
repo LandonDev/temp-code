@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { registry } from '../lib/connection'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ServiceId, ServiceView, UsageReport } from 'aliax-core/shared/types'
@@ -62,11 +63,20 @@ export function useAliax() {
   const refreshUsage = useCallback(async (services: ServiceView[]) => {
     const active = services.filter((s) => s.installed && s.profiles.length > 0)
     setMasked(new Set(active.map((s) => s.id)))
+    const failed = new Set<string>()
     try {
       // One after another: the store ignores a refresh while one is running.
       for (const s of active) {
         const provider = PROVIDER_OF[s.id]
-        if (provider) await accountsStore.refresh(registry.primary().environmentId, provider).catch(() => {})
+        if (provider) await accountsStore.refresh(registry.primary().environmentId, provider).catch((err: unknown) => {
+          // One toast per failed host across all providers in this click.
+          for (const line of (err instanceof Error ? err.message : String(err)).split('\n')) {
+            const host = line.split(':')[0]
+            if (failed.has(host)) continue
+            failed.add(host)
+            toast.error(line)
+          }
+        })
       }
     } finally {
       setMasked(NONE)

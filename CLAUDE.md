@@ -119,7 +119,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   `session.changes`. [docs/agents/launch-mirror.md](docs/agents/launch-mirror.md)
 - **Provider traffic** — every Claude and Codex child goes through the loopback
   gateway (gateway.ts, gatewayCore.ts, its own utility process); routing by
-  headroom, Meta keys, failure kinds (`failureKind.ts`, `FailureCard`), the
+  headroom, usage-reset recovery across hosts, Meta keys, failure kinds (`failureKind.ts`, `FailureCard`), the
   turn's wait words, warm harnesses, the request shape trace and the codex
   model-metadata wait. [docs/agents/provider-traffic.md](docs/agents/provider-traffic.md)
 - **Prompt overhead** — what a fresh thread's first request carries, measured

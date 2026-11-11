@@ -105,6 +105,8 @@ export interface AccountSyncDeps {
   refreshNow?: () => Promise<void> | void
   /** The gateway's rate-limit picture (headroom.ts); shared with every peer so both hosts route from the same one. */
   headroom?: Pick<HeadroomStore, 'own' | 'merge'>
+  /** Force this host's own usage sweep; never fans out recursively. */
+  refreshUsage?: (provider: AccountProvider) => Promise<unknown>
   /** Test seam: the headroom push cadence. */
   headroomPushMs?: number
   log?: (line: string) => void
@@ -265,9 +267,10 @@ export class AccountSync {
   }
 
   /** Push this host's picture to every connected peer and take theirs from the answers. */
-  async pushHeadroom(environmentId?: string): Promise<void> {
+  async pushHeadroom(environmentId?: string): Promise<string[]> {
+    const failures: string[] = []
     const store = this.deps.headroom
-    if (!store) return
+    if (!store) return failures
     const links = environmentId ? [this.deps.peers.get(environmentId)] : this.deps.peers.all()
     await Promise.all(
       links.map(async (link) => {
@@ -276,10 +279,31 @@ export class AccountSync {
           const answer = await link.request<HeadroomAnswer>('accounts.headroom', { from: this.me, snapshot: store.own() })
           if (store.merge(link.id, answer?.snapshot)) this.deps.nudge()
         } catch (err) {
+          failures.push(`${link.env.name}: ${(err as Error).message}`)
           this.log(`${link.env.name}: headroom not shared (${(err as Error).message})`)
         }
       })
     )
+    return failures
+  }
+
+  /** One manual refresh reaches every connected host over its existing admin link. */
+  async refreshUsage(provider: AccountProvider): Promise<void> {
+    const failures: string[] = []
+    await Promise.all([
+      this.deps.refreshUsage?.(provider).catch(err => { failures.push(`This host: ${(err as Error).message}`) }),
+      ...this.deps.peers.all().filter(link => link.connected).map(async link => {
+        try {
+          await link.request('accounts.refreshLocal', { provider })
+        } catch (err) {
+          failures.push(`${link.env.name}: ${(err as Error).message}`)
+        }
+      })
+    ])
+    // The samples collected by each sweep travel both ways before refresh completes.
+    failures.push(...await this.pushHeadroom())
+    await this.deps.refreshNow?.()
+    if (failures.length) throw new Error(failures.join('\n'))
   }
 
   async handlePull(from: string, params: { service?: ServiceId; name?: string; takeOver?: boolean }): Promise<PullAnswer> {
