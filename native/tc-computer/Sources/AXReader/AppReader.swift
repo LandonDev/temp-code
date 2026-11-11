@@ -407,7 +407,14 @@ public final class AppReader: AppReading, @unchecked Sendable {
         let subrole = AX.string(a["AXSubrole"]?.value)
         let index = book.intern(handles.intern(focused))
         let brief = (try? describe(index, focused).brief) ?? ElementBrief(index: index, line: Facts.roleWord(role, subrole))
-        return LiveFocus(element: focused, inScope: within(scope), insideTargeted: within(aimed), secure: subrole == "AXSecureTextField",
+        let holds = aimed.contains { item in
+            var above: [AXUIElement] = []
+            var up = AX.element(AX.copy(item, "AXParent").value)
+            while let p = up, above.count < 8 { above.append(p); up = AX.element(AX.copy(p, "AXParent").value) }
+            return HeldItem.held(focusedRole: role, targetRole: AX.string(AX.copy(item, "AXRole").value) ?? "",
+                                 focusedIsAncestor: above.contains { CFEqual($0, focused) })
+        }
+        return LiveFocus(element: focused, inScope: within(scope), insideTargeted: within(aimed) || holds, secure: subrole == "AXSecureTextField",
                          role: Facts.roleWord(role, subrole), inWebArea: chain.dropFirst().contains { AX.string(AX.copy($0, "AXRole").value) == "AXWebArea" },
                          brief: brief)
     }
