@@ -227,7 +227,7 @@ one contract:
 | e2e-skills-store | `e2e` | both | two paired headless instances | nothing (no model) | 13 s, 15 s, 15 s | 13 s, 13 s, 13 s | 11 min |
 | e2e-skills-drivers | `e2e` | both | one headless instance, the real CLIs against scripts/lib/spikeFakes.ts | the real-model legs (`--host box\|mac`) | 10 s, 10 s, 10 s | 29 s, 28 s, 29 s | 12 min |
 | e2e-tc-computer | `computer` | Mac | the service, TC Probe (five instances: plain, `--windows`, `--fallbacks`, `--active`, `--fewer`) and scratch Chrome for Testing (`webLeg`) | the TextEdit legs and the paste | n/a | 19 s, 19 s, 19 s, measured before the fallbacks leg (docs/computer-protocol.md §24.11) the active leg (§26.15) and the fewer leg (§27.15), whose times are not yet measured: the fallbacks leg's first run failed at step 3 on the proof's own expectation (§24.9), and the fixed leg is not run, the Mac was locked (2026-11-10) | 11 min |
-| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 28 s, 29 s, 28 s, measured before the timing leg (ten interleaved pairs of three kinds, judged by `BRIDGE_TIMING_RULE`: box minus Mac at most 40 ms median and 100 ms p90, the box's own legs at most 25 ms median), measured on 2026-11-10: 95 s overall; added p50/p90 3/19 ms observe, 9/24 ms with a picture, 10/42 ms set_value (1 ms loopback round trip); timing passed, 11 other checks failed | 12 min |
+| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 28 s, 29 s, 28 s, measured before the timing leg (ten interleaved pairs of three kinds, judged by `BRIDGE_TIMING_RULE`: box minus Mac at most 40 ms median and 100 ms p90, the box's own legs at most 25 ms median), measured on 2026-11-10: 95 s overall; added p50/p90 3/19 ms observe, 9/24 ms with a picture, 10/42 ms set_value (1 ms loopback round trip); timing passed, 11 other checks failed. Corrected proof: all 60 checks passed in 96 s, added p50/p90 13/32, 14/29, 2/33 ms respectively | 12 min |
 | e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | 24 s, 23 s, 23 s | 12 min |
 
 The four store rows run one at a time in the `e2e` lane after the fence;
@@ -485,7 +485,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 | e2e-skills-store | 13 s (three runs) | | 12 to 15 s | 11 min | the same lane |
 | e2e-skills-drivers | 28 to 29 s (three runs) | | 10 s | 12 min | the same lane, last; the real CLIs against fakes |
 | e2e-tc-computer | 19 s (three runs) | | n/a | 11 min | Mac only; the `computer` lane, before the bench |
-| e2e-computer-bridge | 95 s with timing (2026-11-10); before timing, 28 to 29 s (three runs) | | n/a | 12 min | Mac only; both halves on the Mac |
+| e2e-computer-bridge | 96 s with timing, all 60 checks pass (2026-11-10); before timing, 28 to 29 s (three runs) | | n/a | 12 min | Mac only; both halves on the Mac |
 | e2e-computer-preview | 23 to 24 s (three runs) | | n/a | 12 min | Mac only; the Escape leg skipped |
 | computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run") | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
 
