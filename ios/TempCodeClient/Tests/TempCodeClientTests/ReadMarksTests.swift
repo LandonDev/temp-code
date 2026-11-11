@@ -32,20 +32,25 @@ private func marked(_ id: String, updatedAt: Int, readAt: Int?, status: SessionS
     @Test func `a read is queued once, covers the thread until the host echoes it, and never goes past the row`() {
         var marks = ReadMarks()
         let a = marked("a", updatedAt: 100, readAt: 0)
-        #expect(marks.read(a, at: 500))
-        #expect(!marks.read(a))
+        let first = marks.read(a, at: 500)
+        let again = marks.read(a)
+        #expect(first)
+        #expect(!again)
         #expect(marks.queued == ["a": 100])
         #expect(marks.merged(local: [:], sessions: [a], visible: nil)["a"]?.at == 100)
-        #expect(marks.take() == [.init(sessionId: "a", at: 100)])
+        let taken = marks.take()
+        #expect(taken == [.init(sessionId: "a", at: 100)])
         #expect(marks.queued.isEmpty)
         marks.heard(a)
         #expect(marks.pending == ["a": 100])
         marks.heard(marked("a", updatedAt: 100, readAt: 100))
         #expect(marks.pending.isEmpty)
         // Already read on the host: nothing to send.
-        #expect(!marks.read(marked("b", updatedAt: 100, readAt: 100)))
+        let hostHasIt = marks.read(marked("b", updatedAt: 100, readAt: 100))
+        #expect(!hostHasIt)
         // A host that keeps no marks: nothing to send either.
-        #expect(!marks.read(marked("c", updatedAt: 100, readAt: nil)))
+        let noMarks = marks.read(marked("c", updatedAt: 100, readAt: nil))
+        #expect(!noMarks)
     }
 
     @Test func `a failed request is queued again unless a newer mark took its place`() {
