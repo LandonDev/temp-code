@@ -33,6 +33,20 @@ the first and failed its away check in the third, and the preview failed its
 4 ± 1 fps in the first, each with the soaks done and the person's full-screen
 window over TC Probe.
 
+With TC Probe floating (computer-protocol.md §15, "The live proofs"), the
+selection notices (§7) and the guard's order undo waiting for the step's
+own input (§23.3), three publish-shaped runs followed on 2026-11-11 at
+a384f5aa (then 410b51c0 and its neighbours on master), the computer lane
+after the soaks, load 5 to 26: the first passed whole in 676 s (soaks 202 s,
+e2e-tc-computer 194 s, bridge 85 s, preview 24 s at 4.00 fps, computer-bench
+169 s, no flakes); the second passed every row but the preview, whose one
+VOID was the person's pointer moving during the run (its frame rate read 4.00
+fps); the third failed e2e-tc-computer's active leg, active 9 (save_as) and
+then active 4 (a pop-up's menu noted in the closing read) on its rerun, at a
+load of 26 with the person at the Mac. Those last two were not run again: the
+person was in a call with the camera on, and the proofs, which float TC Probe
+over the screen, were held.
+
 The rows `e2e-tc-computer` and `e2e-computer-bridge` start through
 `scripts/proof-bun.ts`: `bun run` puts every ancestor's node_modules/.bin on
 PATH, so the package script's `bun` can be any old copy (a 1.3.5 in
