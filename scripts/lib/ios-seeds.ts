@@ -14,7 +14,7 @@ import type { BatchRules } from '../../src/shared/contract-batch'
 import type { HostDevicesReport } from '../../src/shared/contract-hostdevices'
 import type { BuildFacts } from '../../src/shared/deployDrift'
 import { emptyNotes } from '../../src/shared/notes'
-import { TURN_ENDED_SUMMARY } from '../../src/shared/failureFallback'
+import { CONTEXT_THRASH_SUMMARY, TURN_ENDED_SUMMARY } from '../../src/shared/failureFallback'
 import { freshRow, type StoredBatch } from '../../src/main/server/batch'
 import type { HolderRow, MacDevicesDeps } from '../../src/main/server/devices/hostDevices'
 import { approvalLine } from '../../src/shared/approvalLine'
@@ -148,6 +148,7 @@ const FAILURE_LINES: Record<FailureKind, [summary: string, cause: string]> = {
   network: ['api.anthropic.com could not be reached', 'the socket closed before the first byte'],
   harness_crashed: ['The harness exited mid-turn', 'claude exited with code 137'],
   turn_ended: [TURN_ENDED_SUMMARY, 'the CLI reached its turn limit'],
+  context_thrash: [CONTEXT_THRASH_SUMMARY, 'the turn compacted 4 times in 10 minutes'],
   unknown: ['The turn failed', 'the harness gave no reason']
 }
 
@@ -156,7 +157,7 @@ export function failureRows(): AgentEvent[] {
   return FailureKindSchema.options.map((kind): AgentEvent => {
     const [summary, cause] = FAILURE_LINES[kind]
     const account =
-      kind === 'unknown' || kind === 'network' || kind === 'harness_crashed' || kind === 'turn_ended' ? null : kind === 'key_invalid' ? 'build-key' : 'work@example.com'
+      kind === 'unknown' || kind === 'network' || kind === 'harness_crashed' || kind === 'turn_ended' || kind === 'context_thrash' ? null : kind === 'key_invalid' ? 'build-key' : 'work@example.com'
     return {
       type: 'error',
       message: `${summary}: ${cause}`,
