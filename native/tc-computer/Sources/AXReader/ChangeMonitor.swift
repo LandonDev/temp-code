@@ -42,11 +42,14 @@ final class AXObserverThread: Thread, @unchecked Sendable {
 /// The smart wait's signals on one app (spec §7): the time of the last AX
 /// notification, the shallow signature, and whether a busy indicator shows.
 final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
-    /// Spec §7's notifications, plus AXLoadComplete for the busy candidates (A11).
+    /// Spec §7's notifications, plus AXLoadComplete for the busy candidates (A11), and a list's, table's or
+    /// outline's selection moving (rows, cells): a row selected at `ax` changes nothing else the wait reads, so
+    /// the fewer leg's batch stopped after its first step as `none` under a covering window (2026-11-11).
     static let notifications: [String] = [
         kAXValueChangedNotification, kAXTitleChangedNotification, kAXCreatedNotification, kAXUIElementDestroyedNotification,
         kAXLayoutChangedNotification, kAXFocusedUIElementChangedNotification, kAXSelectedTextChangedNotification,
-        kAXSelectedChildrenChangedNotification, kAXMenuOpenedNotification, kAXMenuClosedNotification, kAXWindowCreatedNotification,
+        kAXSelectedChildrenChangedNotification, kAXSelectedRowsChangedNotification, kAXSelectedCellsChangedNotification,
+        kAXMenuOpenedNotification, kAXMenuClosedNotification, kAXWindowCreatedNotification,
         kAXWindowMovedNotification, kAXWindowResizedNotification, kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification,
         "AXElementBusyChanged", "AXLoadComplete"
     ]

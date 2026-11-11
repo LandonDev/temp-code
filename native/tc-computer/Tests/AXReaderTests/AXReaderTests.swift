@@ -157,6 +157,12 @@ import Testing
         #expect(TitleBar.missing([content], answered: [nil, nil, nil, nil], same: same).isEmpty)
     }
 
+    @Test func theMonitorWatchesASelectionMoving() {
+        for n in [kAXSelectedChildrenChangedNotification, kAXSelectedRowsChangedNotification, kAXSelectedCellsChangedNotification] {
+            #expect(ChangeMonitor.notifications.contains(n))
+        }
+    }
+
     @Test func theMonitorWatchesMiniaturizing() {
         #expect(ChangeMonitor.notifications.contains(kAXWindowMiniaturizedNotification))
         #expect(ChangeMonitor.notifications.contains(kAXWindowDeminiaturizedNotification))
