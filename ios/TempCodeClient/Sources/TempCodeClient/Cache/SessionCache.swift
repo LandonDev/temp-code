@@ -74,6 +74,8 @@ public struct ListCursor: Sendable, Hashable, Codable {
 public let cacheRowsPerThread = 1_000
 /// Prune only past this, so a busy thread does not pay a delete per page.
 let cachePruneAt = 1_300
+/// Pushed rows are counted against `cachePruneAt` once in this many stores.
+let cacheCountEvery = 50
 
 /// The on-disk mirror of what the socket has shown, keyed by environment:
 /// the shell (workspaces, projects, sessions), the newest rows of each
@@ -84,6 +86,8 @@ let cachePruneAt = 1_300
 /// has replaces it, so a resume can never duplicate one.
 public actor SessionCache {
     private let db: Database
+    /// Stores of pushed rows since each thread's rows were last counted, by environment and thread.
+    private var storesSinceCount: [String: Int] = [:]
 
     public init(path: URL) throws(CacheError) {
         try? FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -195,6 +199,15 @@ public actor SessionCache {
             if let moreBefore {
                 try db.run("INSERT OR REPLACE INTO session_state (env, session_id, more_before) VALUES (?, ?, ?)", [.text(env), .text(sessionId), .int(moreBefore ? 1 : 0)])
             }
+            // The rows held are counted for a page, and for pushes once every
+            // `cacheCountEvery` stores: a row at a time, a count per store was half the work.
+            let key = "\(env)\n\(sessionId)"
+            let since = (storesSinceCount[key] ?? cacheCountEvery) + 1
+            guard reset || moreBefore != nil || rows.count >= cacheCountEvery || since >= cacheCountEvery else {
+                storesSinceCount[key] = since
+                return
+            }
+            storesSinceCount[key] = 0
             let count = try db.scalar("SELECT COUNT(*) FROM rows WHERE env = ? AND session_id = ?", [.text(env), .text(sessionId)]) ?? 0
             if count > cachePruneAt {
                 try prune(env, sessionId: sessionId, keep: cacheRowsPerThread)

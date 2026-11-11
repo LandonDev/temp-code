@@ -6,7 +6,7 @@
   "rest": false,
   "load-only": false,
   "bodies-per-batch": false,
-  "refolds": false,
+  "refolds": true,
   "rows-built": false,
   "keystroke-bodies": false,
   "jumps": false,

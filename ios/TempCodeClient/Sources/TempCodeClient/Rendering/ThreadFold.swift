@@ -276,6 +276,10 @@ public struct ThreadFold: Sendable, Hashable {
     private var questionIndex: [String: Int] = [:]  // requestId → items index
     private var approvalIndex: [String: Int] = [:]
     private var openCompaction: Int?
+    /// The items of the edit calls still running, oldest first: a live edit
+    /// is stamped on the newest whose path matches (`stamp`), found here
+    /// and never by a walk of the whole history.
+    private var runningEdits: [Int] = []
     /// The ts of the host's `stopped` close (the harness gone) while nothing
     /// came after it: a busy status next is the Resume, which reopens that turn.
     private var stoppedClose: Int?
@@ -314,6 +318,18 @@ public struct ThreadFold: Sendable, Hashable {
     public mutating func rekeyEcho(seq: Int, key: Int) {
         keys.echoes[seq] = key
         if let index = items.lastIndex(where: { $0.seq == seq }) { items[index].key = key }
+    }
+
+    /// How the fold holds a call: born from a streaming preview and still
+    /// waiting for its final row, or final.
+    enum HeldCall: Hashable, Sendable { case preview, final }
+
+    /// The call as the fold holds it; nil for one it has not seen. `append`
+    /// asks this before it looks for a preview's row, so a call that has
+    /// none costs no search of the rows.
+    func held(_ callId: String) -> HeldCall? {
+        guard let index = toolIndex[callId], case .tool(let tool) = items[index].item else { return nil }
+        return tool.seq < 0 ? .preview : .final
     }
 
     public static func fold(_ rows: [EventRow]) -> ThreadFold {
@@ -378,6 +394,8 @@ public struct ThreadFold: Sendable, Hashable {
                 }
                 if tool.live == nil, let path = Board.editPath(tool) { tool.live = liveEdit(matching: path) }
                 items[index].item = .tool(tool)
+                // A streamed input names its file only once the path has arrived.
+                noteRunningEdit(tool, at: index)
             } else {
                 // A call born from a partial takes a provisional id of its own;
                 // its final row stamps the real seq above.
@@ -387,6 +405,7 @@ public struct ThreadFold: Sendable, Hashable {
                 if let path = Board.editPath(tool) { tool.live = liveEdit(matching: path) }
                 append(.tool(tool))
                 toolIndex[event.callId] = items.count - 1
+                noteRunningEdit(tool, at: items.count - 1)
             }
         case .toolResult(let event):
             if event.parentCallId == nil { _ = board.applyTaskResult(event) }
@@ -402,6 +421,7 @@ public struct ThreadFold: Sendable, Hashable {
                 tool.partial = false
                 tool.doneTs = row.ts
                 items[index].item = .tool(tool)
+                runningEdits.removeAll { $0 == index }
             } else {
                 append(.tool(ToolItem(seq: row.seq, ts: row.ts, callId: event.callId, name: "result", display: nil, input: nil, partial: false, preview: nil, parentCallId: event.parentCallId, inputOmitted: false, output: output, status: event.isError ? .failed : .done, reauth: event.reauth, doneTs: row.ts)))
                 toolIndex[event.callId] = items.count - 1
@@ -671,7 +691,7 @@ public struct ThreadFold: Sendable, Hashable {
             if liveEditOrder.count > LiveEdits.max { liveEdits[liveEditOrder.removeFirst()] = nil }
         }
         liveEdits[state.path] = state
-        for index in items.indices.reversed() {
+        for index in runningEdits.reversed() {
             guard case .tool(var tool) = items[index].item, tool.status == .running,
                   let path = Board.editPath(tool), LiveEdits.matches(state.path, path) else { continue }
             tool.live = state
@@ -679,6 +699,14 @@ public struct ThreadFold: Sendable, Hashable {
             return true
         }
         return false
+    }
+
+    /// Keeps `runningEdits`, in the items' order: a running call that names a file it edits.
+    private mutating func noteRunningEdit(_ tool: ToolItem, at index: Int) {
+        guard tool.status == .running, Board.editPath(tool) != nil, runningEdits.last != index, !runningEdits.contains(index) else { return }
+        // A call whose path streamed in late is older than the ones noted since.
+        let at = runningEdits.firstIndex { $0 > index } ?? runningEdits.endIndex
+        runningEdits.insert(index, at: at)
     }
 
     /// A fold rebuilt from rows starts with no live edits; the ones the
@@ -712,9 +740,12 @@ public struct ThreadFold: Sendable, Hashable {
         questionIndex = [:]
         approvalIndex = [:]
         openCompaction = nil
+        runningEdits = []
         for (offset, entry) in items.enumerated() {
             switch entry.item {
-            case .tool(let tool): toolIndex[tool.callId] = offset
+            case .tool(let tool):
+                toolIndex[tool.callId] = offset
+                noteRunningEdit(tool, at: offset)
             case .question(let q): questionIndex[q.request.requestId] = offset
             case .approval(let a): approvalIndex[a.request.requestId] = offset
             case .compaction(let c) where c.phase == .start: openCompaction = offset

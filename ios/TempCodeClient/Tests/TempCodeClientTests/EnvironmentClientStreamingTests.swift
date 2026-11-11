@@ -97,18 +97,123 @@ private func runningEdit(_ state: ThreadState) -> ToolItem? {
         #expect(state.fold.liveEdits.count == 1)
     }
 
-    @Test func `the trim past the memory cap refolds once and marks more before`() {
+    @Test func `a trimmed thread grows by the slack before it is cut back, one refold a cut`() {
         var state = ThreadState()
-        state.append((1...threadRowsInMemory).map { textRow("s1", seq: $0) }, trim: true)
+        state.append((1...(threadRowsInMemory + threadRowsSlack)).map { textRow("s1", seq: $0) }, trim: true)
         #expect(state.refolds == 0)
-        state.append([textRow("s1", seq: threadRowsInMemory + 1)], trim: true)
+        #expect(!state.moreBefore)
+        state.append([textRow("s1", seq: threadRowsInMemory + threadRowsSlack + 1)], trim: true)
         #expect(state.refolds == 1)
         #expect(state.rows.count == threadRowsInMemory)
+        #expect(state.rows.first?.seq == threadRowsSlack + 2)
         #expect(state.moreBefore)
         var board = ThreadState()
-        board.append((1...(threadRowsInMemory + 1)).map { textRow("s1", seq: $0) }, trim: false)
-        #expect(board.rows.count == threadRowsInMemory + 1)
+        board.append((1...(threadRowsInMemory + threadRowsSlack + 1)).map { textRow("s1", seq: $0) }, trim: false)
+        #expect(board.rows.count == threadRowsInMemory + threadRowsSlack + 1)
         #expect(board.refolds == 0)
+    }
+
+    @Test func `a thousand rows past the cap refold at most three times`() {
+        var state = ThreadState()
+        // Paged in whole: older pages join without a trim.
+        state.append((1...2_600).map { textRow("s1", seq: $0) }, trim: false)
+        let before = state.refolds
+        for seq in 2_601...3_600 { state.append([textRow("s1", seq: seq)], trim: true) }
+        #expect(state.refolds - before <= 3)
+        #expect(state.rows.count <= threadRowsInMemory + threadRowsSlack)
+        #expect(state.cursor == 3_600)
+        #expect(state.fold.items.count == state.rows.count)
+    }
+
+    @Test func `the cut waits while it would take a row the reader's window shows`() {
+        var state = ThreadState()
+        state.append((1...(threadRowsInMemory + threadRowsSlack)).map { textRow("s1", seq: $0) }, trim: true)
+        // The reader paged back to seq 100: the cut (rows 1 to 401) would take it.
+        state.append([textRow("s1", seq: 2_401)], trim: true, keeping: 100)
+        #expect(state.refolds == 0)
+        #expect(state.rows.count == 2_401)
+        #expect(!state.moreBefore)
+        // The window is back below the cut: the next push trims.
+        state.append([textRow("s1", seq: 2_402)], trim: true, keeping: 1_000)
+        #expect(state.refolds == 1)
+        #expect(state.rows.count == threadRowsInMemory)
+        #expect(state.rows.first?.seq == 403)
+    }
+
+    @Test func `a row past the newest held and a call with no preview search nothing and fold in place`() {
+        var state = ThreadState()
+        state.append((1...50).map { textRow("s1", seq: $0) }, trim: true)
+        state.append([callRow(51, "c1"), EventRow(sessionId: "s1", seq: 52, ts: 52, event: result("c1"))], trim: true)
+        #expect(state.refolds == 0)
+        #expect(state.rows.map(\.seq) == Array(1...52))
+        #expect(state.fold.held("c1") == .final)
+        #expect(state.fold.held("never") == nil)
+        // A preview of a call the fold has not seen is held as one; behind its final row it is stale.
+        state.append([partialRow("c2")], trim: true)
+        #expect(state.fold.held("c2") == .preview)
+        state.append([callRow(53, "c2")], trim: true)
+        #expect(state.fold.held("c2") == .final)
+        state.append([partialRow("c2", path: "stale")], trim: true)
+        #expect(state.rows.map(\.seq) == Array(1...53))
+        #expect(state.refolds == 0)
+    }
+
+    @Test func `a live edit lands on the newest running edit of its path, found without a walk of the history`() {
+        var state = ThreadState()
+        state.append([callRow(1, "e1", path: "/repo/src/a.ts"), callRow(2, "e2", path: "/repo/src/b.ts"), callRow(3, "e3", path: "/repo/src/a.ts")], trim: false)
+        state.append((4...400).map { textRow("s1", seq: $0) }, trim: false)
+        func live(_ callId: String) -> Int? {
+            for entry in state.fold.items { if case .tool(let tool) = entry.item, tool.callId == callId { return tool.live?.adds } }
+            return nil
+        }
+        let took1 = state.fold.applyLiveEdit(LiveEdit.Edit(path: "src/a.ts", kind: .changed, adds: 4, dels: 0, diff: nil, ts: 1))
+        #expect(took1)
+        #expect(live("e3") == 4)
+        #expect(live("e1") == nil)
+        // The newest settled: the next lands on the older call still running.
+        state.append([EventRow(sessionId: "s1", seq: 401, ts: 401, event: result("e3"))], trim: false)
+        let took2 = state.fold.applyLiveEdit(LiveEdit.Edit(path: "src/a.ts", kind: .changed, adds: 6, dels: 0, diff: nil, ts: 2))
+        #expect(took2)
+        #expect(live("e1") == 6)
+        #expect(live("e3") == 4)
+        state.append([EventRow(sessionId: "s1", seq: 402, ts: 402, event: result("e1"))], trim: false)
+        let took3 = state.fold.applyLiveEdit(LiveEdit.Edit(path: "src/a.ts", kind: .changed, adds: 7, dels: 0, diff: nil, ts: 3))
+        #expect(!took3)
+        #expect(live("e2") == nil)
+    }
+
+    @Test func `a preview whose path streams in late is found by its live edit, and a refold finds it again`() {
+        var state = ThreadState()
+        state.append([EventRow(sessionId: "s1", seq: -1, ts: 1, event: .toolCall(ToolCallEvent(callId: "c1", name: "Edit", input: .object([:]), partial: true)), ephemeral: true)], trim: false)
+        let took4 = state.fold.applyLiveEdit(LiveEdit.Edit(path: "src/a.ts", kind: .changed, adds: 1, dels: 0, diff: nil, ts: 1))
+        #expect(!took4)
+        state.append([partialRow("c1", path: "src/a.ts")], trim: false)
+        let took5 = state.fold.applyLiveEdit(LiveEdit.Edit(path: "src/a.ts", kind: .changed, adds: 2, dels: 0, diff: nil, ts: 2))
+        #expect(took5)
+        #expect(runningEdit(state)?.live?.adds == 2)
+        state.refold()
+        let took6 = state.fold.applyLiveEdit(LiveEdit.Edit(path: "src/a.ts", kind: .changed, adds: 3, dels: 0, diff: nil, ts: 3))
+        #expect(took6)
+        #expect(runningEdit(state)?.live?.adds == 3)
+    }
+
+    @Test func `a meta that moves neither the click's busy nor its clock is not observed`() {
+        var state = ThreadState()
+        #expect(!state.observes(meta("s1", status: .idle)))
+        state.beginSend(status: .idle, at: 100)
+        let running = meta("s1", status: .running, busySince: 120)
+        #expect(state.observes(running))
+        state.observe(running)
+        #expect(!state.sending && state.sentTurn == 120 && state.sentAt == 100)
+        // A second meta of the same open turn moves nothing.
+        #expect(!state.observes(running))
+        // A paused thread keeps its status when a send is held: the meta still ends Sending.
+        var paused = ThreadState()
+        paused.beginSend(status: .paused, at: 5)
+        #expect(paused.sending)
+        #expect(paused.observes(meta("s1", status: .paused)))
+        paused.observe(meta("s1", status: .paused))
+        #expect(!paused.sending && paused.sentAt == nil)
     }
 }
 

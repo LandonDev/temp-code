@@ -140,7 +140,11 @@ struct TranscriptView: View {
             .task(id: sessionId) { cwd = client.session(sessionId)?.cwd }
             .task(id: waitIds) { await watchWaits(waitIds) }
             // The window keeps the row it starts at; a resize clears it and the next pass records the new one.
-            .onChange(of: shown.first?.id, initial: true) { _, top in windowTop = top }
+            .onChange(of: shown.first?.id, initial: true) { _, top in
+                windowTop = top
+                // The client keeps the window's rows through its trim.
+                client.keepRows(sessionId, from: shown.lazy.compactMap(\.anchorSeq).first { $0 > 0 })
+            }
             // The window's settled replies parse off the main actor before their rows mount, newest first.
             .onChange(of: "\(shown.first?.id.key ?? 0)|\(shown.count)|\(thread.fold.lastSeq)", initial: true) { prefetch(shown) }
             // The measure: the inset past the 16 pt row inset that centres a column no wider than the cap.

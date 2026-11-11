@@ -127,7 +127,7 @@ final class AppModel: PushHandler {
 
     /// The badge is Home's Needs you count across every host, never a push's own number.
     func refreshBadge() {
-        let count = registry.ordered.reduce(0) { $0 + HomeModel.needsYou($1.sessions).count }
+        let count = registry.ordered.reduce(0) { $0 + HomeModel.needsYouCount($1.sessions) }
         guard count != badge else { return }
         badge = count
         Task { try? await UNUserNotificationCenter.current().setBadgeCount(count) }

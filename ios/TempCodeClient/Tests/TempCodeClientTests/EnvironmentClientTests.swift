@@ -986,4 +986,99 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         #expect(seqs(await again.value) == [1, 2, 3, 4, 5])
         #expect(await rig.waitAsync { (try? await cache.cursor("env_test", sessionId: "s1")) == 5 })
     }
+
+    @Test func `an incoming meta equal to the one held publishes nothing, calls no observer and writes no cache`() async throws {
+        let cache = try SessionCache.inMemory()
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("s1", updatedAt: 5)])
+        #expect(await rig.wait { rig.client.session("s1") != nil })
+        await rig.client.cacheWrites.drained()
+        // A copy in the cache that the equal meta would overwrite if it wrote.
+        try await cache.upsertSessions("env_test", [clientSession("s1", title: "Only in the cache", updatedAt: 5)])
+        var observed: [[String]] = []
+        rig.client.sessionObserver = { _, metas in observed.append(metas.map(\.id)) }
+        let listed = rig.client.sessions
+        let listChanged = Mutex(false)
+        withObservationTracking { _ = rig.client.sessions } onChange: { listChanged.withLock { $0 = true } }
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [clientSession("s1", updatedAt: 5)]))))
+        // A push behind it that touches no session: once it lands, the meta was handled.
+        fake.deliver(json(ServerPush.workspaces(WorkspacesPush(workspaces: [sampleWorkspace("w1"), sampleWorkspace("w2")]))))
+        #expect(await rig.wait { rig.client.workspaces.count == 2 })
+        #expect(!listChanged.withLock { $0 })
+        #expect(rig.client.sessions == listed)
+        #expect(observed.isEmpty)
+        await rig.client.cacheWrites.drained()
+        #expect(try await cache.shell("env_test").sessions.first { $0.id == "s1" }?.title == "Only in the cache")
+        await rig.client.stop()
+    }
+
+    @Test func `a held paused thread's meta with the same status still ends Sending`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [sampleSession("s1", updatedAt: 5, threadType: .chat, status: .paused)])
+        #expect(await rig.wait { rig.client.session("s1")?.status == .paused })
+        await rig.client.openThread("s1")
+        _ = rig.client.threads["s1"]?.beginSend(status: .paused, at: 5)
+        #expect(rig.client.threads["s1"]?.sending == true)
+        // The host holds the message: the status stays paused, the meta moves on.
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 6, threadType: .chat, status: .paused)]))))
+        #expect(await rig.wait { rig.client.threads["s1"]?.sending == false })
+        #expect(rig.client.threads["s1"]?.sentAt == nil)
+        await rig.client.stop()
+    }
+
+    @Test func `a thread whose type is not known yet is never trimmed, and trims once its meta says chat`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        // Opened before the list names it.
+        await rig.client.openThread("s1")
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [])
+        let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe"))
+        fake.answer(id: subscribe.id, result: "null")
+        let events = try #require(await rig.waitForRequest(fake, "session.events"))
+        fake.answer(id: events.id, result: json(EventsPage(rows: [textRow("s1", seq: 1)], moreBefore: false, moreAfter: false, reset: false)))
+        #expect(await rig.wait { rig.client.threads["s1"]?.isLive == true })
+        let past = threadRowsInMemory + threadRowsSlack + 100
+        for start in stride(from: 2, through: past, by: 500) {
+            let rows = (start..<min(start + 500, past + 1)).map { textRow("s1", seq: $0) }
+            fake.deliver(json(ServerPush.events(EventsPush(sessionId: "s1", rows: rows))))
+        }
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.last?.seq == past })
+        #expect(rig.client.threads["s1"]?.rows.count == past)
+        // The meta lands: a chat, so the next row past the slack cuts it back.
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [clientSession("s1", updatedAt: 9)]))))
+        #expect(await rig.wait { rig.client.session("s1") != nil })
+        fake.deliver(json(ServerPush.events(EventsPush(sessionId: "s1", rows: [textRow("s1", seq: past + 1)]))))
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.last?.seq == past + 1 })
+        #expect(rig.client.threads["s1"]?.rows.count == threadRowsInMemory)
+        await rig.client.stop()
+    }
+
+    @Test func `a reset page and the rows pushed after it reach the cache in that order`() async throws {
+        let cache = try SessionCache.inMemory()
+        try await cache.store("env_test", sessionId: "s1", rows: (1...20).map { textRow("s1", seq: $0) }, moreBefore: false)
+        let rig = try ClientRig(cache: cache)
+        await rig.client.start()
+        await rig.client.openThread("s1")
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("s1")])
+        let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe"))
+        fake.answer(id: subscribe.id, result: "null")
+        let events = try #require(await rig.waitForRequest(fake, "session.events"))
+        fake.answer(id: events.id, result: json(EventsPage(rows: (900...905).map { textRow("s1", seq: $0) }, moreBefore: false, moreAfter: false, reset: true)))
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.first?.seq == 900 })
+        fake.deliver(json(ServerPush.events(EventsPush(sessionId: "s1", rows: (906...908).map { textRow("s1", seq: $0) }))))
+        #expect(await rig.wait { rig.client.threads["s1"]?.rows.last?.seq == 908 })
+        await rig.client.cacheWrites.drained()
+        #expect(seqs(try await cache.tail("env_test", sessionId: "s1").rows) == Array(900...908))
+        await rig.client.stop()
+    }
 }

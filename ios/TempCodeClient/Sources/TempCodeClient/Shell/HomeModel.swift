@@ -46,6 +46,19 @@ public enum HomeModel {
         .sorted { ($0.since, $0.meta.id) < ($1.since, $1.meta.id) }
     }
 
+    /// How many threads need the person, `needsYou`'s count with no item
+    /// built and nothing sorted: the app's badge asks at every meta.
+    public static func needsYouCount(_ metas: [SessionMeta]) -> Int {
+        metas.count { meta in
+            guard !meta.archived else { return false }
+            switch meta.status {
+            case .waiting: return true
+            case .error, .paused: return meta.parentId == nil
+            default: return false
+            }
+        }
+    }
+
     /// Running or starting, or settled while a subagent still works. A thread
     /// that waits, failed or paused is not live, whatever its subagents do:
     /// it belongs to Needs you.
