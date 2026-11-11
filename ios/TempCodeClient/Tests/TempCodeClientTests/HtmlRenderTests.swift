@@ -24,6 +24,11 @@ import TempCodeContract
 
     @Test func `ignores other tools, running or failed calls, and malformed results`() {
         #expect(call("mcp__app__html_preview", result).htmlRender == nil)
+        // A name that only ends in the tool's, or holds it elsewhere, is another tool.
+        #expect(call("mcp__app__not_html_render", result).htmlRender == nil)
+        #expect(call("Bash", result).htmlRender == nil)
+        #expect(call("html_render_page", result).htmlRender == nil)
+        #expect(call("html_render", result).htmlRender != nil)
         #expect(call("mcp__app__html_render", result, status: .running).htmlRender == nil)
         #expect(call("mcp__app__html_render", result, status: .failed).htmlRender == nil)
         #expect(call("mcp__app__html_render", "These local images could not be read").htmlRender == nil)

@@ -287,6 +287,18 @@ private final class Play {
         #expect(copy != group)
     }
 
+    @Test func `the row count and the lines are read apart, in either order`() {
+        let steps = [edit(1, new: "a\nb\nc", old: "a"), edit(2, new: "x", old: "y\nz")]
+        // The row build asks only how many rows a group has; the lines come when its line is drawn.
+        let rowsFirst = ActivityGroup(entries: steps)
+        #expect(rowsFirst.stepRows == 2 && !rowsFirst.lone && rowsFirst.kind == .edit)
+        #expect(rowsFirst.adds == 4 && rowsFirst.dels == 3)
+        let linesFirst = ActivityGroup(entries: steps)
+        #expect(linesFirst.adds == 4 && linesFirst.dels == 3)
+        #expect(linesFirst.stepRows == 2 && linesFirst.failed == 0)
+        #expect(ActivityGroup(entries: [steps[0]]).lone)
+    }
+
     @Test func `lines are counted as an editor counts them`() {
         #expect(Board.lineCount(nil) == 0)
         #expect(Board.lineCount("") == 0)

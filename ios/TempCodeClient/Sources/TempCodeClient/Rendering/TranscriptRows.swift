@@ -182,8 +182,8 @@ public struct ActivityGroup: Hashable, Sendable {
     }
 
     /// Lines added and removed over every edit in the run.
-    public var adds: Int { tallies.read(self).adds }
-    public var dels: Int { tallies.read(self).dels }
+    public var adds: Int { tallies.lines(self).adds }
+    public var dels: Int { tallies.lines(self).dels }
     /// Steps that failed or were refused, each agent a wait found failed, a
     /// red gate, a failed report or task: the line's red count, never words.
     public var failed: Int { tallies.read(self).failed }
@@ -192,17 +192,24 @@ public struct ActivityGroup: Hashable, Sendable {
     /// group's copies share, since the counts follow from the entries alone
     /// (a write to them starts another box), and it is no part of the
     /// group's value: it compares equal to every other and hashes to nothing.
+    /// The lines added and removed are read apart from the rest: they cost
+    /// an `ActionRow` per call, and the row build, which makes the live
+    /// turn's groups again at every batch, asks only how many rows a group has.
     fileprivate struct Tallies: Hashable, Sendable {
         struct Counts: Sendable {
             var kind: Kind
-            var adds: Int
-            var dels: Int
             var failed: Int
             var stepRows: Int
         }
 
+        struct Lines: Sendable {
+            var adds: Int
+            var dels: Int
+        }
+
         private final class Box: Sendable {
             let counts = Mutex<Counts?>(nil)
+            let lines = Mutex<Lines?>(nil)
         }
 
         private let box = Box()
@@ -210,17 +217,24 @@ public struct ActivityGroup: Hashable, Sendable {
         func read(_ group: ActivityGroup) -> Counts {
             box.counts.withLock { held in
                 if let held { return held }
-                var adds = 0
-                var dels = 0
-                for tool in group.tools {
-                    let row = ActionRow.of(tool)
-                    adds += row.adds ?? 0
-                    dels += row.dels ?? 0
-                }
                 let calls = group.calls
-                let counts = Counts(kind: group.countedKind, adds: adds, dels: dels, failed: calls.reduce(0) { $0 + FoldedStep.failures($1) }, stepRows: calls.reduce(0) { $0 + FoldedStep.rows($1) })
+                let counts = Counts(kind: group.countedKind, failed: calls.reduce(0) { $0 + FoldedStep.failures($1) }, stepRows: calls.reduce(0) { $0 + FoldedStep.rows($1) })
                 held = counts
                 return counts
+            }
+        }
+
+        func lines(_ group: ActivityGroup) -> Lines {
+            box.lines.withLock { held in
+                if let held { return held }
+                var lines = Lines(adds: 0, dels: 0)
+                for tool in group.tools {
+                    let row = ActionRow.of(tool)
+                    lines.adds += row.adds ?? 0
+                    lines.dels += row.dels ?? 0
+                }
+                held = lines
+                return lines
             }
         }
 

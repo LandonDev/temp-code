@@ -81,7 +81,9 @@ public struct HtmlRender: Hashable, Sendable {
     /// A completed `html_render` call's page, `htmlRenderOf`: nil for any
     /// other tool, a call still running or failed, or a result that names no page.
     public static func of(_ tool: ToolItem) -> HtmlRender? {
-        guard tool.status == .done, shortName(tool.name) == toolName, case .whole(let text) = tool.output,
+        // The row build asks this of every call at every build: a name that
+        // does not end in the tool's is answered before the regex runs.
+        guard tool.status == .done, tool.name.hasSuffix(toolName), shortName(tool.name) == toolName, case .whole(let text) = tool.output,
               let data = text.data(using: .utf8),
               let value = try? JSONDecoder().decode(JSONValue.self, from: data),
               case .object(let fields)? = unwrap(value), let reference = fields["htmlRender"]
