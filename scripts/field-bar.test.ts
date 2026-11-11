@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BenchReport, BenchRun } from './lib/computerBench'
-import { BOX_TOTAL_RATIO, classifyFieldReport, fieldBar } from './lib/fieldBar'
+import { BOX_TOTAL_RATIO, classifyFieldReport, fieldBar, type FieldExpectation } from './lib/fieldBar'
 
 const run = (model: string, task: string, over: Partial<BenchRun> = {}): BenchRun => ({
   model,
@@ -9,6 +9,7 @@ const run = (model: string, task: string, over: Partial<BenchRun> = {}): BenchRu
   taskVersion: 1,
   attempt: 1,
   outcome: 'passed',
+  faultRule: model.startsWith('gpt') ? 'field-reference' : 'field',
   stepBudget: 10,
   queuedMs: 0,
   wallMs: 20_000,
@@ -48,6 +49,8 @@ describe('classifyFieldReport', () => {
 describe('fieldBar', () => {
   const MODEL = 'claude-opus-5-5'
   const CODEX = 'gpt-6.1-sol'
+  /** The round's expectation: one model, two tasks (C5: the judge CLI passes FIELD_MODELS × FIELD_TASKS). */
+  const EXPECT: FieldExpectation = { models: [MODEL], tasks: ['t1', 't2'] }
   // Codex passes t1 (26 s, 8 calls), fails t2.
   const codexRuns = [run(CODEX, 't1', { wallMs: 26_000, calls: calls(8) }), run(CODEX, 't2', { outcome: 'failed', reason: 'no save panel' })]
   const codexReport = report({ mode: 'reference', round: 'r1' }, codexRuns)
@@ -55,7 +58,7 @@ describe('fieldBar', () => {
   it('met: our model matches Codex, wins a task it failed, and the box stays within 15%', () => {
     const mac = report({ round: 'r1' }, [run(MODEL, 't1', { wallMs: 20_000, calls: calls(6) }), run(MODEL, 't2', { wallMs: 30_000 })])
     const box = report({ hostKind: 'box', round: 'r1' }, [run(MODEL, 't1', { wallMs: 22_000 }), run(MODEL, 't2', { wallMs: 33_000 })])
-    const judged = fieldBar([mac, box, codexReport])
+    const judged = fieldBar([mac, box, codexReport], EXPECT)
     expect(judged.misses).toEqual([])
     expect(judged.ok).toBe(true)
     expect(judged.table).toContain('round r1')
@@ -64,7 +67,7 @@ describe('fieldBar', () => {
 
   it('names a parity miss where Codex passed and we failed', () => {
     const mac = report({}, [run(MODEL, 't1', { outcome: 'failed', reason: 'x' }), run(MODEL, 't2')])
-    const judged = fieldBar([mac, codexReport])
+    const judged = fieldBar([mac, codexReport], EXPECT)
     expect(judged.ok).toBe(false)
     expect(judged.misses).toContainEqual(expect.objectContaining({ kind: 'parity', model: MODEL, task: 't1' }))
     expect(judged.table).toContain('MISS parity')
@@ -72,13 +75,13 @@ describe('fieldBar', () => {
 
   it('names the missing win when we pass nothing Codex failed', () => {
     const mac = report({}, [run(MODEL, 't1'), run(MODEL, 't2', { outcome: 'failed', reason: 'x' })])
-    const judged = fieldBar([mac, codexReport])
+    const judged = fieldBar([mac, codexReport], EXPECT)
     expect(judged.misses).toEqual([expect.objectContaining({ kind: 'no-win', model: MODEL })])
   })
 
   it('judges the medians per task against Codex’s', () => {
     const mac = report({}, [run(MODEL, 't1', { wallMs: 40_000, calls: calls(9) }), run(MODEL, 't2')])
-    const judged = fieldBar([mac, codexReport])
+    const judged = fieldBar([mac, codexReport], EXPECT)
     expect(judged.misses).toContainEqual(expect.objectContaining({ kind: 'slower', model: MODEL, task: 't1' }))
     expect(judged.misses).toContainEqual(expect.objectContaining({ kind: 'more-calls', model: MODEL, task: 't1' }))
   })
@@ -86,37 +89,67 @@ describe('fieldBar', () => {
   it('holds a box run to 15% over the same model’s Mac run, per model', () => {
     const mac = report({}, [run(MODEL, 't1', { wallMs: 20_000 }), run(MODEL, 't2', { wallMs: 20_000 })])
     const slow = report({ hostKind: 'box' }, [run(MODEL, 't1', { wallMs: 30_000 }), run(MODEL, 't2', { wallMs: 20_000 })])
-    const judged = fieldBar([mac, slow])
+    const judged = fieldBar([mac, slow], EXPECT)
     expect(judged.misses).toEqual([expect.objectContaining({ kind: 'box-total', model: MODEL })])
     expect(BOX_TOTAL_RATIO).toBe(1.15)
     const fine = report({ hostKind: 'box' }, [run(MODEL, 't1', { wallMs: 23_000 }), run(MODEL, 't2', { wallMs: 22_000 })])
-    expect(fieldBar([mac, fine]).ok).toBe(true)
+    expect(fieldBar([mac, fine], EXPECT).ok).toBe(true)
   })
 
-  it('skips what it was not given, and never fails it', () => {
+  it('a hole in a GIVEN report is a named miss: "bar met" is impossible with it (C5)', () => {
+    // the Mac report lacks t2 (never ran: a skipped lane, a --tasks subset)
     const mac = report({}, [run(MODEL, 't1')])
-    const judged = fieldBar([mac])
-    expect(judged.ok).toBe(true)
+    const judged = fieldBar([mac], EXPECT)
+    expect(judged.ok).toBe(false)
+    expect(judged.misses).toEqual([expect.objectContaining({ kind: 'missing', model: MODEL, task: 't2', detail: expect.stringContaining('no mac run') })])
+    // a model the round expects that the Mac report never ran
+    const two = fieldBar([mac], { models: [MODEL, 'claude-sonnet-5-5'], tasks: ['t1'] })
+    expect(two.misses).toContainEqual(expect.objectContaining({ kind: 'missing', model: 'claude-sonnet-5-5', task: 't1' }))
+    // a codex report whose task was skipped (runs exist but none ran)
+    const codexHole = report({ mode: 'reference' }, [run(CODEX, 't1'), run(CODEX, 't2', { outcome: 'skipped', reason: 'another proof running' })])
+    const judgedCodex = fieldBar([report({}, [run(MODEL, 't1'), run(MODEL, 't2')]), codexHole], EXPECT)
+    expect(judgedCodex.misses).toContainEqual(expect.objectContaining({ kind: 'missing', model: CODEX, task: 't2', detail: expect.stringContaining('no codex run') }))
+    // a box report with a hole misses too
+    const boxHole = report({ hostKind: 'box' }, [run(MODEL, 't1')])
+    expect(fieldBar([boxHole], EXPECT).misses).toContainEqual(expect.objectContaining({ kind: 'missing', model: MODEL, task: 't2', detail: expect.stringContaining('no box run') }))
+  })
+
+  it('a missing whole report stays a skip note, never a miss', () => {
+    const mac = report({}, [run(MODEL, 't1'), run(MODEL, 't2')])
+    const judged = fieldBar([mac], EXPECT)
     expect(judged.skipped.join(' ')).toContain('no Codex reference report')
     expect(judged.skipped.join(' ')).toContain('no box report')
-  })
-
-  it('skips a model in one report alone and a task skipped in a report', () => {
-    const mac = report({}, [run(MODEL, 't1')])
-    const box = report({ hostKind: 'box' }, [run('claude-sonnet-5-5', 't1')])
-    const judged = fieldBar([mac, box])
-    expect(judged.skipped.join(' ')).toContain('claude-sonnet-5-5')
+    expect(judged.misses).toEqual([])
     expect(judged.ok).toBe(true)
   })
 
-  it('refuses two reports of one kind', () => {
-    expect(() => fieldBar([report({}, []), report({}, [])])).toThrow(/two mac reports/)
+  it('notes a model in the box report alone, and a task compared across versions', () => {
+    const mac = report({}, [run(MODEL, 't1'), run(MODEL, 't2')])
+    const box = report({ hostKind: 'box' }, [run(MODEL, 't1'), run(MODEL, 't2'), run('claude-sonnet-5-5', 't1', { taskVersion: 2 })])
+    const judged = fieldBar([mac, box], EXPECT)
+    expect(judged.skipped.join(' ')).toContain('claude-sonnet-5-5')
+    expect(judged.skipped.join(' ')).toContain('task versions 1 and 2')
   })
 
-  it('a run over its budget or off route fails its task in the bar too', () => {
-    // runFault is applied by summarize: 11 calls of 10 is a fail even though the end state passed
-    const mac = report({}, [run(MODEL, 't1', { calls: calls(11) }), run(MODEL, 't2')])
-    const judged = fieldBar([mac, codexReport])
+  it('refuses two reports of one kind, and a report that is no field report', () => {
+    expect(() => fieldBar([report({}, []), report({}, [])], EXPECT)).toThrow(/two mac reports/)
+    expect(() => fieldBar([report({ set: undefined }, [])], EXPECT)).toThrow(/no field report/)
+  })
+
+  it('an off-route field run fails its task in the bar too; budgets never do (C1)', () => {
+    // off-route fails under the field rule, in summarize and so in the bar
+    const offRoute = report({}, [run(MODEL, 't1', { otherTools: ['Bash'] }), run(MODEL, 't2')])
+    const judged = fieldBar([offRoute, codexReport], EXPECT)
     expect(judged.misses).toContainEqual(expect.objectContaining({ kind: 'parity', model: MODEL, task: 't1' }))
+    // calls past the recorded budget are NOT a fault in the field set: the bar compares calls instead
+    const manyCalls = report({}, [run(MODEL, 't1', { calls: calls(11) }), run(MODEL, 't2')])
+    const judged2 = fieldBar([manyCalls, codexReport], EXPECT)
+    expect(judged2.misses.some((m) => m.kind === 'parity')).toBe(false)
+    expect(judged2.misses).toContainEqual(expect.objectContaining({ kind: 'more-calls', model: MODEL, task: 't1' }))
+    // and a Codex reference run that went off route fails ITS side the same way: a free win is no win
+    const codexOff = report({ mode: 'reference' }, [run(CODEX, 't1', { otherTools: ['shell'] }), run(CODEX, 't2', { outcome: 'failed' })])
+    const judged3 = fieldBar([report({}, [run(MODEL, 't1'), run(MODEL, 't2')]), codexOff], EXPECT)
+    // codex now failed both tasks: our pass on t1 is a win, no parity misses
+    expect(judged3.misses.filter((m) => m.kind === 'parity' || m.kind === 'no-win')).toEqual([])
   })
 })

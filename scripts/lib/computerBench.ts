@@ -52,6 +52,18 @@ export interface BenchCall {
   isError: boolean
 }
 
+/**
+ * What fails a run beside its end state. Absent = 'gate' (our gate runs:
+ * off-route, the step budget, the front). 'reference' is the gate's Codex
+ * reference: never faulted, its table a record the judge does not read. The
+ * field set (§21.7) applies ONE rule to both sides: any tool beside the
+ * computer tools (cua_repl for the reference) and ALLOWED_TOOLS is
+ * off-route; budgets are never applied (the bar compares calls instead);
+ * the front is judged for our runs ('field'), never for Codex's own tool,
+ * which takes the front by design ('field-reference').
+ */
+export type FaultRule = 'gate' | 'reference' | 'field' | 'field-reference'
+
 export interface BenchRun {
   model: string
   provider: BenchProvider
@@ -62,9 +74,13 @@ export interface BenchRun {
   outcome: 'passed' | 'failed' | 'skipped'
   /** the check's detail, `off-route: Bash`, `over budget: 9 calls of 6`, `timed out`, `took the front`, a skip's line */
   reason?: string
-  /** the task's budget of computer calls when it ran */
+  /** what faults this run (runFault); absent = 'gate' */
+  faultRule?: FaultRule
+  /** the task's budget of computer calls when it ran (recorded always; judged only under the 'gate' rule) */
   stepBudget: number
   queuedMs: number
+  /** time the run's computer calls were HELD by the host (the tier scheduler's "Waiting for the Mac to be free"), inside the wall */
+  heldMs?: number
   /** the first `running` to the last settle */
   wallMs: number
   /** send → first call, each result row → the next call row, the last result → the settle */
@@ -136,11 +152,17 @@ export function toolKind(name: string): 'computer' | 'allowed' | 'other' {
   return ALLOWED_TOOLS.includes(bare) ? 'allowed' : 'other'
 }
 
-/** What fails a run whatever its check said: off route, over its budget, the front taken. */
-export function runFault(run: Pick<BenchRun, 'otherTools' | 'calls' | 'stepBudget' | 'front'>): string | null {
+/**
+ * What fails a run whatever its check said, by the run's own rule, so
+ * `summarize` and the runner say one thing (the gate's reference once
+ * disagreed between the two layers).
+ */
+export function runFault(run: Pick<BenchRun, 'otherTools' | 'calls' | 'stepBudget' | 'front' | 'faultRule'>): string | null {
+  const rule = run.faultRule ?? 'gate'
+  if (rule === 'reference') return null
   if (run.otherTools.length) return `off-route: ${[...new Set(run.otherTools.map(bareToolName))].join(', ')}`
-  if (run.calls.length > run.stepBudget) return `over budget: ${run.calls.length} calls of ${run.stepBudget}`
-  if (tookFront(run.front)) return 'took the front'
+  if (rule === 'gate' && run.calls.length > run.stepBudget) return `over budget: ${run.calls.length} calls of ${run.stepBudget}`
+  if (rule !== 'field-reference' && tookFront(run.front)) return 'took the front'
   return null
 }
 
@@ -235,6 +257,8 @@ export interface TaskSummary {
   wallMsMedian: number | null
   thinkMsMedian: number | null
   queuedMsMedian: number | null
+  /** the median of the runs' session-hold time (heldMs), inside the wall; null when no run recorded it */
+  heldMsMedian: number | null
   shotsAskedMedian: number | null
   shotsTakenMedian: number | null
   tokensMedian: { input: number; output: number } | null
@@ -277,6 +301,7 @@ export function summarize(runs: readonly BenchRun[]): TaskSummary[] {
       wallMsMedian: median(ran.map((r) => r.wallMs)),
       thinkMsMedian: median(ran.map((r) => r.thinkMs)),
       queuedMsMedian: median(ran.map((r) => r.queuedMs)),
+      heldMsMedian: median(nums(ran.map((r) => r.heldMs))),
       shotsAskedMedian: median(ran.map((r) => r.calls.filter((c) => c.screenshotAsked).length)),
       shotsTakenMedian: median(ran.map((r) => r.calls.reduce((n, c) => n + c.shots, 0))),
       tokensMedian: withTokens.length
@@ -487,22 +512,26 @@ export function renderBenchTable(report: BenchReport, judged: BenchJudgement): s
     `${new Date(report.startedAt).toISOString()}, ${Math.round((report.endedAt - report.startedAt) / 1000)} s, commit ${report.commit.slice(0, 8)}${report.clean ? '' : ' (dirty)'}`,
     `macOS ${report.host.macos}, ${report.host.chip}, load ${report.host.load1.toFixed(1)}${report.ungated ? ', no idle wait (TC_BENCH_UNGATED)' : ''}`
   ]
+  if (report.set === 'field')
+    out.push(
+      `field set · host ${report.hostKind ?? 'mac'}${report.round ? ` · round ${report.round}` : ''} · one run at a time (serial lanes, as the field test ran) · Away on (session tier after 10 s quiet; holds inside the wall, the held column)`
+    )
   const models = [...new Set(judged.summaries.map((s) => s.model))]
   for (const model of models) {
     out.push(
       '',
       `## ${model}`,
       '',
-      '| task | passed | calls | host ms/call | wall s | think s | queued s | shots asked | shots taken | tiers | failures |',
-      '|---|---|---|---|---|---|---|---|---|---|---|'
+      '| task | passed | calls | host ms/call | wall s | think s | queued s | held s | shots asked | shots taken | tiers | failures |',
+      '|---|---|---|---|---|---|---|---|---|---|---|---|'
     )
     for (const s of judged.summaries.filter((x) => x.model === model)) {
       if (!s.runs) {
-        out.push(`| ${s.task} | skipped | | | | | | | | | ${s.skipped} |`)
+        out.push(`| ${s.task} | skipped | | | | | | | | | | ${s.skipped} |`)
         continue
       }
       out.push(
-        `| ${s.task} | ${s.passed}/${s.runs} | ${cell(s.callsMedian, 1, s.callsMedian !== null && s.callsMedian % 1 ? 1 : 0)} | ${cell(s.hostMsMedian)} | ${cell(s.wallMsMedian, 1000, 1)} | ${cell(s.thinkMsMedian, 1000, 1)} | ${cell(s.queuedMsMedian, 1000, 1)} | ${cell(s.shotsAskedMedian)} | ${cell(s.shotsTakenMedian)} | ${tierCell(s.tiers)} | ${s.reasons.join('; ')} |`
+        `| ${s.task} | ${s.passed}/${s.runs} | ${cell(s.callsMedian, 1, s.callsMedian !== null && s.callsMedian % 1 ? 1 : 0)} | ${cell(s.hostMsMedian)} | ${cell(s.wallMsMedian, 1000, 1)} | ${cell(s.thinkMsMedian, 1000, 1)} | ${cell(s.queuedMsMedian, 1000, 1)} | ${cell(s.heldMsMedian, 1000, 1)} | ${cell(s.shotsAskedMedian)} | ${cell(s.shotsTakenMedian)} | ${tierCell(s.tiers)} | ${s.reasons.join('; ')} |`
       )
     }
   }

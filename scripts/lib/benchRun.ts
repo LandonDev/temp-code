@@ -151,6 +151,8 @@ export interface RunScan {
   settledAt: number | null
   /** the thread asked the person a question before settling */
   question: boolean
+  /** the question's ts: a run ends there at once, never at its wall time */
+  questionAt: number | null
 }
 
 /**
@@ -166,12 +168,13 @@ export function scanRun(rows: readonly EventRow[], afterSeq: number): RunScan {
   const queued = statuses.find((r) => r.event.type === 'status' && r.event.status === 'queued')
   const left = queued && statuses.find((r) => r.seq > queued.seq && r.event.type === 'status' && r.event.status !== 'queued')
   const settled = began && entries.find((r) => r.seq >= began.seq && isSettleEvent(r.event))
-  const question = entries.some((r) => r.event.type === 'question-request' && (!settled || r.seq <= settled.seq))
+  const asked = entries.find((r) => r.event.type === 'question-request' && (!settled || r.seq <= settled.seq))
   return {
     firstRunningTs: began?.ts ?? null,
     queuedMs: queued && left ? left.ts - queued.ts : 0,
     settledAt: settled?.ts ?? null,
-    question
+    question: !!asked,
+    questionAt: asked?.ts ?? null
   }
 }
 

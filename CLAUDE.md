@@ -2326,9 +2326,12 @@ why and the measured headline.
   only; scripts/lib/fieldTasks.ts) is the 2026-11-10 field test as 14 tasks
   on Opus, Sonnet and GPT-6.1 Sol, run three ways — `--host mac`, `--host
   box` (threads on an isolated box instance over the Mac bridge, both
-  clocks recorded) and `--reference codex` — and judged across saved
-  reports by `--judge-field` (scripts/lib/fieldBar.ts: parity with Codex,
-  medians at or under its, the box within 15% of the Mac).
+  clocks recorded) and `--reference codex` — one run at a time, Away on
+  (session holds inside the wall, their own column), one off-route rule
+  for both sides and no step budgets — judged across saved reports by
+  `--judge-field` (scripts/lib/fieldBar.ts: parity with Codex, medians at
+  or under its, the box within 15% of the Mac, a hole in a report a named
+  miss).
 - **Fixtures.** src/main/server/computer/fixtures/ (its README): wire
   frames, observation texts and app trees recorded from scratch content
   only (scripts/mac/record-computer-fixtures.sh), held to their schemas

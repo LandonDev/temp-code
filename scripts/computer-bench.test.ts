@@ -219,6 +219,22 @@ describe('runFault', () => {
     expect(runFault(run({ calls: calls(9), stepBudget: 6 }))).toBe('over budget: 9 calls of 6')
     expect(runFault(run({ front: { ...run().front, benchInFront: true } }))).toBe('took the front')
   })
+
+  it('judges by the run’s own rule, so summarize and the runner say one thing (C1)', () => {
+    // the gate's reference: never faulted, in either layer
+    expect(runFault(run({ faultRule: 'reference', otherTools: ['Bash'], calls: calls(99), stepBudget: 6 }))).toBeNull()
+    // the field set: off-route fails BOTH sides, budgets never apply, the front only for our runs
+    expect(runFault(run({ faultRule: 'field', otherTools: ['Bash'] }))).toBe('off-route: Bash')
+    expect(runFault(run({ faultRule: 'field-reference', otherTools: ['WebFetch'] }))).toBe('off-route: WebFetch')
+    expect(runFault(run({ faultRule: 'field', calls: calls(99), stepBudget: 6 }))).toBeNull()
+    expect(runFault(run({ faultRule: 'field-reference', calls: calls(99), stepBudget: 6 }))).toBeNull()
+    expect(runFault(run({ faultRule: 'field', front: { ...run().front, benchInFront: true } }))).toBe('took the front')
+    expect(runFault(run({ faultRule: 'field-reference', front: { ...run().front, benchInFront: true } }))).toBeNull()
+    // summarize counts a faulted field run as failed, by the same rule
+    const summaries = summarize([run({ faultRule: 'field', otherTools: ['Bash'], model: 'm' }), run({ faultRule: 'field-reference', calls: calls(99), stepBudget: 6, model: 'ref' })])
+    expect(summaries.find((s) => s.model === 'm')?.passed).toBe(0)
+    expect(summaries.find((s) => s.model === 'ref')?.passed).toBe(1)
+  })
 })
 
 // ── summaries ───────────────────────────────────────────────────────────

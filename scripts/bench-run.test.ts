@@ -297,24 +297,26 @@ describe('scanRun: a box thread read over the wire', () => {
       row(5000, { type: 'turn-complete' }),
       row(5100, { type: 'status', status: 'idle' })
     ]
-    expect(scanRun(rows, 0)).toEqual({ firstRunningTs: 1000, queuedMs: 800, settledAt: 5000, question: false })
+    expect(scanRun(rows, 0)).toEqual({ firstRunningTs: 1000, queuedMs: 800, settledAt: 5000, question: false, questionAt: null })
   })
 
   it('answers nothing settled while the turn is open, and only rows past afterSeq count', () => {
     seq = 0
     const rows = [row(50, { type: 'status', status: 'idle' }), row(1000, { type: 'status', status: 'running' })]
-    expect(scanRun(rows, 1)).toEqual({ firstRunningTs: 1000, queuedMs: 0, settledAt: null, question: false })
-    expect(scanRun([], 0)).toEqual({ firstRunningTs: null, queuedMs: 0, settledAt: null, question: false })
+    expect(scanRun(rows, 1)).toEqual({ firstRunningTs: 1000, queuedMs: 0, settledAt: null, question: false, questionAt: null })
+    expect(scanRun([], 0)).toEqual({ firstRunningTs: null, queuedMs: 0, settledAt: null, question: false, questionAt: null })
   })
 
-  it('marks a question asked before the settle', () => {
+  it('marks a question asked before the settle, with its ts so the run ends there at once', () => {
     seq = 0
     const rows = [
       row(1000, { type: 'status', status: 'running' }),
       row(2000, { type: 'question-request', requestId: 'q1', question: 'Tabs or spaces?' } as unknown as AgentEvent),
       row(3000, { type: 'status', status: 'idle' })
     ]
-    expect(scanRun(rows, 0)).toMatchObject({ question: true, settledAt: 3000 })
+    expect(scanRun(rows, 0)).toMatchObject({ question: true, questionAt: 2000, settledAt: 3000 })
+    // a question with the turn still open: the runner settles the run at the question's ts, never the wall time
+    expect(scanRun(rows.slice(0, 2), 0)).toMatchObject({ question: true, questionAt: 2000, settledAt: null })
   })
 })
 

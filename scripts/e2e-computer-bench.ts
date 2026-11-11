@@ -74,7 +74,8 @@ import {
   writeBaseline,
   type Baseline,
   type BenchReport,
-  type BenchRun
+  type BenchRun,
+  type FaultRule
 } from './lib/computerBench'
 import { RigStop, asProbe, repoRoot, startRig, type Rig } from './lib/computerRig'
 import { otherProof } from './lib/proofOrder'
@@ -112,9 +113,9 @@ function loadBaseline(): Baseline {
 }
 
 if (args.judgeField) {
-  // The field bar over saved reports (fieldBar.ts): runs nothing, works on any host.
+  // The field bar over saved reports (fieldBar.ts): runs nothing, works on any host; a hole in a report is a named miss (C5).
   const saved = args.judgeField.map((path) => JSON.parse(readFileSync(path, 'utf8')) as BenchReport)
-  const judged = fieldBar(saved)
+  const judged = fieldBar(saved, { models: FIELD_MODELS.map((m) => m.model), tasks: FIELD_TASKS.map((t) => t.id) })
   process.stdout.write(judged.table)
   process.exit(judged.ok ? 0 : 1)
 }
@@ -141,6 +142,8 @@ const STARTED = Date.now()
 /** The field set (fieldTasks.ts): the field test's tasks, three ways to run them (docs/computer-protocol.md §21.7). */
 const FIELD = args.set === 'field'
 const BOX = args.host === 'box'
+/** One fault rule for every run of this invocation, stamped on the runs so `summarize` and the runner say one thing (C1). */
+const FAULT_RULE: FaultRule = FIELD ? (args.mode === 'reference' ? 'field-reference' : 'field') : args.mode === 'reference' ? 'reference' : 'gate'
 const judged = args.mode === 'gate' || args.mode === 'report-only'
 /** The script's own deadline holds for the gate's plan alone (one run a task, reruns on a breach); `--runs n` takes as long as it takes. */
 const DEADLINE = judged && args.runs === null ? STARTED + BENCH_TIMING.budgetMs : Infinity
@@ -542,6 +545,7 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
     taskVersion: task.version,
     attempt,
     outcome: 'skipped',
+    faultRule: FAULT_RULE,
     stepBudget: task.stepBudget,
     queuedMs: 0,
     wallMs: 0,
@@ -633,6 +637,33 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
   })
 }
 
+/**
+ * Samples the thread's computer row every 250 ms: the time its running call
+ * was HELD by the host (the tier scheduler's "Waiting for the Mac to be
+ * free"), kept inside the wall and reported as the run's own column (C4).
+ * `take()` stops the sampler and answers the total, idempotently.
+ */
+function heldSampler(key: string, maxMs = 15 * 60_000): { take(): number } {
+  const everyMs = 250
+  let heldMs = 0
+  let sampled = 0
+  let stopped = false
+  const timer = setInterval(() => {
+    // self-limiting, so a run that throws before its take() never leaks a live interval
+    if ((sampled += everyMs) > maxMs) return clearInterval(timer)
+    if (R.sessions.rowOf(key)?.running?.held) heldMs += everyMs
+  }, everyMs)
+  return {
+    take: () => {
+      if (!stopped) {
+        stopped = true
+        clearInterval(timer)
+      }
+      return heldMs
+    }
+  }
+}
+
 /** The thread's turns, then the checks, read through the rig and never through the thread. */
 async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: BenchRun, made: (id: string) => void): Promise<BenchRun> {
   const before = R.mac.frontmost()
@@ -651,6 +682,7 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
     const allow = row.event.choices !== 'run-skip' || (FIELD && UNGATED)
     queueMicrotask(() => void registry.approve(id, requestId, allow))
   })
+  const held = heldSampler(id)
   try {
     let after = lastSeq(id)
     const sent = Date.now()
@@ -701,6 +733,7 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
       outcome: 'passed',
       wallMs: facts.wallMs,
       thinkMs: facts.thinkMs,
+      heldMs: held.take(),
       calls: facts.calls,
       otherTools: facts.otherTools,
       cards: facts.cards,
@@ -713,10 +746,12 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
         benchInFront
       }
     }
-    const fault = args.mode === 'reference' ? null : runFault(done)
+    // One judge for both layers: the run's own faultRule decides (C1), never the mode here.
+    const fault = runFault(done)
     return check.ok && !fault ? done : { ...done, outcome: 'failed', reason: fault ?? check.detail }
   } finally {
     offCards()
+    held.take()
   }
 }
 
@@ -748,6 +783,7 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
   // thread's queries resolve to the lane's scratch pids and its host times land under the key.
   const key = `${B.envId}:${id}`
   R.pins.bind(key, lane.name)
+  const held = heldSampler(key)
   const rowsOf = async (): Promise<EventRow[]> => {
     const out = await B.call<EventRow[] | { rows: EventRow[] }>('session.events', { sessionId: id, afterSeq: 0 })
     return Array.isArray(out) ? out : (out.rows ?? [])
@@ -784,6 +820,7 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
     if (scan.firstRunningTs === null && Date.now() > queueUntil) {
       const waited = Date.now() - sent
       lane.queuedMs += waited
+      held.take()
       return { ...run, queuedMs: waited, reason: 'queued past 5 minutes on the box' }
     }
   }
@@ -791,7 +828,8 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
   lane.queuedMs += scan.queuedMs
   const deadline = Date.now() + task.wallMs
   let timedOut = false
-  while (scan.settledAt === null) {
+  // A question ends the run AT ONCE (the Mac path's rule): never a wall of waiting labeled "timed out".
+  while (scan.settledAt === null && !scan.question) {
     if (Date.now() > deadline) {
       timedOut = true
       await B.call('session.interrupt', { sessionId: id }).catch(() => undefined)
@@ -807,11 +845,11 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
     rows = await rowsOf()
     scan = scanRun(rows, after)
   }
-  const settleTs = scan.settledAt ?? rows.at(-1)?.ts ?? scan.firstRunningTs
+  const settleTs = scan.question && scan.settledAt === null ? (scan.questionAt ?? Date.now()) : (scan.settledAt ?? rows.at(-1)?.ts ?? scan.firstRunningTs)
   const facts = readRun(rows, R.calls(key), scan.firstRunningTs, settleTs)
   let check: CheckResult
-  if (timedOut) check = { ok: false, detail: 'timed out' }
-  else if (scan.question) check = { ok: false, detail: 'asked the person a question' }
+  if (scan.question) check = { ok: false, detail: 'asked the person a question' }
+  else if (timedOut) check = { ok: false, detail: 'timed out' }
   else {
     const records = callRecords(rows)
     const c = await task.check(start, R.reader(lane.name), replyOf(rows), records).catch((e: Error) => ({ ok: false, detail: `check: ${e.message}` }))
@@ -831,6 +869,7 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
     outcome: 'passed',
     wallMs: facts.wallMs,
     thinkMs: facts.thinkMs,
+    heldMs: held.take(),
     calls: facts.calls,
     otherTools: facts.otherTools,
     cards: facts.cards,
@@ -884,6 +923,7 @@ function skippedRun(lane: Lane, task: ComputerTask, reason: string): BenchRun {
     attempt: 1,
     outcome: 'skipped',
     reason,
+    faultRule: FAULT_RULE,
     stepBudget: task.stepBudget,
     queuedMs: 0,
     wallMs: 0,
@@ -906,8 +946,18 @@ try {
   log(
     `${args.mode}${FIELD ? ` · field set · host ${args.host}${args.round ? ` · round ${args.round}` : ''}` : ''}: ${lanes.map((l) => l.model.model).join(', ') || 'no lane'} on ${runnable.map((t) => t.id).join(', ')}`
   )
+  if (FIELD) {
+    // The person is away for a field round: Away answers every card, and the session tier is granted after
+    // 10 s of quiet (scheduleRules), never the 3-minute Run-now delay; the holds land in the held column (C4).
+    await macRpc('away.set', { enabled: true })
+    log('Away on for the field round: the session tier after 10 s of quiet; session holds counted inside the wall')
+  }
   if (BOX) box = await startBoxLink()
-  await Promise.all(lanes.map(runLane))
+  if (FIELD) {
+    // One run at a time, every host and model, as the field test ran (C3): the medians of the three ways compare.
+    log('serial lanes: one model at a time')
+    for (const lane of lanes) await runLane(lane)
+  } else await Promise.all(lanes.map(runLane))
 } finally {
   computerHooks.current = hooks
   const table = writeReports()
