@@ -176,6 +176,9 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { false }
+    /// `--active` makes an NSDocumentController, and AppKit then asks for an untitled document at launch
+    /// (or an open panel), which comes forward: the probe opens its own documents and none other.
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 

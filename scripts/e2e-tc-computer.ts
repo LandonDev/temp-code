@@ -530,7 +530,7 @@ function swiftEnv(): NodeJS.ProcessEnv {
 // ── what the Mac looks like from outside the service ────────────────────
 
 function probe<T>(
-  command: 'pointer' | 'frontmost' | 'frontwindow' | 'pasteboard' | 'hide' | 'restore-front' | 'omnibox' | 'screen',
+  command: 'pointer' | 'frontmost' | 'frontwindow' | 'pasteboard' | 'hide' | 'restore-front' | 'omnibox' | 'screen' | 'menu-items',
   args: string[] = [],
   timeoutMs = 10_000
 ): T {
@@ -1860,6 +1860,7 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     if (replaced.front) noteHold('active 9 replace', replaced.front)
     data.person = assertPersonUntouched(before, 'after save_as')
   })
+  await activeAppsSteps(a, leg, scratch, awayLongEnough)
   await leg.step('active 10: every hold within its bound', async (data) => {
     const holds = report.frontHolds.filter((h) => h.step.startsWith('active'))
     if (!holds.length) throw skip(PERSON_ACTIVE)
@@ -1873,6 +1874,157 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
   })
   if (pid && alive(pid)) process.kill(pid, 'SIGKILL')
   rmSync(scratch, { recursive: true, force: true })
+}
+
+/**
+ * The same front-tier steps on TextEdit and Finder (§26.3, §26.9), whose File items AppKit validates
+ * lazily: TC Probe's item read enabled in its hold where TextEdit's Save As… and Finder's New Folder
+ * stayed disabled (the field suite, macOS 27.2, 2026-11-10). A scratch TextEdit on `<scratch>/te/note.txt`
+ * (its own instance, nothing restored, Open Recent off by its argument and checked at the end) and a
+ * window of the person's Finder on `<scratch>/fd` (closed after; its folder removed from disk, never the
+ * Trash). Nothing of the person's in either app is read or touched. Each step that brings an app
+ * forward waits for its quiet (`awayLongEnough`) and puts the person's app back.
+ */
+async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLongEnough: () => Promise<void>): Promise<void> {
+  const te = join(scratch, 'te')
+  const note = join(te, 'note.txt')
+  const fd = join(scratch, `fd-${process.pid}`)
+  const act = (pid: number, o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'front')[]) =>
+    a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
+  const read = (pid: number, title: string): Promise<Observation> =>
+    a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
+  /** the person's front app and window after a step that took the front: as before, or moved by the person */
+  const frontBack = async (before: FrontWindow, since: number, data: Record<string, unknown>): Promise<void> => {
+    const after = await until(() => {
+      const now = frontWindow()
+      return now.pid === before.pid && now.window === before.window ? now : null
+    }, SERVICE.frontRestoreMs + 500, 'the person\'s front app and window').catch(() => frontWindow())
+    data.front = { before, after }
+    if (after.pid === before.pid && after.window === before.window) return
+    check(personIdleSeconds() * 1_000 < Date.now() - since, "the person's front app and window came back", data.front)
+  }
+  let tePid = 0
+  let finder = 0
+  let teDoc: Observation | null = null
+  let fdWin: Observation | null = null
+  try {
+    await leg.step('active TextEdit: a scratch TextEdit on note.txt in the background', async (data) => {
+      mkdirSync(join(te, 'out'), { recursive: true })
+      writeFileSync(note, 'TC Probe note\n')
+      const running = pidsOf('TextEdit')
+      const before = frontWindow()
+      await awayLongEnough()
+      execFileSync('open', ['-n', '-g', '-a', 'TextEdit', note, '--args', '-ApplePersistenceIgnoreState', 'YES', '-NSRecentDocumentsLimit', '0',
+        '-NSShowAppCentricOpenPanelInsteadOfUntitledFile', 'NO', '-NSDocumentSaveNewDocumentsToCloud', 'NO', '-TCProofRun', RUN_MARK])
+      tePid = data.pid = await until(() => pidsOf('TextEdit').find((p) => !running.includes(p)) ?? null, 15_000, 'the scratch TextEdit')
+      teDoc = await until(async () => ((await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === tePid)?.windows?.some((w) => w.title.startsWith('note')) ? read(tePid, 'note') : null), 15_000, 'the note window')
+      if (frontWindow().pid === tePid) {
+        data.raised = 'TextEdit came forward at launch; put back'
+        probe('restore-front', [String(before.pid), String(before.window)])
+      }
+      const text = findElement(teDoc!, 'the text area', (e) => e.role === 'text area')
+      okStep((await act(tePid, teDoc!, { action: 'type', element: text.index, text: 'more\n' }, ['ax'])).step)
+      teDoc = await read(tePid, 'note')
+    })
+    await leg.step('active TextEdit 1: save_as at front opens the panel through File › Save As… and writes out/te-note.txt', async (data) => {
+      await awayLongEnough()
+      const target = join(te, 'out', 'te-note.txt')
+      const before = frontWindow()
+      const since = Date.now()
+      const r = await act(tePid, teDoc!, { action: 'save_as', path: target }, ['ax', 'process', 'front'])
+      const step = okStep(r.step)
+      data.step = step
+      if (step.front) noteHold('active TextEdit 1', step.front)
+      await frontBack(before, since, data)
+      check(step.input?.via === 'panel' && existsSync(target), 'save_as wrote the file through the panel', step)
+      teDoc = await read(tePid, 'te-note').catch(() => read(tePid, 'note'))
+    })
+    await leg.step('active TextEdit 2: ⌘S at front saves', async (data) => {
+      await awayLongEnough()
+      const text = findElement(teDoc!, 'the text area', (e) => e.role === 'text area')
+      okStep((await act(tePid, teDoc!, { action: 'type', element: text.index, text: 'again\n' }, ['ax'])).step)
+      teDoc = await read(tePid, teDoc!.window.title)
+      const before = frontWindow()
+      const since = Date.now()
+      const r = await act(tePid, teDoc, { action: 'key', text: 'super+s' }, ['ax', 'process', 'front'])
+      const step = okStep(r.step)
+      data.step = step
+      const hold = noteHold('active TextEdit 2', step.front)
+      await frontBack(before, since, data)
+      check(step.tier === 'front' && step.input?.on === 'File › Save' && hold.restored === 'restored', 'saved at front and TextEdit given back', step)
+      check(step.effect === 'changed', 'the save reached the disk or cleared the edited flag', step)
+    })
+    await leg.step("active TextEdit 3: nothing of the run in TextEdit's Open Recent", async (data) => {
+      const items = probe<{ items: string[] }>('menu-items', [String(tePid), 'File', 'Open Recent']).items
+      data.items = items.filter((i) => /note/.test(i))
+      // the menu is the person's list: it can only be read; an entry of the run is removed by hand (Clear Menu clears theirs too)
+      check(!items.some((i) => i.startsWith('note') || i.startsWith('te-note')), "Open Recent lists no file of the run; remove it by hand if it does", items)
+    })
+    await leg.step('active Finder: a window of the scratch folder in the background', async (data) => {
+      mkdirSync(fd, { recursive: true })
+      writeFileSync(join(fd, 'draft.txt'), 'draft\n')
+      finder = pidsOf('Finder')[0] ?? 0
+      check(finder > 0, 'Finder runs', finder)
+      const before = frontWindow()
+      await awayLongEnough()
+      execFileSync('open', ['-g', fd])
+      fdWin = await until(async () => ((await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === finder)?.windows?.some((w) => w.title === basename(fd)) ? read(finder, basename(fd)) : null), 10_000, 'the scratch Finder window')
+      if (frontWindow().pid === finder && before.pid !== finder) {
+        data.raised = 'Finder came forward; put back'
+        probe('restore-front', [String(before.pid), String(before.window)])
+      }
+    })
+    await leg.step('active Finder 1: a rename by set_value reads on screen only, not committed', async (data) => {
+      const field = findElement(fdWin!, "draft.txt's name", (e) => e.role === 'input' && (e.value === 'draft.txt' || e.name === 'draft.txt'))
+      const r = await act(finder, fdWin!, { action: 'set_value', element: field.index, value: 'final.txt' }, ['ax'])
+      const step = okStep(r.step)
+      data.step = step
+      check(step.effect === 'uncommitted', 'on screen only, not committed', step)
+      check(existsSync(join(fd, 'draft.txt')) && !existsSync(join(fd, 'final.txt')), 'the file kept its name', readdirSync(fd))
+      fdWin = await read(finder, basename(fd))
+    })
+    await leg.step('active Finder 2: Return at front commits the rename on disk', async (data) => {
+      await awayLongEnough()
+      const ino = statSync(join(fd, 'draft.txt')).ino
+      const field = findElement(fdWin!, 'the edited name', (e) => e.role === 'input' && (e.value === 'final.txt' || e.name === 'final.txt'))
+      const before = frontWindow()
+      const since = Date.now()
+      const r = await act(finder, fdWin!, { action: 'key', text: 'Return', element: field.index }, ['ax', 'process', 'front'])
+      const step = okStep(r.step)
+      data.step = step
+      noteHold('active Finder 2', step.front)
+      await frontBack(before, since, data)
+      check(step.tier === 'front', 'Return ran at front', step)
+      await until(() => (existsSync(join(fd, 'final.txt')) && statSync(join(fd, 'final.txt')).ino === ino ? true : null), 3_000, 'final.txt with the same inode')
+      fdWin = await read(finder, basename(fd))
+    })
+    await leg.step('active Finder 3: ⇧⌘N at front makes a folder through File › New Folder', async (data) => {
+      await awayLongEnough()
+      const before = frontWindow()
+      const since = Date.now()
+      const r = await act(finder, fdWin!, { action: 'key', text: 'super+shift+n' }, ['ax', 'process', 'front'])
+      const step = okStep(r.step)
+      data.step = step
+      noteHold('active Finder 3', step.front)
+      await frontBack(before, since, data)
+      check(step.tier === 'front' && step.input?.on === 'File › New Folder', 'New Folder ran at front', step)
+      await until(() => (readdirSync(fd).some((n) => n.startsWith('untitled folder')) ? true : null), 3_000, 'untitled folder on disk')
+    })
+  } finally {
+    if (tePid && alive(tePid)) process.kill(tePid, 'SIGKILL')
+    if (finder) {
+      // the scratch window alone, by its close button at ax: the person's Finder windows stay as they are
+      try {
+        const w = await read(finder, basename(fd))
+        const close = elementLines(w).find((e) => e.role === 'button' && e.name === 'close')
+        if (close) await act(finder, w, { action: 'left_click', element: close.index }, ['ax'])
+      } catch {
+        // the window was never opened or is gone
+      }
+    }
+    rmSync(te, { recursive: true, force: true })
+    rmSync(fd, { recursive: true, force: true })
+  }
 }
 
 /** A path with /private for /tmp, as AXDocument names it; the path as given when it is not there yet. */

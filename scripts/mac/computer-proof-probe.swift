@@ -225,6 +225,26 @@ case "sentinel":
     emit(["armed": true, "at": nowMs()], exitAfter: false)
     CFRunLoopRun()
 
+case "menu-items":
+    // menu-items <pid> <title>…: the titles of the menu the path names in the app's menu bar, read over AX
+    guard args.count >= 3, let pid = pid_t(args[1]) else { fail("menu-items <pid> <title>…") }
+    func kids(_ e: AXUIElement) -> [AXUIElement] {
+        var v: CFTypeRef?
+        return AXUIElementCopyAttributeValue(e, kAXChildrenAttribute as CFString, &v) == .success ? (v as? [AXUIElement]) ?? [] : []
+    }
+    func title(_ e: AXUIElement) -> String {
+        var v: CFTypeRef?
+        return AXUIElementCopyAttributeValue(e, kAXTitleAttribute as CFString, &v) == .success ? (v as? String) ?? "" : ""
+    }
+    var bar: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXMenuBarAttribute as CFString, &bar) == .success, let menuBar = bar else { fail("no menu bar") }
+    var items = kids(menuBar as! AXUIElement)
+    for name in args.dropFirst(2) {
+        guard let item = items.first(where: { title($0) == name }), let menu = kids(item).first else { emit(["items": [String]()]); exit(0) }
+        items = kids(menu)
+    }
+    emit(["items": items.map(title).filter { !$0.isEmpty }])
+
 case "screen":
     let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
     let locked = session["CGSSessionScreenIsLocked"] as? Bool ?? false
