@@ -516,3 +516,23 @@ private func stealAndRestore(_ g: inout FrontGuard, at: Double) {
         #expect(!SessionPause.ranAtSession([.ok(plain), .failed(failedWithout), .notRun(NotRunStep(index: 2, action: .type))]))
     }
 }
+
+@Suite struct FrontGuardTraceTests {
+    @Test func aStealAndItsSettleAreTracedAndQuietTicksAreNot() {
+        var g = launch()
+        let steal = activated(stealer, at: 1_000)
+        let decision = g.handle(steal)
+        let line = FrontGuard.traceLine(1, steal, decision, g, settled: false)
+        #expect(line?.hasPrefix("front 1: activated(pid: 200") == true)
+        #expect(line?.contains("→ restore(100)") == true)
+        #expect(line?.contains("recorded 100/11") == true)
+        #expect(FrontGuard.traceLine(1, .tick(at: 1_100), .none, g, settled: false) == nil)
+        #expect(FrontGuard.traceLine(1, .sample(front: stealer, window: nil, above: false, at: 1_120), .none, g, settled: false) == nil)
+        _ = g.handle(.restoreStarted(at: 1_010))
+        let late = FrontEvent.tick(at: 1_500)
+        let outcomes = g.outcomes
+        let d = g.handle(late)
+        #expect(g.outcomes == outcomes + 1)
+        #expect(FrontGuard.traceLine(1, late, d, g, settled: true)?.hasSuffix("settled failed") == true)
+    }
+}

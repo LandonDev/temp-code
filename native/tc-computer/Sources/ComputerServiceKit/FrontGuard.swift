@@ -501,3 +501,19 @@ public struct SessionPause: Equatable, Sendable {
         }
     }
 }
+
+extension FrontGuard {
+    /// The trace's line for one guard step (TEMP_CODE_COMPUTER_TRACE=1): the event, the decision, the phase after
+    /// it, the recorded front and, when the step settled the steal, how. Nil for a 100 ms tick or a 20 ms sample
+    /// that decided nothing and settled nothing.
+    public static func traceLine(_ id: Int, _ event: FrontEvent, _ decision: FrontDecision, _ state: FrontGuard, settled: Bool) -> String? {
+        switch event {
+        case .tick, .sample: if decision == .none && !settled { return nil }
+        default: break
+        }
+        let recorded = state.recorded.map { "\($0.pid)/\($0.window.map(String.init) ?? "-")" } ?? "none"
+        var line = "front \(id): \(event) → \(decision), phase \(state.phase), recorded \(recorded)"
+        if settled { line += ", settled \(state.restored.map { "\($0)" } ?? "-")" }
+        return line
+    }
+}

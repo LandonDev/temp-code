@@ -65,7 +65,7 @@ public final class ComputerService: @unchecked Sendable {
         self.lifecycle = Lifecycle(env: environment, trace: trace)
         self.front = FrontWatch(
             source: environment.front, locks: MacLocks(directory: environment.lockDirectory), windows: modules.windows,
-            windowEvents: environment.windowEvents, timing: environment.timing,
+            windowEvents: environment.windowEvents, timing: environment.timing, trace: trace,
             notify: { relay.service?.notify("apps/frontRestored", $0) }
         )
         self.inventory = Inventory(workspace: environment.workspace, timing: environment.timing, front: front, windows: modules.windows, parent: environment.parentPid)

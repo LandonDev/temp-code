@@ -58,6 +58,8 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
     private let windowEvents: any WindowEventSource
     private let timing: ServiceTiming
     private let notify: @Sendable (AppsFrontRestoredNotification.Params) -> Void
+    /// TEMP_CODE_COMPUTER_TRACE=1: each guard's events, decisions and outcomes, the 100 ms ticks and 20 ms samples only when they decide
+    private let trace: Trace?
     private let queue = DispatchQueue(label: "tc-computer.front")
     private var entries: [Int: Entry] = [:]
     private var nextID = 0
@@ -68,7 +70,8 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
     private var stopped = false
 
     init(source: any FrontSource, locks: MacLocks, windows: any WindowSource, windowEvents: any WindowEventSource, timing: ServiceTiming,
-         notify: @escaping @Sendable (AppsFrontRestoredNotification.Params) -> Void) {
+         trace: Trace? = nil, notify: @escaping @Sendable (AppsFrontRestoredNotification.Params) -> Void) {
+        self.trace = trace
         self.source = source
         self.locks = locks
         self.windows = windows
@@ -206,8 +209,10 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
 
     private func handle(_ id: Int, _ event: FrontEvent, lease: MacLockLease? = nil) {
         guard var entry = entries[id] else { return }
+        let outcomes = entry.state.outcomes
         let decision = entry.state.handle(event)
         entries[id] = entry
+        if let trace, trace.enabled, let line = FrontGuard.traceLine(id, event, decision, entry.state, settled: entry.state.outcomes != outcomes) { trace.note(line) }
         apply(decision, id, lease: lease)
         tell(id)
     }
@@ -258,6 +263,7 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
     }
 
     private func lockBusy() {
+        trace?.note("front: session.lock busy, every guard paused for it")
         guard !lockPaused else { return }
         lockPaused = true
         handleAll(.paused(.lock, at: source.now()))
