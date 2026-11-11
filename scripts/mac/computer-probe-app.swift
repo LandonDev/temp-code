@@ -455,6 +455,11 @@ final class ProbeFewer: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
         // AXPress succeeds and leaves the tree unchanged, a deliberate test of §27.8.
         let unchanged = NSButton(title: "No Change", target: self, action: #selector(noChange(_:)))
+        // a press that changes nothing draws nothing either: AppKit's pressed flash is a pixel change the wait counts
+        if let cell = unchanged.cell as? NSButtonCell {
+            cell.highlightsBy = []
+            cell.showsStateBy = []
+        }
         let stack = NSStackView(views: [popup, scroll, unchanged])
         stack.orientation = .vertical
         stack.alignment = .leading

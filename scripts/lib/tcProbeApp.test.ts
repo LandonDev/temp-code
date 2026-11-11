@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { STEAL_PLIST_KEYS, STEAL_PROBE_BUNDLE_ID, binarySpellings, probePlist } from './tcProbeApp'
+import { STEAL_PLIST_KEYS, STEAL_PROBE_BUNDLE_ID, binarySpellings, guiLaunchEnvironment, probePlist } from './tcProbeApp'
 
 describe('binarySpellings', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tc-probe-spell-'))
@@ -59,5 +59,13 @@ describe('probePlist', () => {
     expect(plist).toContain('<key>CFBundleTypeRole</key><string>Viewer</string>')
     expect(plist).toContain('<array><string>tcprobe</string></array>')
     expect(plist.trimEnd().endsWith('</dict>\n</plist>')).toBe(true)
+  })
+})
+
+describe('guiLaunchEnvironment', () => {
+  it('leaves out the guard marks a thread shell carries, and keeps the rest', () => {
+    const runner = { PATH: '/usr/bin', TEMP_CODE_COMPUTER_PROOF: '1', TEMP_CODE_THREAD: 't1', TEMP_CODE_CALL: 'c1', TEMP_CODE_INSTANCE: 'i1', CLAUDE_PID: '7', ANTHROPIC_BASE_URL: 'http://127.0.0.1/~t=t1' }
+    expect(guiLaunchEnvironment(runner)).toEqual({ PATH: '/usr/bin', TEMP_CODE_COMPUTER_PROOF: '1' })
+    expect(runner.TEMP_CODE_THREAD).toBe('t1')
   })
 })

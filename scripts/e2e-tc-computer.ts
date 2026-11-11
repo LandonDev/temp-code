@@ -135,7 +135,7 @@ import { macReady } from './lib/benchRun'
 import { webProofFixtures, WEB_NONCE, WEB_TITLES } from './lib/webProofFixtures'
 import { FIELD_FORM, fieldFormCode } from './lib/fieldTasks'
 import { intPoint } from './lib/computerPoint'
-import { STEAL_PROBE_APP_NAME, buildStealProbeApp, cleanupProbeApp, launchProbe } from './lib/tcProbeApp'
+import { STEAL_PROBE_APP_NAME, buildStealProbeApp, cleanupProbeApp, guiLaunchEnvironment, launchProbe } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { computerInitializeMs, computerProofMode, computerProofPolicy, LOST_TRY_LINE, lostTry, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { OwnInput, personSince } from './lib/proofGate'
@@ -609,7 +609,7 @@ class Service {
     const trace = openSync(TRACE, 'a')
     this.proc = spawn(BIN, ['serve'], {
       stdio: ['pipe', 'pipe', trace],
-      env: { ...process.env, ...COMPUTER_PROOF_ENV, TEMP_CODE_COMPUTER_TRACE: '1', ...env }
+      env: { ...guiLaunchEnvironment(), ...COMPUTER_PROOF_ENV, TEMP_CODE_COMPUTER_TRACE: '1', ...env }
     })
     closeSync(trace)
     services.push(this)
@@ -1555,7 +1555,7 @@ async function webLeg(): Promise<void> {
       if (personIdleSeconds() < 5 || !(await screenAwake())) throw skip('skipped: no quiet, unlocked launch gap')
       webCleanups.add(stopBrowser)
       try {
-        execFileSync('open', args, { stdio: 'pipe', timeout: 10_000 })
+        execFileSync('open', args, { stdio: 'pipe', timeout: 10_000, env: guiLaunchEnvironment() })
         pid = await until(() => scan.processes().find((p) => hasChromeProfile(p.command, profile) && p.command.startsWith(join(browser, 'Contents/MacOS/Google Chrome for Testing')))?.pid ?? null, 15_000, 'the scratch Chrome pid')
         await sleep(1_000)
       } finally {
@@ -1918,7 +1918,7 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
       const before = frontWindow()
       await awayLongEnough()
       execFileSync('open', ['-n', '-g', '-a', 'TextEdit', note, '--args', '-ApplePersistenceIgnoreState', 'YES', '-NSRecentDocumentsLimit', '0',
-        '-NSShowAppCentricOpenPanelInsteadOfUntitledFile', 'NO', '-NSDocumentSaveNewDocumentsToCloud', 'NO', '-TCProofRun', RUN_MARK])
+        '-NSShowAppCentricOpenPanelInsteadOfUntitledFile', 'NO', '-NSDocumentSaveNewDocumentsToCloud', 'NO', '-TCProofRun', RUN_MARK], { env: guiLaunchEnvironment() })
       tePid = data.pid = await until(() => pidsOf('TextEdit').find((p) => !running.includes(p)) ?? null, 15_000, 'the scratch TextEdit')
       teDoc = await until(async () => ((await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === tePid)?.windows?.some((w) => w.title.startsWith('note')) ? read(tePid, 'note') : null), 15_000, 'the note window')
       if (frontWindow().pid === tePid) {
@@ -2297,7 +2297,7 @@ async function appSections(
       '0',
       '-TCProofRun',
       RUN_MARK
-    ])
+    ], { env: guiLaunchEnvironment() })
     textEditPid = await until(
       () => pidsOf('TextEdit').find((p) => !running.includes(p)) ?? null,
       15_000,

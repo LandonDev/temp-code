@@ -2,7 +2,21 @@ import { execFile, execFileSync } from 'node:child_process'
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
+import { CALL_MARK, INSTANCE_MARK, THREAD_MARK } from '../../src/shared/bashMarks'
 import { probeAppPids, stopProofPids } from './computerProofProcesses'
+
+/**
+ * Launch Services gives a scratch app to launchd (ppid 1) with the caller's environment, so a proof run from a
+ * thread's shell hands it the thread's guard marks, and the host's orphan sweep kills it 60 s later (TC Probe in
+ * the tc-computer gate legs, 2026-11-11). It belongs to the proof's explicit PID cleanup, not that sweep: the
+ * marks stay on the runner and leave the GUI launch, `open` and the proof's tc-computer service alike, whose
+ * `apps.launch` passes its own environment on.
+ */
+export function guiLaunchEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const probe = { ...env }
+  for (const key of [CALL_MARK, INSTANCE_MARK, THREAD_MARK, 'TEMP_CODE_ADDON', 'CLAUDE_PID', 'ANTHROPIC_BASE_URL']) delete probe[key]
+  return probe
+}
 
 /**
  * The computer preview proofs' scratch app: "TC Probe" (scripts/mac/computer-probe-app.swift) built
@@ -154,7 +168,7 @@ export async function launchProbe(
 ): Promise<{ pid: number; bounced: string | null }> {
   const before = frontmost()
   const already = new Set(probeAppPidsNow(build))
-  execFileSync('open', ['-g', '-n', build.app, ...(flags.length ? ['--args', ...flags] : [])], { stdio: 'pipe' })
+  execFileSync('open', ['-g', '-n', build.app, ...(flags.length ? ['--args', ...flags] : [])], { stdio: 'pipe', env: guiLaunchEnvironment() })
   let pid = 0
   for (const until = Date.now() + 10_000; !pid && Date.now() < until; ) {
     const newest = pidOf(build.binary)
