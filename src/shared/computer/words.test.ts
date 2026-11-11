@@ -365,3 +365,21 @@ describe('an open through computer_apps', () => {
     expect(openItemName('https://example.com/a/b?q=1')).toBe('example.com/a/b')
   })
 })
+
+describe('the card for a step that needs the app in front (§25.6)', () => {
+  it('ends the title with the app coming forward for a moment', () => {
+    expect(computerApprovalTitle('computer_act', { action: 'key', text: 'super+s' } as ComputerAction, ctx(), null, { front: true })).toBe(
+      'Press super+s in TextEdit, window "Untitled", bringing TextEdit forward for a moment'
+    )
+  })
+  it('names save_as by its path', () => {
+    expect(computerApprovalTitle('computer_act', { action: 'save_as', path: '~/run/note.rtf' } as ComputerAction, ctx())).toBe(
+      'Save as ~/run/note.rtf in TextEdit, window "Untitled"'
+    )
+  })
+  it("asks to bring the app forward when the person chose to wait until they're away", () => {
+    expect(computerSessionAskTitle('press super+s', { appName: 'TextEdit', window: 'Total.txt' }, { front: true })).toBe(
+      'Bring TextEdit forward for a moment to press super+s, window "Total.txt"'
+    )
+  })
+})

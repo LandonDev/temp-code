@@ -27,6 +27,11 @@ const apps = [
   // Closey: a click on button "close" closes the window it targets (§22.6)
   { name: 'Closey', pid: 16900, bundleId: 'dev.fake.closey', windows: [windowInfo(169000, 'Closey Doc'), windowInfo(169001, 'Closey Plain')] },
   { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windows: [windowInfo(170000, 'Preview')] },
+  // §25: Fronty's File › Save runs only in front, Committy's rename reaches the disk only when committed in front,
+  // Panely saves through its panel, Menuy leaves a menu open
+  ...['Fronty', 'Committy', 'Panely', 'Menuy'].map((name, i) => ({
+    name, pid: 17100 + i, bundleId: `dev.fake.${name.toLowerCase()}`, windows: [windowInfo((17100 + i) * 10, `${name} Doc`)]
+  })),
   { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windows: [] }
 ]
 const brief = ({ pid, bundleId, name }) => ({ pid, bundleId, name })
@@ -186,6 +191,59 @@ function elementLine(index, ctx) {
 }
 // Hitty's coordinate clicks pressed through the hit route: the first two change nothing (§24.3)
 let hits = 0
+// what the host said it speaks at initialize (§25, decision 14); FAKE_NO_FEATURES=1 plays an older service
+let hostFeatures = new Set()
+const speaks = (feature) => process.env.FAKE_NO_FEATURES !== '1' && hostFeatures.has(feature)
+// a front hold, shared by a batch's run of front steps until 2,000 ms (§25.2)
+const FRONT_STEP_MS = 700
+let hold = null
+function frontHold() {
+  const now = Date.now()
+  if (!hold || hold.heldMs + FRONT_STEP_MS > 2_000) hold = { heldMs: 0, armedAt: now }
+  hold.heldMs += FRONT_STEP_MS
+  return { heldMs: hold.heldMs, activateMs: 80, restoreMs: 40, restored: 'restored', person: brief(apps[0]), armedAt: hold.armedAt, idleAtArmMs: 2_000, lastInputAt: now }
+}
+/** The four §25 apps; null when the step is not theirs. */
+function activeStep(ctx, action, tiers, result, fail) {
+  const verb = action.action
+  const front = tiers.includes('front') && speaks('front')
+  const combo = (action.text ?? '').toLowerCase()
+  if (ctx.app.name === 'Fronty' && verb === 'key' && combo === 'super+s') {
+    if (!front) return fail(failure('needs_tier', 'File › Save is disabled while Fronty is in the background.', { needed: speaks('front') ? 'front' : 'session', menu: ['File', 'Save'] }))
+    ctx.state.dirty = true
+    return { ...result, tier: 'front', effect: 'changed', input: { via: 'menu', on: 'File › Save' }, front: frontHold(), ...(speaks('commit') ? { disk: { saved: '~/run/Total.txt', edited: { before: true, after: false } } } : {}) }
+  }
+  if (ctx.app.name === 'Committy' && (verb === 'set_value' || (verb === 'key' && combo === 'return'))) {
+    ctx.state.dirty = true
+    // a commit step in a background app skips process and runs once in front (§25, decision 12)
+    if (verb === 'key' && front) return { ...result, tier: 'front', effect: 'changed', front: frontHold(), disk: { renamed: [{ from: '~/run/a.txt', to: '~/run/b.txt' }] } }
+    const tier = verb === 'set_value' ? 'ax' : 'process'
+    if (!tiers.includes(tier)) return fail(failure('needs_tier', 'Allow the tier this action needs.', { needed: tier }))
+    if (!speaks('commit')) return { ...result, tier, effect: 'changed' }
+    return { ...result, tier, effect: 'uncommitted', disk: { edited: { before: false, after: false }, hint: 'commit it with key Return in the field' } }
+  }
+  if (ctx.app.name === 'Committy' && verb === 'type') {
+    ctx.state.dirty = true
+    // TextEdit's autosave: the app wrote the file by itself during the step
+    return { ...result, tier: 'ax', effect: 'changed', input: { via: 'ax-insert' }, ...(speaks('commit') ? { disk: { saved: '~/Library/Autosave/Committy Doc.txt', unexpected: true } } : {}) }
+  }
+  if (verb === 'save_as') {
+    if (!speaks('save_as')) return fail(failure('action_unsupported', 'This service has no save_as.'))
+    const path = action.path ?? ''
+    if (path.endsWith('/exists.txt') && !action.replace) return fail(failure('file_exists', `${path} exists; pass replace to overwrite it.`))
+    if (path.endsWith('/nothing.txt')) return fail(failure('not_committed', `${ctx.app.name} closed the save panel and no file appeared.`))
+    // the folder's Go to Folder confirms only in front (§25.7, E4')
+    if (!front) return fail(failure('needs_tier', 'The save panel changes folders only with the app in front.', { needed: 'front' }))
+    ctx.state.dirty = true
+    return { ...result, tier: 'front', effect: 'changed', input: { via: 'panel', on: path }, front: frontHold(), disk: { saved: path } }
+  }
+  if (ctx.app.name === 'Menuy' && verb === 'perform' && action.name === 'show menu') {
+    ctx.state.dirty = true
+    if (action.element === 4) ctx.menusLeftOpen = ['Action']
+    return { ...result, tier: 'ax', effect: 'changed' }
+  }
+  return null
+}
 function step(ctx, action, tiers, index, pasteQuietMs, ignored) {
   const fail = (error) => ({ index, action: action.action, status: 'failed', error })
   for (const element of elements(action)) {
@@ -203,6 +261,8 @@ function step(ctx, action, tiers, index, pasteQuietMs, ignored) {
     if (verb === 'wait') result.waited = waited
     return result
   }
+  const active = activeStep(ctx, action, tiers, result, fail)
+  if (active) return active
   // Menuey (§24.2): ⌘⇧P runs its menu item at ax; ⌘W's item is disabled while the app is in the background
   if (ctx.app.name === 'Menuey' && verb === 'key') {
     const combo = (action.text ?? '').toLowerCase()
@@ -265,6 +325,8 @@ function step(ctx, action, tiers, index, pasteQuietMs, ignored) {
 function actionResult(ctx, params, method, wasCancelled = false) {
   const actions = method === 'action.run' ? [params.action] : params.actions
   let stopped = false
+  hold = null
+  ctx.menusLeftOpen = undefined
   const steps = actions.map((action, index) => {
     if (stopped) return { index, action: action.action, status: 'not-run' }
     const result = wasCancelled ? { index, action: action.action, status: 'failed', error: cancelled() } : step(ctx, action, params.tiers, index, params.pasteQuietMs, params.ignored)
@@ -275,6 +337,7 @@ function actionResult(ctx, params, method, wasCancelled = false) {
   // Closey's close button closes the target: the observation reads the next window whole, or says none is left
   const closed = ctx.app.name === 'Closey' && steps.some((s, i) => s.status === 'ok' && actions[i].action === 'left_click' && s.element?.line === 'button "close"')
   if (closed) ctx.app.windows = ctx.app.windows.filter((w) => w.id !== ctx.window.id)
+  if (ctx.menusLeftOpen) result.menusLeftOpen = ctx.menusLeftOpen
   if (wasCancelled) result.observationError = cancelled()
   else if (closed && !ctx.app.windows.length) result.observationError = failure('window_not_found', 'Closey has no window open.', { reason: 'gone' })
   else if (closed) result.observation = observation({ ...ctx, window: ctx.app.windows[0] }, { ...params.observe, mode: 'full' }, 'action')
@@ -309,7 +372,9 @@ function handle({ id, method, params = {} }) {
     case 'initialize': {
       initialized = true
       dataDir = params.dataDir
-      reply(id, { ...initial, protocol: 1, epoch, permissions })
+      hostFeatures = new Set(params.features ?? [])
+      const features = process.env.FAKE_NO_FEATURES === '1' ? [] : ['front', 'commit', 'save_as'].filter((f) => hostFeatures.has(f))
+      reply(id, { ...initial, protocol: 1, epoch, permissions, ...(features.length ? { features } : {}) })
       if (exiting) return
       if (process.env.FAKE_GARBAGE === '1') process.stdout.write('this is not json\n')
       if (process.env.FAKE_UNKNOWN_NOTIFY === '1') notify('future/thing', {})

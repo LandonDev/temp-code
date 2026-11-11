@@ -173,6 +173,13 @@ interface KeyState {
   held: { held: MacBridgeHeld; tool: string; startedAt: number } | null
   /** the row while the session has none of its own (its first call, held) */
   provisional: ComputerSessionRow | null
+  /** the box's last call listed `front` among its features: it parses that tier on a row (§25, decision 14) */
+  readsFront?: boolean
+}
+
+/** A row as the box can parse it: an older box knows no `front`, which it reads as the session tier it stands beside. */
+export function rowForPeer(row: ComputerSessionRow, readsFront: boolean): ComputerSessionRow {
+  return !readsFront && row.tier === 'front' ? { ...row, tier: 'session' } : row
 }
 
 /** One call's rows to the box, at most one per COMPUTER_ROW_MS. */
@@ -344,7 +351,7 @@ export class MacComputer {
   ): Promise<ComputerPeerAnswer> {
     const parsed = MacComputerCallArgsSchema.safeParse(raw)
     if (!parsed.success) throw new Error(`refused: the call did not parse (${parsed.error.issues[0]?.message ?? 'bad arguments'})`)
-    const { call, turn, rootId } = parsed.data
+    const { call, turn, rootId, features } = parsed.data
     if (call.threadId !== thread.id) throw new Error('refused: the call names another thread')
     const key = macComputerKey(env.id, thread.id)
     const line = (decision: string): void => this.log(`${env.name} (${env.id}) thread=${thread.id} mac.computer ${call.tool} → ${decision}`)
@@ -372,6 +379,7 @@ export class MacComputer {
     }
 
     const st = this.stateOf(key, env.id, thread.id)
+    st.readsFront = features?.includes('front') === true
     const callId = ctx.callId ?? `local_${++localCalls}`
     const own: CallState = { controller: new AbortController(), away: false, awayDenies, awayDenied: false, progress: null, reading: true, out: 0, waiters: new Set() }
     const signal = own.controller.signal
@@ -403,7 +411,8 @@ export class MacComputer {
       // a money card Away denied: the box writes the skipped row from this refusal (computer/bridge.ts)
       if (own.awayDenied) throw new Error(MAC_AWAY_REFUSAL)
       const images = await this.readShots(outcome)
-      const row = host.sessions.rowOf(key)
+      const sessionRow = host.sessions.rowOf(key)
+      const row = sessionRow && rowForPeer(sessionRow, st.readsFront === true)
       const first = row?.apps[0]
       if (st.live && first) this.deps.bridge.updateLive(st.live.id, { app: first.name, window: first.window })
       line(outcome.isError ? `answered: ${outcome.body ?? 'error'}` : `answered (${outcome.steps.length} step(s), ${images.length} picture(s))`)
@@ -623,7 +632,7 @@ export class MacComputer {
     if (st.held)
       row.running = { tool: st.held.tool, words: heldLine(st.held.held), startedAt: base.running?.startedAt ?? st.held.startedAt, held: true }
     if (st.asking) row.asking = { line: st.asking }
-    return row
+    return rowForPeer(row, st.readsFront === true)
   }
 
   private rowSender(st: KeyState, send: (chunk: string) => void): RowSender {

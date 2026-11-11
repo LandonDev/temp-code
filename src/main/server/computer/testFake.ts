@@ -33,6 +33,10 @@ export const FAKE_APPS = {
   Hitty: { name: 'Hitty', pid: 16811, bundleId: 'dev.fake.hitty', windowId: 168110 },
   Closey: { name: 'Closey', pid: 16900, bundleId: 'dev.fake.closey', windowId: 169000 },
   Preview: { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windowId: 170000 },
+  Fronty: { name: 'Fronty', pid: 17100, bundleId: 'dev.fake.fronty', windowId: 171000 },
+  Committy: { name: 'Committy', pid: 17101, bundleId: 'dev.fake.committy', windowId: 171010 },
+  Panely: { name: 'Panely', pid: 17102, bundleId: 'dev.fake.panely', windowId: 171020 },
+  Menuy: { name: 'Menuy', pid: 17103, bundleId: 'dev.fake.menuy', windowId: 171030 },
   Finder: { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windowId: null }
 } as const
 

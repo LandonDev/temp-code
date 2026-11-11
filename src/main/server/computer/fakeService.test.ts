@@ -56,6 +56,7 @@ class Client {
   sent: string[] = []
   stderr = ''
   epoch = ''
+  features: string[] = []
   dataDir: string
   exit: Promise<number | null>
   private nextId = 0
@@ -123,8 +124,9 @@ class Client {
   }
 
   async initialize(): Promise<void> {
-    const result = await this.call('initialize', { protocol: 1, client: { name: 'fake-test', version: '1' }, dataDir: this.dataDir })
+    const result = await this.call('initialize', { protocol: 1, client: { name: 'fake-test', version: '1' }, dataDir: this.dataDir, features: ['front', 'commit', 'save_as'] })
     this.epoch = result.epoch
+    this.features = result.features ?? []
     expect(this.epoch).toMatch(/^e-[a-z0-9]{8}$/)
   }
 
@@ -281,10 +283,14 @@ describe('fake tc-computer wire', () => {
       { action: 'scroll', scroll_direction: 'down', scroll_amount: 3 }, { action: 'type', text: 'Hi', element: 3 },
       { action: 'key', text: 'Tab' }, { action: 'hold_key', text: 'Tab', duration: 1 }, { action: 'wait', duration: 1 },
       { action: 'set_value', element: 3, value: 'Hi' }, { action: 'perform', element: 3, name: 'show menu' },
-      { action: 'select_text', element: 3, text: 'Hello' }, { action: 'paste', text: 'Hi' }
+      { action: 'select_text', element: 3, text: 'Hello' }, { action: 'paste', text: 'Hi' }, { action: 'save_as', path: '~/run/note.txt' }
     ]
     expect(actions.map((a) => a.action)).toEqual([...COMPUTER_ACTION_NAMES])
     for (const action of actions) {
+      if (action.action === 'save_as') {
+        expect(await c.act('TextEdit', action, ['ax', 'process', 'front'])).toMatchObject({ step: { status: 'ok', tier: 'front', input: { via: 'panel' }, disk: { saved: '~/run/note.txt' } } })
+        continue
+      }
       const result = await c.act('TextEdit', action)
       expect(result.step.status).toBe('ok')
       if (result.step.status !== 'ok') throw new Error('The step failed.')
@@ -715,5 +721,52 @@ describe('fake preview, Escape and shot controls', () => {
     for (const shot of [observation.shot, screenshot.step.shot, zoom.step.shot, capture]) {
       expect(shot).toBeDefined(); expect(readFileSync(shot!.path)).toEqual(jpeg); expect(shot!.bytes).toBe(jpeg.length)
     }
+  })
+})
+
+describe('steps that need the app active (§25)', () => {
+  it('answers its features to a host that lists them, and runs Fronty\'s Save only in front', async () => {
+    const c = new Client()
+    await c.open()
+    expect(c.features).toEqual(['front', 'commit', 'save_as'])
+    await c.call('state.get', c.target('Fronty'))
+    expect(await c.act('Fronty', { action: 'key', text: 'super+s' })).toMatchObject({ step: { error: { kind: 'needs_tier', needed: 'front', menu: ['File', 'Save'] } } })
+    const saved = await c.act('Fronty', { action: 'key', text: 'super+s' }, ['ax', 'process', 'front'])
+    expect(saved).toMatchObject({ step: { tier: 'front', input: { via: 'menu', on: 'File › Save' }, front: { restored: 'restored' }, disk: { saved: '~/run/Total.txt' } } })
+  })
+
+  it('splits a batch\'s front steps into holds of at most 2 s', async () => {
+    const c = new Client()
+    await c.open()
+    await c.call('state.get', c.target('Fronty'))
+    const r = await c.call('action.batch', { ...c.target('Fronty'), tiers: ['ax', 'process', 'front'], actions: Array.from({ length: 4 }, () => ({ action: 'key', text: 'super+s' })) })
+    expect(r.steps.map((s) => (s.status === 'ok' ? s.front?.heldMs : null))).toEqual([700, 1400, 700, 1400])
+  })
+
+  it('Committy reads uncommitted with its hint until the rename commits in front, and names an autosave', async () => {
+    const c = new Client()
+    await c.open()
+    await c.call('state.get', c.target('Committy'))
+    expect(await c.act('Committy', { action: 'key', text: 'Return' })).toMatchObject({ step: { tier: 'process', effect: 'uncommitted', disk: { hint: 'commit it with key Return in the field' } } })
+    expect(await c.act('Committy', { action: 'key', text: 'Return' }, ['ax', 'process', 'front'])).toMatchObject({ step: { tier: 'front', effect: 'changed', disk: { renamed: [{ from: '~/run/a.txt', to: '~/run/b.txt' }] } } })
+    expect(await c.act('Committy', { action: 'type', text: 'x' }, ['ax'])).toMatchObject({ step: { disk: { unexpected: true } } })
+  })
+
+  it('Panely refuses to overwrite without replace and says when no file appeared', async () => {
+    const c = new Client()
+    await c.open()
+    await c.call('state.get', c.target('Panely'))
+    const tiers = ['ax', 'process', 'front'] as const
+    expect(await c.act('Panely', { action: 'save_as', path: '~/run/exists.txt' }, [...tiers])).toMatchObject({ step: { error: { kind: 'file_exists' } } })
+    expect(await c.act('Panely', { action: 'save_as', path: '~/run/exists.txt', replace: true }, [...tiers])).toMatchObject({ step: { status: 'ok' } })
+    expect(await c.act('Panely', { action: 'save_as', path: '~/run/nothing.txt' }, [...tiers])).toMatchObject({ step: { error: { kind: 'not_committed' } } })
+  })
+
+  it('Menuy names a menu it could not close', async () => {
+    const c = new Client()
+    await c.open()
+    await c.call('state.get', c.target('Menuy'))
+    expect(await c.act('Menuy', { action: 'perform', element: 4, name: 'show menu' }, ['ax'])).toMatchObject({ menusLeftOpen: ['Action'] })
+    expect(await c.act('Menuy', { action: 'perform', element: 3, name: 'show menu' }, ['ax'])).not.toHaveProperty('menusLeftOpen')
   })
 })

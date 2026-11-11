@@ -765,6 +765,8 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   /** the tiers each step has been offered past its first run: `process → front → session`, each once (§25, decision 13) */
   const offered = new Map<number, Set<Tier>>()
   const wasOffered = (i: number, tier: Tier): boolean => offered.get(i)?.has(tier) === true
+  /** a key or paste whose window was not key leaves out the tiers that refused it on every later retry */
+  const dropped = new Map<number, Tier[]>()
   let from = 0
   let ranAny = false
   while (from < stopAt && !signal.aborted) {
@@ -814,23 +816,30 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     } else if (failed.error.kind === 'key_window_unavailable') {
       // a key or paste: the menu route refuses a window that is not key as the process keys do (§24.2)
       const drop: Tier[] = a.action === 'key' || a.action === 'paste' ? ['ax', 'process'] : ['process']
+      dropped.set(failedAt, drop)
       if (a.action === 'type') {
         if (wasOffered(failedAt, 'ax')) break
         offering = 'ax'
         retry = ['ax']
-      } else if (served && !wasOffered(failedAt, 'front')) {
-        // `front` makes the target window key with AXMain and AXRaise before the session tier is asked (§25, decision 10)
-        offering = 'front'
-        const tiers = admitted.front
-          ? host.verdicts.tiersFor(bundleOf(), a, { front: true, session: admitted.session })
-          : await askGate(failedAt, undefined, 'front')
-        retry = tiers?.filter((tier) => !drop.includes(tier)) ?? null
-      } else if (!wasOffered(failedAt, 'session')) {
-        offering = 'session'
-        retry = (await askGate(failedAt))?.filter((tier) => !drop.includes(tier) && tier !== 'front') ?? null
-      } else break
+      } else {
+        // `front` makes the target window key with AXMain and AXRaise before the session tier is asked (§25, decision 10);
+        // a front the gate refuses goes on to the session tier's own ask
+        if (served && !wasOffered(failedAt, 'front')) {
+          offering = 'front'
+          const tiers = admitted.front
+            ? host.verdicts.tiersFor(bundleOf(), a, { front: true, session: admitted.session })
+            : await askGate(failedAt, undefined, 'front')
+          retry = tiers?.filter((tier) => !drop.includes(tier)) ?? null
+        }
+        if (!retry && !signal.aborted && !wasOffered(failedAt, 'session')) {
+          offering = 'session'
+          retry = (await askGate(failedAt))?.filter((tier) => !drop.includes(tier) && tier !== 'front') ?? null
+        }
+        if (!retry) break
+      }
     } else break
-    if (!retry) break
+    retry = retry?.filter((tier) => !(dropped.get(failedAt) ?? []).includes(tier)) ?? null
+    if (!retry?.length) break
     if (offering) offered.set(failedAt, new Set([...(offered.get(failedAt) ?? []), offering]))
     override.set(failedAt, retry)
     if (observation) run.drop(observation)

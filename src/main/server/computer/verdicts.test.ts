@@ -8,7 +8,7 @@ function memoryStore() {
   const rows = new Map<string, string>()
   return { rows, getSetting: (k: string) => rows.get(k) ?? null, setSetting: (k: string, v: string | null) => (v === null ? rows.delete(k) : rows.set(k, v)) }
 }
-const ok = (tier: Tier | null, effect: 'changed' | 'none' | 'unknown'): StepResult => ({
+const ok = (tier: Tier | null, effect: 'changed' | 'none' | 'unknown' | 'uncommitted'): StepResult => ({
   index: 0,
   action: 'left_click',
   status: 'ok',
@@ -156,5 +156,45 @@ describe('the background routes (§24.1)', () => {
     store.setSetting(tierVerdictSetting(B), JSON.stringify({ bundleId: B, classes: {}, misses: { scroll: 2, key: 1 }, viaMisses: { hit: 2, caret: 1 }, updatedAt: 10 }))
     expect(v.ignoredFor(B)).toEqual({ via: ['hit'], process: ['scroll'] })
     expect(v.ignoredFor(null)).toBeUndefined()
+  })
+})
+
+describe('the front tier in the verdict (§25, decision 11)', () => {
+  const learn = (v: TierVerdict | null, step: StepResult): TierVerdict | null => nextVerdict(v, 'click', step, 1, B)
+  it('counts uncommitted as a miss, and raises to front after two process misses then a change in front', () => {
+    let v = learn(null, ok('process', 'uncommitted'))
+    v = learn(v, ok('process', 'none'))
+    expect(v?.misses).toEqual({ click: 2 })
+    v = learn(v, ok('front', 'changed'))
+    expect(v).toMatchObject({ classes: { click: 'front' }, misses: {} })
+  })
+  it('raises from front to session after two front misses, and a change lower down lowers it', () => {
+    let v: TierVerdict | null = { bundleId: B, classes: { click: 'front' }, misses: {}, updatedAt: 0 }
+    v = learn(v, ok('front', 'uncommitted'))
+    v = learn(v, ok('front', 'none'))
+    expect(v?.frontMisses).toEqual({ click: 2 })
+    v = learn(v, ok('session', 'changed'))
+    expect(v).toMatchObject({ classes: { click: 'session' } })
+    expect(v?.frontMisses).toBeUndefined()
+    v = learn(v, ok('front', 'changed'))
+    expect(v?.classes.click).toBe('front')
+    v = learn(v, ok('process', 'changed'))
+    expect(v?.classes.click).toBe('process')
+  })
+  it('gives front when admitted, skips the tier a class outgrew, and after two front misses sends a later call to the session path with both lower routes last', () => {
+    const store = memoryStore()
+    const put = (v: Partial<TierVerdict>) => store.setSetting(tierVerdictSetting(B), JSON.stringify({ bundleId: B, classes: {}, misses: {}, updatedAt: Date.now(), ...v }))
+    const v = new TierVerdicts(store)
+    put({})
+    expect(v.tiersFor(B, click, { front: true, session: false })).toEqual(['ax', 'process', 'front'])
+    put({ misses: { click: 2 } })
+    expect(v.tiersFor(B, click, { front: true, session: false })).toEqual(['ax', 'front'])
+    put({ classes: { click: 'front' } })
+    expect(v.needsFront(B, click)).toBe(true)
+    expect(v.tiersFor(B, click, { front: false, session: false })).toEqual(['ax'])
+    put({ classes: { click: 'front' }, frontMisses: { click: 2 } })
+    expect(v.needsSession(B, click)).toBe(true)
+    expect(v.tiersFor(B, click, { front: true, session: true })).toEqual(['ax', 'session'])
+    expect(v.ignoredFor(B)).toEqual({ process: ['click'], front: ['click'] })
   })
 })

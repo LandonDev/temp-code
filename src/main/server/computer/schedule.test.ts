@@ -721,3 +721,41 @@ describe('the clipboard', () => {
     expect(await wait).toMatchObject({ ok: false, cancelled: true })
   })
 })
+
+describe('the front tier (§25.6)', () => {
+  it('is admitted at once with the person present under the default, never locked or asleep', async () => {
+    const { w, s } = setup()
+    w.input()
+    expect(s.frontAdmitted(ctxOf(w))).toBe(true)
+    expect(await s.request(reqOf(w, 't1', { needed: 'front' }))).toMatchObject({ admit: true, waitedMs: 0 })
+    expect(w.lines).toEqual([])
+    w.setPresence({ screen: 'locked' })
+    expect(s.frontAdmitted(ctxOf(w))).toBe(false)
+    w.setPresence({ screen: 'unlocked', power: 'asleep' })
+    expect(s.frontAdmitted(ctxOf(w))).toBe(false)
+  })
+
+  it('waits as the session tier does under "wait until I\'m away", and its card says the app comes forward', async () => {
+    const { w, s } = setup()
+    w.settings.set('computer.activeApp', 'away')
+    w.input()
+    expect(s.frontAdmitted(ctxOf(w))).toBe(false)
+    const held = s.request(reqOf(w, 't1', { needed: 'front', permission: 'edits', words: 'press super+s' }))
+    await settle()
+    expect(w.cards[0].req.title).toBe('Bring TextEdit forward for a moment to press super+s, window "Untitled"')
+    w.cards[0].decide(true)
+    expect(await held).toMatchObject({ admit: true, via: 'allowed' })
+    w.setAway(true)
+    expect(s.frontAdmitted(ctxOf(w))).toBe(true)
+  })
+
+  it("takes a hold's span out of the person's idle time, as a session step's", async () => {
+    const { w, s } = setup()
+    const front = { heldMs: 600, activateMs: 80, restoreMs: 40, restored: 'restored' as const, armedAt: T0 + 1, idleAtArmMs: 2_000, lastInputAt: T0 + 2 }
+    await s.run(runOf(w, 't1', ['ax', 'process', 'front'], [{ action: 'key', text: 'super+s' }]), async () =>
+      single({ index: 0, action: 'key', status: 'ok', tier: 'front', effect: 'changed', front })
+    )
+    expect(w.ends).toEqual([[{ armedAt: T0 + 1, idleAtArmMs: 2_000, lastInputAt: T0 + 2 }]])
+    expect(w.restores).toEqual([])
+  })
+})
