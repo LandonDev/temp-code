@@ -84,6 +84,8 @@ extension InputEngine {
                         try AX.press(item, what: menuPath.joined(separator: " › "))
                     }
                 } else {
+                    // an active app's item may not have been validated since it went active
+                    if AX.bool(item, "AXEnabled") != true { try validateMenuItem(item, path: menuPath, check: { if target.cancelled() { throw cancelledFailure() } }) }
                     try AX.press(item, what: menuPath.joined(separator: " › "))
                 }
             case .insert(let part, let text, let selectAll):

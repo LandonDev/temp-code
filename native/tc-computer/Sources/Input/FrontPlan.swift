@@ -238,3 +238,33 @@ public func frontRuns(_ tiers: [Tier?]) -> [Range<Int>] {
     if let s = start { runs.append(s ..< tiers.count) }
     return runs
 }
+
+/// A menu item read disabled inside a hold (§26.3). AppKit validates a menu's items lazily: an app made
+/// active re-reads `AXEnabled` only when the menu opens or a key equivalent reaches it, so TextEdit's and
+/// Finder's File items stayed disabled through a 250 ms poll (the field suite on macOS 27.2, 2026-11-10:
+/// every Save As…, Duplicate and New Folder hold ended `action_unsupported` at 251–262 ms, and the same
+/// key sent in front then ran). So the item is polled for `pollMs`, then its menu-bar menu is opened,
+/// which validates it, and polled again for `openedMs`; the press that follows closes the menu.
+public enum MenuValidation {
+    public enum Decision: Equatable, Sendable {
+        case press
+        /// read again after this long
+        case wait(ms: Int)
+        /// open the item's menu-bar menu, then read again
+        case openMenu
+        /// still disabled with the app active and its menu open: close the menu, `action_unsupported`
+        case refuse
+    }
+
+    /// polled before the menu is opened
+    public static let pollMs = 100
+    /// polled after it is opened
+    public static let openedMs = 300
+
+    /// `enabled` the item's AXEnabled now; `openedAt` when its menu was opened, nil before.
+    public static func decide(enabled: Bool, now: Int, startedAt: Int, openedAt: Int?, pollEveryMs: Int) -> Decision {
+        if enabled { return .press }
+        guard let openedAt else { return now - startedAt >= pollMs ? .openMenu : .wait(ms: pollEveryMs) }
+        return now - openedAt >= openedMs ? .refuse : .wait(ms: pollEveryMs)
+    }
+}

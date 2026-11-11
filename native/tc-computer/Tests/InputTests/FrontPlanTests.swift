@@ -163,3 +163,25 @@ private func activeHold(at: Int = 1_000) -> FrontHoldPlan {
         #expect(e.reason == .activationRefused)
     }
 }
+
+@Suite struct MenuValidationTests {
+    @Test func anEnabledItemIsPressedAtOnce() {
+        #expect(MenuValidation.decide(enabled: true, now: 0, startedAt: 0, openedAt: nil, pollEveryMs: 10) == .press)
+        #expect(MenuValidation.decide(enabled: true, now: 350, startedAt: 0, openedAt: 100, pollEveryMs: 10) == .press)
+    }
+
+    @Test func aStaleItemOpensItsMenuAfterThePoll() {
+        // TextEdit's File › Save As… with TextEdit just made active: AppKit has not validated it yet
+        #expect(MenuValidation.decide(enabled: false, now: 50, startedAt: 0, openedAt: nil, pollEveryMs: 10) == .wait(ms: 10))
+        #expect(MenuValidation.decide(enabled: false, now: MenuValidation.pollMs, startedAt: 0, openedAt: nil, pollEveryMs: 10) == .openMenu)
+        #expect(MenuValidation.decide(enabled: false, now: 150, startedAt: 0, openedAt: 100, pollEveryMs: 10) == .wait(ms: 10))
+    }
+
+    @Test func anItemDisabledWithItsMenuOpenIsRefused() {
+        #expect(MenuValidation.decide(enabled: false, now: 100 + MenuValidation.openedMs, startedAt: 0, openedAt: 100, pollEveryMs: 10) == .refuse)
+    }
+
+    @Test func theWholeWaitFitsInsideTheHoldsCap() {
+        #expect(MenuValidation.pollMs + MenuValidation.openedMs < ComputerDefaults.Front.holdMaxMs / 2)
+    }
+}

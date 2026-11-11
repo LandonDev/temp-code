@@ -292,16 +292,40 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         return out.with(front: report)
     }
 
-    /// A named menu item's AXEnabled, read again inside the hold: AppKit re-validates it once the app is
-    /// active, so it is polled for a moment before it counts as disabled.
+    /// A named menu item's AXEnabled, read again inside the hold: polled a moment, then its menu-bar menu
+    /// opened so AppKit validates it, and polled again (`MenuValidation`). An item that stays disabled
+    /// leaves its menu closed and counts as disabled; an enabled one leaves it open for the press, which
+    /// closes it.
     func enabledInHold(_ item: AXUIElement, path: [String], ctx: FrontHoldContext) throws {
-        let deadline = clock.seconds() + Double(InputTiming.frontSettleMs) / 1000
-        while AX.bool(item, "AXEnabled") != true {
-            try ctx.check()
-            if clock.seconds() >= deadline {
+        try validateMenuItem(item, path: path, axTimeout: ctx.axTimeout, check: ctx.check)
+    }
+
+    /// The same for an app that is active already, with no hold around it.
+    func validateMenuItem(_ item: AXUIElement, path: [String], axTimeout: Double = InputTiming.axTimeoutS, check: () throws -> Void = {}) throws {
+        let ms = { Int(self.clock.seconds() * 1000) }
+        let started = ms()
+        var opened: Int?
+        var bar: AXUIElement?
+        while true {
+            try check()
+            switch MenuValidation.decide(enabled: AX.bool(item, "AXEnabled") == true, now: ms(), startedAt: started, openedAt: opened, pollEveryMs: InputTiming.frontPollMs) {
+            case .press:
+                return
+            case .wait(let wait):
+                clock.sleep(ms: wait)
+            case .openMenu:
+                bar = AX.ancestor(item, role: "AXMenuBarItem")
+                if let bar {
+                    AX.setTimeout(bar, seconds: axTimeout)
+                    _ = AX.perform(bar, "AXPress")
+                }
+                opened = ms()
+            case .refuse:
+                if let bar {
+                    if let menu = AX.elements(bar, "AXChildren").first, AX.perform(menu, "AXCancel") == .success {} else { _ = AX.perform(bar, "AXPress") }
+                }
                 throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "\(path.joined(separator: " › ")) is disabled.", menu: path))
             }
-            clock.sleep(ms: InputTiming.frontPollMs)
         }
     }
 

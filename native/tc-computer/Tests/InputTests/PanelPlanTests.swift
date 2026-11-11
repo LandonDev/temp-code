@@ -183,9 +183,11 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
         #expect(r.flow.tier == .front)
         var noFront = PanelRig(frontAllowed: false)
         #expect(noFront.step(seen(noPanel, menu: menu)) == .needsFront(menu: ["File", "Save As…"]))
+        // in an active app the item may only be unvalidated (the field suite's TextEdit): pressed in place,
+        // its menu opened first by the live layer, which refuses it only if it stays disabled
         var active = PanelRig(appActive: true)
-        guard case .fail(let e) = active.step(seen(noPanel, menu: menu)) else { Issue.record("no failure"); return }
-        #expect(e.message == "File › Save As… is disabled." && e.menu == ["File", "Save As…"])
+        #expect(active.step(seen(noPanel, menu: menu)) == .pressMenu(["File", "Save As…"], atFront: false))
+        #expect(!active.flow.usedFront)
     }
 
     @Test func theGoToConfirmNeedsFront() {

@@ -339,14 +339,16 @@ public struct SavePanelFlow: Equatable, Sendable {
             return .fail(unsupported("\(app)'s File menu has no Save As…\(o.windowHasFile ? "" : " or Save…")\(listed)."))
         }
         let path = ["File", item.title]
-        if !item.enabled {
-            if appActive { return .fail(ComputerError(kind: .actionUnsupported, message: "\(path.joined(separator: " › ")) is disabled.", menu: path)) }
+        // an active app's disabled item may only be unvalidated: the live layer opens its menu before it
+        // counts as disabled (MenuValidation), in a hold for an app in the background
+        let atFront = !item.enabled && !appActive
+        if atFront {
             guard frontAllowed else { return .needsFront(menu: path) }
             usedFront = true
         }
         stage = .opening
         since = o.now
-        return .pressMenu(path, atFront: !item.enabled)
+        return .pressMenu(path, atFront: atFront)
     }
 
     /// `Save As…`, `Save As...` and `Save As` all name the item
