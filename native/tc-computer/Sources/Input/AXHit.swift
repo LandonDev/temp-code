@@ -13,13 +13,20 @@ enum AXHit {
         var facts: [HitFacts]
     }
 
-    /// The app's element at a screen point, kept only when it is in the target window or a sheet of it.
+    /// The app's element at a screen point, kept only when it is in the target window or a sheet of it;
+    /// when the system's hit test lands anywhere else (a covered window, or one that takes no mouse, gets
+    /// another app's element or its own app's menu bar), the target window's tree walked by frames.
     static func element(at p: ScreenPoint, pid: pid_t, window: AXUIElement) -> AXUIElement? {
         let app = AX.app(pid)
         var out: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(app, Float(p.x), Float(p.y), &out) == .success, let e = out else { return nil }
-        AX.setTimeout(e, seconds: InputTiming.axTimeoutS)
-        return inWindow(e, window) ? e : nil
+        if AXUIElementCopyElementAtPosition(app, Float(p.x), Float(p.y), &out) == .success, let e = out {
+            AX.setTimeout(e, seconds: InputTiming.axTimeoutS)
+            if inWindow(e, window) { return e }
+        }
+        return walkHit(root: window, point: p, children: { e in
+            AX.setTimeout(e, seconds: InputTiming.axTimeoutS)
+            return AX.elements(e, "AXChildren")
+        }, frame: { AX.frame($0) })
     }
 
     /// Its AXWindow is the target, or a sheet whose AXParent is the target.

@@ -108,3 +108,37 @@ private func hitAction(_ f: HitFacts, verb: ComputerActionName, point: ScreenPoi
         return nil
     }
 }
+
+/// The element under a point by frames alone (§24.3), for a target window the system's hit test cannot
+/// see: one covered by another app's window, or one that takes no mouse, where
+/// `AXUIElementCopyElementAtPosition` answers what is on top there (another app's element, or the
+/// app's menu bar). From the root, each step goes into the last child whose frame holds the point (AX
+/// lists children back to front, so the last is on top); a child with no frame is looked through to its
+/// own children. It stops at an element with no such child, or once `budget` nodes were read. Nil when
+/// the root's own frame does not hold the point.
+public func walkHit<Node>(root: Node, point: ScreenPoint, budget: Int = InputTiming.hitWalkNodes,
+                          children: (Node) -> [Node], frame: (Node) -> ComputerProtocol.Rect?) -> Node? {
+    guard let r = frame(root), contains(r, point) else { return nil }
+    var read = 1
+    var current = root
+    while read < budget {
+        var top: Node?
+        var queue = children(current)
+        while !queue.isEmpty, read < budget {
+            let child = queue.removeFirst()
+            read += 1
+            if let f = frame(child) {
+                if contains(f, point) { top = child }
+            } else {
+                queue.insert(contentsOf: children(child), at: 0)
+            }
+        }
+        guard let next = top else { break }
+        current = next
+    }
+    return current
+}
+
+private func contains(_ r: ComputerProtocol.Rect, _ p: ScreenPoint) -> Bool {
+    p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h
+}

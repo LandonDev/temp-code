@@ -85,6 +85,8 @@ public enum InputTiming {
     public static let menuIndexMaxAgeS = 30.0
     /// the hit route looks at the element under the point and at most this many ancestors (§24.3)
     public static let hitAncestors = 3
+    /// the window walk that stands in for the system's hit test under a covered window reads at most this many nodes (§24.3)
+    public static let hitWalkNodes = 600
     /// the caret route reads its element's focus and range back for at most this long (§24.4)
     public static let caretEvidenceMs = 300
 

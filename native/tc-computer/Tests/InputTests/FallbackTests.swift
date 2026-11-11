@@ -172,6 +172,49 @@ private func textEditBar() -> TreeMenu {
 
 private let win = Rect(x: 0, y: 0, w: 400, h: 300)
 
+@Suite struct HitWalkTests {
+    /// a node of a window's tree: its frame (nil for one AX gives none) and its children, back to front
+    final class N {
+        let name: String
+        let frame: Rect?
+        var kids: [N]
+        init(_ name: String, _ frame: Rect?, _ kids: [N] = []) { self.name = name; self.frame = frame; self.kids = kids }
+    }
+    func walk(_ root: N, _ x: Double, _ y: Double, budget: Int = InputTiming.hitWalkNodes) -> String? {
+        walkHit(root: root, point: ScreenPoint(x: x, y: y), budget: budget, children: { $0.kids }, frame: { $0.frame })?.name
+    }
+
+    // the fallbacks window: the Hit Target button over its label, a field beside it, all under a frameless view
+    let tree = N("window", Rect(x: 560, y: 900, w: 420, h: 520), [
+        N("content", nil, [
+            N("button", Rect(x: 576, y: 936, w: 160, h: 28), [N("label", Rect(x: 584, y: 940, w: 140, h: 20))]),
+            N("field", Rect(x: 576, y: 1000, w: 320, h: 22)),
+        ]),
+    ])
+
+    @Test func aPointOnTheLabelFindsTheLabelUnderItsButton() {
+        #expect(walk(tree, 616, 950) == "label")
+        #expect(walk(tree, 578, 950) == "button")
+        #expect(walk(tree, 600, 1010) == "field")
+    }
+
+    @Test func theBackgroundIsTheWindowAndAPointOutsideIsNone() {
+        #expect(walk(tree, 970, 1410) == "window")
+        #expect(walk(tree, 10, 10) == nil)
+    }
+
+    @Test func theLastOfOverlappingSiblingsIsOnTop() {
+        let stacked = N("window", Rect(x: 0, y: 0, w: 100, h: 100), [N("under", Rect(x: 0, y: 0, w: 50, h: 50)), N("over", Rect(x: 25, y: 25, w: 50, h: 50))])
+        #expect(walk(stacked, 30, 30) == "over")
+        #expect(walk(stacked, 10, 10) == "under")
+    }
+
+    @Test func theWalkStopsAtItsBudget() {
+        // the window and two nodes read: the content (no frame) and the button; the label is never reached
+        #expect(walk(tree, 616, 950, budget: 3) == "button")
+    }
+}
+
 @Suite struct HitPlanTests {
     @Test func aLabelInAButtonPressesTheButton() {
         let chain = [HitFacts(role: "text"), HitFacts(role: "button", actions: ["AXPress"])]
