@@ -24,3 +24,10 @@ it('fails rather than silently using an ambiguous or changed fixture', () => {
   const original = readFileSync(resolve('scripts/mac/computer-probe-app.swift'), 'utf8')
   expect(() => previewProbeSource(original + original)).toThrow('Ping declaration changed')
 })
+
+it('keeps the --tick label drawing ten times a second while covered: the app holds a latency-critical activity', () => {
+  const source = readFileSync(resolve('scripts/mac/computer-probe-app.swift'), 'utf8')
+  const ticking = source.slice(source.indexOf('        if ticking {'), source.indexOf('Timer.scheduledTimer(withTimeInterval: 0.1'))
+  expect(ticking).toContain('ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical]')
+  expect(source).toContain('private var tickActivity: NSObjectProtocol?')
+})

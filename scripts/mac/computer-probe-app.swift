@@ -46,6 +46,9 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     private var ticks = 0
     private var tickPaused = false
     private var pauseSignal: DispatchSourceSignal?
+    /// held while `--tick` runs: a background app whose window is covered is napped, and its 0.1 s timer then fired about
+    /// twice a second, so the preview proof counted 2 fps of new pixels (a publish-shaped run, 2026-11-11)
+    private var tickActivity: NSObjectProtocol?
     private let windows = ProbeWindows()
     private let fallbacks = ProbeFallbacks()
     private let active = ProbeActive()
@@ -125,6 +128,7 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
 
         if ticking {
             tick.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+            tickActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical], reason: "TC Probe --tick draws ten times a second for the preview proof")
             tick.stringValue = "tick 0"
             Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 guard let self, !self.tickPaused else { return }
