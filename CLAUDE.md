@@ -158,7 +158,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   message, never its body (slash.ts). [docs/agents/skills.md](docs/agents/skills.md)
 - **Computer use** — the `tc-computer` Swift service, the `computer_*` tools,
   confirmations, the session tier and the Mac bridge gate (src/main/server/computer/,
-  docs/computer-protocol.md §17.8, §18; bridge timing, single remote note and held-call proof). [docs/agents/computer-use.md](docs/agents/computer-use.md)
+  docs/computer-protocol.md §17.8, §18; bridge timing, held calls and proof wrapper ordering). [docs/agents/computer-use.md](docs/agents/computer-use.md)
 - **Background work and watching** — background tasks on the session row, the
   Watching state, the Activity section (src/shared/watch.ts, lib/activity.ts).
   [docs/agents/background-work-and-watching.md](docs/agents/background-work-and-watching.md)

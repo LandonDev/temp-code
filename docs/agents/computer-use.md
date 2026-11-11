@@ -273,7 +273,10 @@ proof owns its PID cleanup. A cancellation notice passes only when the
 observation that follows it also succeeds. Proof ordering counts real
 runners by executable/script operand, including Bun wrappers and preload
 flags; generic wrappers, trailing arguments and inline shell text do not
-claim a turn. A later actual child takes its own age. Away allows the ordinary click and records an
+claim a turn. Ancestry still crosses shell/helper processes to find an
+actual `bun run` wrapper, including `bun run` → shell → `proof-bun.ts` →
+script. Its age and pid decide the turn; a runner without an actual proof
+ancestor uses its own age. Away allows the ordinary click and records an
 allowed notice, but refuses a `pay`-flagged click before it runs. The
 2026-11-10 timing leg added 3–10 ms at p50 and 19–42 ms at p90 on loopback
 (§18); it passed while the old proof’s other checks failed.

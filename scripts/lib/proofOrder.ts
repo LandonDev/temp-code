@@ -63,9 +63,9 @@ function proofTarget(command: string): string | null {
 
 /**
  * The first other proof in `ps -Ao pid=,ppid=,etime=,command=` output that
- * started before this one, or null. Each proof is its topmost process that
- * names one (its wrapper), compared by age, then by pid; this process's own
- * proof, and any `pgrep` or `ps` naming a pattern, never count.
+ * started before this one, or null. Each proof uses its topmost actual proof
+ * ancestor (its wrapper), across shells/helpers, compared by age, then by pid;
+ * this process's own proof, and any `pgrep` or `ps` naming a pattern, never count.
  */
 export function otherProofIn(ps: string, self: number, patterns: readonly string[] = COMPUTER_PROOFS): string | null {
   const rows = new Map<number, { ppid: number; age: number; command: string }>()
@@ -83,10 +83,14 @@ export function otherProofIn(ps: string, self: number, patterns: readonly string
     const target = proofTarget(command)
     return target ? patterns.find((p) => target.includes(p)) ?? null : null
   }
-  /** The wrapper: the topmost process up the chain that names a proof. */
+  /** Helpers connect a runner to its wrapper; only actual proofs set its owner and age. */
   const wrapper = (pid: number): number => {
     let top = pid
-    for (let p = rows.get(pid)?.ppid; p && proofOf(p) && p !== top; p = rows.get(p)?.ppid) top = p
+    const seen = new Set([pid])
+    for (let p = rows.get(pid)?.ppid; p && !seen.has(p); p = rows.get(p)?.ppid) {
+      seen.add(p)
+      if (proofOf(p)) top = p
+    }
     return top
   }
   const mine = wrapper(self)

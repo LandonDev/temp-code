@@ -39,4 +39,23 @@ describe('otherProofIn', () => {
     expect(etimeSeconds('02:00:00')).toBe(7200)
     expect(etimeSeconds('1-02:00:00')).toBe(93_600)
   })
+
+  it('judges bun run → shell → proof-bun.ts → script by the package wrapper, including pid ties', () => {
+    const launched = (wrapper: number, runner: number, age: string, runnerAge: string, name: string): string[] => [
+      `${wrapper} 1 ${age} bun run script:${name} -- --gate`,
+      `${wrapper + 1} ${wrapper} ${age} /bin/sh -c bun scripts/proof-bun.ts scripts/${name}.ts --gate`,
+      `${wrapper + 2} ${wrapper + 1} ${age} bun scripts/proof-bun.ts scripts/${name}.ts --gate`,
+      `${runner} ${wrapper + 2} ${runnerAge} /opt/homebrew/bin/bun scripts/${name}.ts --gate`
+    ]
+    const older = launched(80, 100, '05:10', '05:01', 'e2e-computer-bench')
+    const younger = launched(200, 220, '05:08', '05:05', 'compare-computer-words')
+    const both = [...older, ...younger].join('\n')
+    // Its script started later, but the bench's package wrapper owns the older turn.
+    for (const pid of [80, 81, 82, 100]) expect(otherProofIn(both, pid)).toBeNull()
+    for (const pid of [200, 201, 202, 220]) expect(otherProofIn(both, pid)).toBe('e2e-computer-bench')
+
+    const tied = [...older, ...launched(70, 220, '05:10', '05:00', 'compare-computer-words')].join('\n')
+    expect(otherProofIn(tied, 100)).toBe('compare-computer-words')
+    expect(otherProofIn(tied, 220)).toBeNull()
+  })
 })
