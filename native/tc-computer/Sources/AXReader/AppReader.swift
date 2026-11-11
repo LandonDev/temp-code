@@ -53,6 +53,10 @@ public final class AppReader: AppReading, @unchecked Sendable {
 
     public var changes: any ChangeSignal { monitor }
 
+    /// The target window's file and edited flag as the last whole-window read saw them (§25.8); a subtree
+    /// read leaves it. The commit check and the document line read it.
+    public private(set) var lastDocument = WindowDocument()
+
     private static func ms() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000 }
 
     public func observe(_ request: ObserveRequest) throws -> ObservationText {
@@ -81,6 +85,7 @@ public final class AppReader: AppReading, @unchecked Sendable {
             if !built.stats.thin { break }
         }
         if request.element == nil, let next { base = next }
+        if request.element == nil { lastDocument = notes.document }
         monitor.noteWalk(notes, window: window)
         handles.trim()
         let s = built.stats

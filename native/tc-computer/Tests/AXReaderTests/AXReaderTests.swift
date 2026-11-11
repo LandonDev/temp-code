@@ -99,6 +99,28 @@ import Testing
     }
 }
 
+/// §25.8, E5: the window's file and edited flag ride batches the walk already makes.
+@Suite struct WindowDocumentWalkTests {
+    @Test func aWindowAsksForItsDocumentAndTheCloseButtonForItsFlag() {
+        #expect(Attributes.stageB("AXWindow").contains("AXDocument"))
+        #expect(Attributes.stageB("AXButton", subrole: "AXCloseButton").contains("AXEdited"))
+        // nothing else pays for either
+        #expect(!Attributes.stageB("AXSheet").contains("AXDocument"))
+        #expect(!Attributes.stageB("AXWindow").contains("AXEdited"))
+        for subrole in [nil, "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton"] {
+            #expect(!Attributes.stageB("AXButton", subrole: subrole).contains("AXEdited"), "\(subrole ?? "none")")
+        }
+        #expect(Attributes.resolve("AXWindow").contains("AXDocument"))
+    }
+
+    @Test func aWalkStartsWithNoDocumentAndAnEmptyReaderSaysNone() {
+        let walker = Walker(handles: HandleTable(capacity: 16))
+        walker.begin()
+        #expect(walker.notes.document == WindowDocument())
+        #expect(WindowDocument().url == nil && WindowDocument().edited == nil)
+    }
+}
+
 /// §22: the window's title-bar buttons come back from its attributes when a capture hid them.
 @Suite struct TitleBarWalkTests {
     @Test func aWindowAsksForItsButtonsAndAXMinimizedInStageB() {

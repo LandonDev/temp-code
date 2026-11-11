@@ -19,6 +19,21 @@ struct WalkNotes {
     var scrollAreas: [AXUIElement] = []
     /// busy indicators, progress bars and web areas, with the containers above each (at most 8)
     var busy: [(element: AXUIElement, kind: BusyRule.Kind, containers: [AXUIElement])] = []
+    /// the target window's document (§25.8): its `AXDocument` and its close button's `AXEdited`
+    var document = WindowDocument()
+}
+
+/// What the target window says of its file (docs/computer-protocol.md §25.8, E5): the `AXDocument` URL as
+/// AX gave it (a `file://` URL; a Finder window's names its folder) and the close button's `AXEdited`.
+/// Either is nil when the app does not say: a window with no file, or no close button.
+public struct WindowDocument: Hashable, Sendable {
+    public var url: String?
+    public var edited: Bool?
+
+    public init(url: String? = nil, edited: Bool? = nil) {
+        self.url = url
+        self.edited = edited
+    }
 }
 
 /// What one walk counted, for `tc-ax bench`.
@@ -48,6 +63,8 @@ final class Walker {
     private var deadline: UInt64 = 0
     private var seen = Set<NodeID>()
     private var stopped = false
+    /// the target window's close button, from its stage B, so the button's own batch reads the flag
+    private var closeButton: AXUIElement?
 
     init(handles: HandleTable, caps: WalkCaps = .default) {
         self.handles = handles
@@ -64,12 +81,20 @@ final class Walker {
         seen = []
         notes = WalkNotes()
         counts = WalkCounts()
+        closeButton = nil
     }
 
     /// A root (the window, an open menu, a popover, the menu bar). The window's
     /// own failures end the read; another root that fails is left out.
     func walk(root el: AXUIElement, clip: ComputerProtocol.Rect?, menuBar: Bool, isWindow: Bool) throws -> AXNode? {
-        switch try node(el, clip: clip, depth: 0, menuBar: menuBar, containers: [], root: true, isWindow: isWindow) {
+        let out = try node(el, clip: clip, depth: 0, menuBar: menuBar, containers: [], root: true, isWindow: isWindow)
+        // a walk cut short before the close button: its flag in one read of its own
+        if isWindow, notes.document.edited == nil, let closeButton {
+            notes.document.edited = AX.bool(AX.copy(closeButton, Attributes.edited).value)
+            counts.calls += 1
+            counts.attributes += 1
+        }
+        switch out {
         case .node(let n): return n
         default: return nil
         }
@@ -115,7 +140,8 @@ final class Walker {
         seen.insert(id)
 
         // stage B
-        let attrs = Attributes.stageB(role)
+        let subrole = AX.string(a["AXSubrole"]?.value)
+        let attrs = Attributes.stageB(role, subrole: subrole)
         let b = AX.batch(el, attrs)
         counts.calls += 1
         counts.attributes += attrs.count
@@ -124,8 +150,14 @@ final class Walker {
             stop()
         }
         let s = { (k: String) in b[k]?.value }
+        if root, isWindow, role == "AXWindow" {
+            notes.document.url = AX.string(s("AXDocument"))
+            closeButton = AX.element(s("AXCloseButton"))
+        } else if subrole == "AXCloseButton", let closeButton, CFEqual(el, closeButton) {
+            notes.document.edited = AX.bool(s(Attributes.edited))
+        }
         var n = AXNode(
-            id: id, role: role, subrole: AX.string(a["AXSubrole"]?.value), title: AX.string(s("AXTitle")), description: AX.string(s("AXDescription")),
+            id: id, role: role, subrole: subrole, title: AX.string(s("AXTitle")), description: AX.string(s("AXDescription")),
             placeholder: AX.string(s("AXPlaceholderValue")), value: AX.scalar(s("AXValue")),
             identifier: AX.string(s("AXIdentifier")), domIdentifier: AX.string(s("AXDOMIdentifier")),
             flags: AXFlags(enabled: AX.bool(s("AXEnabled")), focused: AX.bool(s("AXFocused")), selected: AX.bool(s("AXSelected")),
