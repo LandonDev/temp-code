@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { MENU_BLOCK } from '../../src/shared/computer/observation'
+import { MENU_BLOCK, parseObservation, type ElementLine } from '../../src/shared/computer/observation'
 import { BatchResultSchema, type BatchResult, type ComputerActionName, type StepResult } from '../../src/shared/computer/protocol'
-import { FEWER_PROBE, judgeFewerMenu, judgeFewerNote, judgeFewerPopup, judgeFewerRename, judgeFewerStopped } from './fewerLeg'
+import { FEWER_PROBE, judgeFewerMenu, judgeFewerNote, judgeFewerPopup, judgeFewerRename, judgeFewerStopped, rowShowing } from './fewerLeg'
 
 const waited = { waitedMs: 450, settled: true, busy: false, reason: 'quiet' as const }
 const ok = (index: number, action: ComputerActionName, extra: Partial<Extract<StepResult, { status: 'ok' }>> = {}): StepResult => ({
@@ -88,6 +88,22 @@ describe('the --fewer single-batch judges (§27.15)', () => {
 
   it('accepts all four rename steps and the committed row', () => {
     expect(judgeFewerRename(rename())).toEqual([])
+  })
+  it("accepts the committed row's cell, read as an unfocused input", () => {
+    const r = rename()
+    editText(r, '~ [7] row "Renamed note" selected', '~ [8] input = "Renamed note" actions: show menu, confirm')
+    expect(judgeFewerRename(r)).toEqual([])
+  })
+  it('finds a row by its own name or by the editable cell it holds', () => {
+    const lines = (text: string): ElementLine[] => parseObservation(text).lines.flatMap((l) => (l.type === 'element' ? [l] : []))
+    const table = lines([
+      'app "TC Probe" · window "TC Probe Fewer" · 720×544',
+      '[66] table "Notes"', '  [67] row', '    [68] input = "Draft note"', '  [69] row', '    [70] input = "Second note"', '  [71] row "Third note"'
+    ].join('\n'))
+    expect(rowShowing(table, 'Draft note')?.index).toBe(67)
+    expect(rowShowing(table, 'Second note')?.index).toBe(69)
+    expect(rowShowing(table, 'Third note')?.index).toBe(71)
+    expect(rowShowing(table, 'Notes')).toBeUndefined()
   })
   it.each(['no-editor', 'old-name', 'still-editing', 'not-committed', 'label-only'])('rejects a rename with %s', (fault) => {
     const r = rename()

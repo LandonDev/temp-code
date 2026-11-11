@@ -127,7 +127,7 @@ import {
   type StepResult,
   type WaitReport
 } from '../src/shared/computer/protocol'
-import { FEWER_PROBE, judgeFewerPopup, judgeFewerNote, judgeFewerRename, judgeFewerStopped, judgeFewerMenu } from './lib/fewerLeg'
+import { FEWER_PROBE, judgeFewerPopup, judgeFewerNote, judgeFewerRename, judgeFewerStopped, judgeFewerMenu, rowShowing } from './lib/fewerLeg'
 import { waitForGateBuild } from './lib/gateBuild'
 import { chromiumForTests, CHROMIUM_MISSING, TEST_CHROMIUM_BUNDLE, SCRATCH_CHROME_FRAME, hasChromeProfile, stopScratchChromium } from './lib/chromiumForTests'
 import { createProcScan } from './lib/procScan'
@@ -1331,7 +1331,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
       const r = await act(now, { action: 'left_click', element: findElement(now, what, test).index }, ['ax', 'process'])
       data.person = assertPersonUntouched(before, `after ${what}`)
       check(okStep(r.step).tier === 'ax', `${what} ran at ax`, r.step)
-      return r.observation ?? (await read())
+      return full(r.observation)
     }
     let now = await press(o!, 'the Save… button', (e) => e.role === 'button' && e.name === 'Save…')
     now = await until(async () => {
@@ -1341,7 +1341,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
     const nameField = findElement(now, 'the sheet name field', (e) => e.role === 'input' && (e.value ?? '').startsWith('Untitled'))
     const set = await act(now, { action: 'set_value', element: nameField.index, value: name }, ['ax'])
     okStep(set.step)
-    now = set.observation ?? (await read())
+    now = await full(set.observation)
     await press(now, 'the sheet Save button', (e) => e.role === 'button' && e.name === 'Save')
     const file = join(scratch, name)
     await until(() => (existsSync(file) ? true : null), 5_000, 'the saved file')
@@ -1429,7 +1429,8 @@ async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
       o = await read()
     })
     await leg.step('fewer 3: select a row, Return, type, Return commits an inline rename in one batch', async (data) => {
-      const row = findElement(o!, 'the Draft note row', (e) => e.role === 'row' && (e.name === FEWER_PROBE.row || e.value === FEWER_PROBE.row))
+      const draft = rowShowing(elementLines(o!), FEWER_PROBE.row)
+      const row = findElement(o!, 'the Draft note row', (e) => e.index === draft?.index)
       await batch([
         { action: 'left_click', element: row.index },
         { action: 'key', text: 'Return' },

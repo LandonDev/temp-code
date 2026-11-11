@@ -47,6 +47,20 @@ function inspect(result: BatchResult, actions: ComputerActionName[], stopped = f
   return { errors, steps, parsed, elements }
 }
 
+/**
+ * The row that shows `text`: by its own name or value, or by the cell it holds. A cell-based table with an
+ * editable column reads each cell as an `input` under a row with no name (TC Probe's Notes, 2026-11-11).
+ */
+export function rowShowing(elements: ElementLine[], text: string): ElementLine | undefined {
+  const shows = (e: ElementLine): boolean => e.name === text || e.value === text
+  return elements.find((row, i) => {
+    if (row.role !== 'row') return false
+    if (shows(row)) return true
+    const end = elements.findIndex((e, j) => j > i && e.depth <= row.depth)
+    return elements.slice(i + 1, end < 0 ? undefined : end).some(shows)
+  })
+}
+
 /** The click opens a pop-up and a name seen only at runtime picks its item in that same batch. */
 export function judgeFewerPopup(result: BatchResult): string[] {
   const { errors, steps, elements, parsed } = inspect(result, ['left_click', 'left_click'])
@@ -80,7 +94,8 @@ export function judgeFewerRename(result: BatchResult): string[] {
   const { errors, steps, elements } = inspect(result, ['left_click', 'key', 'type', 'key'])
   if (steps[1]?.focusTo === undefined) errors.push('Return must report focus moving to the inline editor')
   if (steps[3]?.effect !== 'changed') errors.push('the final Return must commit a change')
-  if (!elements.some((e) => e.role === 'row' && (e.name === FEWER_PROBE.renamed || e.value === FEWER_PROBE.renamed)))
+  // a diff names the row, or the row's cell once it is no longer being edited
+  if (!rowShowing(elements, FEWER_PROBE.renamed) && !elements.some((e) => e.role === 'input' && e.value === FEWER_PROBE.renamed && !e.states.includes('focused')))
     errors.push('the committed row must show the new name')
   if (elements.some((e) => e.role === 'input' && e.states.includes('focused')))
     errors.push('the inline editor must be closed after Return')
