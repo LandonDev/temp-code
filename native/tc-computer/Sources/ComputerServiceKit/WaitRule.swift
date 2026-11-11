@@ -62,9 +62,10 @@ public struct WaitOutcome: Sendable, Equatable {
     }
 
     /// The step's `effect`: changed when anything counted moved (a copy or cut's pasteboard among them,
-    /// §24.10), the app quit or the target window closed (§22.6); else unknown on a thin tree; else none.
-    public func effect(thin: Bool, windowGone: Bool = false) -> StepEffect {
-        if axChanged || pixelChanged || pasteboardChanged || appLeft || windowGone { return .changed }
+    /// §24.10), the app quit, the target window closed (§22.6), or the call's record saw a menu open or a window
+    /// or sheet made during the step (`opened`, §27.4); else unknown on a thin tree; else none.
+    public func effect(thin: Bool, windowGone: Bool = false, opened: Bool = false) -> StepEffect {
+        if axChanged || pixelChanged || pasteboardChanged || appLeft || windowGone || opened { return .changed }
         return thin ? .unknown : .none
     }
 }

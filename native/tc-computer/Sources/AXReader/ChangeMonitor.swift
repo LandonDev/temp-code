@@ -129,6 +129,7 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
     private func noteOpened(_ element: AXUIElement, _ notification: String) {
         lock.lock()
         let recording = record.step != nil
+        if notification == kAXMenuClosedNotification { record.closed(element) { CFEqual($0, $1) } }
         lock.unlock()
         guard recording else { return }
         let kind: CallRecord<AXUIElement>.Kind?
@@ -161,6 +162,13 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
         lock.lock()
         record.end()
         lock.unlock()
+    }
+
+    /// Whether something opened during step `index` of the call (§27.4).
+    func opened(during index: Int) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return record.opened(during: index)
     }
 
     /// What the call's steps opened so far.

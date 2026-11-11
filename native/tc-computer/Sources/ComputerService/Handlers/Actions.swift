@@ -216,7 +216,8 @@ extension ComputerService {
             if !run.stops && !isLast, let t0 = run.t0, case .ok(let ok) = run.step {
                 // §27.3: a step that went in at `ax` takes the axStep row; a `front` step is not one, its wait runs after the restore
                 let waited = await waitAfter(current, options: rows.between(tier: ok.tier), t0: t0, signature0: run.signature0, pasteboard: WaitRule.readsPasteboard(action), cancel: ctx.cancel)
-                var judged = ok.with(effect: run.effect(waited.effect(thin: book.lastThin(session, pid: target.pid))), waited: waited.report)
+                let opened = await openedDuring(current, step: index)
+                var judged = ok.with(effect: run.effect(waited.effect(thin: book.lastThin(session, pid: target.pid), opened: opened)), waited: waited.report)
                 if let check = run.check, !ctx.cancel.isSet { judged = await committed(judged, check, current) }
                 run.step = .ok(judged)
             }
@@ -254,7 +255,8 @@ extension ComputerService {
                 windowGone = inventory.isRunning(target.pid) ? await windowClosed(current) : true
             }
             if let at = steps.indices.last, case .ok(let ok) = steps[at] {
-                let effect = waited.effect(thin: book.lastThin(session, pid: target.pid), windowGone: windowGone)
+                let opened = await openedDuring(current, step: ok.index)
+                let effect = waited.effect(thin: book.lastThin(session, pid: target.pid), windowGone: windowGone, opened: opened)
                 var judged = ok.with(effect: last.effect(effect), waited: waited.report)
                 if let check = last.check, !windowGone, waited.report.reason != .cancelled { judged = await committed(judged, check, current) }
                 var ran = last
@@ -545,6 +547,11 @@ extension ComputerService {
         _ = try? await target.worker.run { state in
             if begin { state.reader?.beginCallRecord() } else { state.reader?.endCallRecord() }
         }
+    }
+
+    /// §27.4: whether the call's record saw a menu open or a window or sheet made during the step.
+    private func openedDuring(_ target: Resolved, step index: Int) async -> Bool {
+        (try? await target.worker.run { state in state.reader?.opened(during: index) ?? false }) ?? false
     }
 
     /// §25.1: whether the target's process is Chromium, by its bundle (read once per bundle).

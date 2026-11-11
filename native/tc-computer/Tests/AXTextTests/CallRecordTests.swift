@@ -22,6 +22,21 @@ import Testing
         #expect(r.entries.isEmpty)
     }
 
+    @Test func aClosedMenuLeavesTheRecordAndItsStepStillOpenedIt() {
+        var r = CallRecord<Int>()
+        r.begin()
+        r.record(step: 0)
+        r.note(.menu, 7, same: ==)
+        r.record(step: 1)
+        r.note(.window, 9, same: ==)
+        r.closed(7, same: ==)
+        r.closed(9, same: ==)
+        #expect(r.entries.map(\.element) == [9])
+        #expect(r.opened(during: 0) && r.opened(during: 1) && !r.opened(during: 2))
+        r.begin()
+        #expect(!r.opened(during: 0))
+    }
+
     @Test func itHoldsAtMostThirtyTwo() {
         var r = CallRecord<Int>()
         r.begin()

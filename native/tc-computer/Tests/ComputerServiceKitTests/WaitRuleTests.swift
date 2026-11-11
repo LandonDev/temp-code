@@ -31,6 +31,13 @@ private func run(
         #expect(out.effect(thin: false) == .none)
     }
 
+    @Test func aMenuTheStepOpenedIsAChangeThoughNothingCameAfterT0() {
+        // a pop up's AXPress: AXMenuOpened comes before the AX call returns, so before the wait's clock (§27.4)
+        let out = run()
+        #expect(out.effect(thin: false, opened: true) == .changed)
+        #expect(out.effect(thin: true, opened: true) == .changed)
+    }
+
     @Test func oneAXChangeRestartsTheQuietClock() {
         let out = run(ax: [400])
         #expect(out.report.waitedMs == 850)
