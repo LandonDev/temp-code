@@ -194,6 +194,32 @@ describe('fenceRequest on attachments', () => {
 
 describe('fenceRequest', () => {
   const req = (method: string, params: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest
+  it('refuses the computer history inside a root, by a symlink too, and still admits what sits beside it', () => {
+    // a workspace opened on the app's data directory, and another that links to it
+    const data = join(root, 'data')
+    const history = join(data, 'computer', 'history')
+    mkdirSync(join(history, 't1', 'steps'), { recursive: true })
+    writeFileSync(join(history, 't1', 'log.jsonl'), '{}')
+    writeFileSync(join(history, 't1', 'steps', '1.jpg'), 'jpg')
+    writeFileSync(join(data, 'computer', 'beside.txt'), 'x')
+    symlinkSync(data, join(outside, 'data-link'))
+    const roots = [root, outside]
+    const picture = join(history, 't1', 'steps', '1.jpg')
+    // without the denied directory the roots admit it: that is what the fence closes
+    expect(() => fenceRequest(req('fs.readBase64', { path: picture }), roots)).not.toThrow()
+    for (const path of [picture, join(history, 't1', 'log.jsonl'), history, join(outside, 'data-link', 'computer', 'history', 't1', 'steps', '1.jpg')]) {
+      expect(() => fenceRequest(req('fs.readBase64', { path }), roots, [], [history]), path).toThrow(FenceError)
+      expect(() => fenceRequest(req('fs.readText', { path }), roots, [], [history]), path).toThrow(FenceError)
+      expect(() => fenceRequest(req('fs.statFiles', { paths: [join(root, 'src', 'a.ts'), path] }), roots, [], [history]), path).toThrow(FenceError)
+      expect(() => fenceRequest(req('attachment.read', { path }), roots, [], [history]), path).toThrow(FenceError)
+    }
+    expect(() => fenceRequest(req('fs.listPath', { path: history }), roots, [], [history])).toThrow(FenceError)
+    expect(() => fenceRequest(req('git.log', { cwd: join(history, 't1') }), roots, [], [history])).toThrow(FenceError)
+    expect(() => fenceRequest(req('fs.readText', { path: join(data, 'computer', 'beside.txt') }), roots, [], [history])).not.toThrow()
+    expect(() => fenceRequest(req('fs.readText', { path: join(root, 'src', 'a.ts') }), roots, [], [history])).not.toThrow()
+    // a history that does not exist yet denies nothing else
+    expect(() => fenceRequest(req('fs.readText', { path: join(root, 'src', 'a.ts') }), roots, [], [join(dir, 'no-such', 'history')])).not.toThrow()
+  })
   it('passes a request inside the roots and ignores methods without paths', () => {
     expect(() => fenceRequest(req('fs.readText', { path: join(root, 'src', 'a.ts') }), [root])).not.toThrow()
     expect(() => fenceRequest(req('session.list', {}), [])).not.toThrow()

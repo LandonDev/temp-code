@@ -163,13 +163,19 @@ export function attachmentPaths(req: ClientRequest): string[] | null {
   return pick ? pick((req as { params?: unknown }).params) : null
 }
 
-/** Throw the typed error when a request names a path outside the roots.
- *  `attachmentRoots` widen the roots for attachment paths only. */
-export function fenceRequest(req: ClientRequest, roots: readonly string[], attachmentRoots: readonly string[] = []): void {
+/**
+ * Throw the typed error when a request names a path outside the roots.
+ * `attachmentRoots` widen the roots for attachment paths only. `denied` are
+ * directories no remote request may name even inside a root (the computer
+ * history, whose pictures are the person's windows): a workspace that
+ * contains the data directory, by a symlink too, does not open them.
+ */
+export function fenceRequest(req: ClientRequest, roots: readonly string[], attachmentRoots: readonly string[] = [], denied: readonly string[] = []): void {
+  const admits = (p: unknown, within: readonly string[]): boolean => typeof p === 'string' && insideRoots(p, within) && !insideRoots(p, denied)
   const paths = fencedPaths(req)
-  if (paths) for (const p of paths) if (typeof p !== 'string' || !insideRoots(p, roots)) throw new FenceError(req.method)
+  if (paths) for (const p of paths) if (!admits(p, roots)) throw new FenceError(req.method)
   const files = attachmentPaths(req)
   if (!files?.length) return
   const all = [...roots, ...attachmentRoots]
-  for (const p of files) if (typeof p !== 'string' || !insideRoots(p, all)) throw new FenceError(req.method)
+  for (const p of files) if (!admits(p, all)) throw new FenceError(req.method)
 }

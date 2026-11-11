@@ -9,6 +9,7 @@ import {
   parseRange,
   readMediaRange,
   resetMediaTokens,
+  setMediaDenied,
   setMediaHost,
   serveMedia,
   serverMediaRoots,
@@ -141,6 +142,33 @@ describe('the file host', () => {
     expect(await fsMedia(join(attachments, 'thread-1', 'computer', '0001.png'))).toMatchObject({ kind: 'image', mime: 'image/png' })
     expect(await fsMedia(join(outside, 'secret.png'))).toBeNull()
     expect(serverMediaRoots({ projects: ['/p'], workspaces: ['/w'], attachments: null })).toEqual(['/p', '/w'])
+  })
+
+  it('never serves the computer history, even from a workspace that contains the data directory, by a symlink too', async () => {
+    // a workspace opened on the app's data directory: every root admits what lies under it
+    const history = join(root, 'data', 'computer', 'history')
+    await mkdir(join(history, 't1', 'steps'), { recursive: true })
+    const picture = join(history, 't1', 'steps', '1.jpg')
+    await writeFile(picture, Buffer.concat([PNG, Buffer.alloc(16)]))
+    await writeFile(join(root, 'data', 'computer', 'beside.png'), Buffer.concat([PNG, Buffer.alloc(16)]))
+    // and another workspace that reaches the same directory through a link
+    await symlink(join(root, 'data'), join(outside, 'data-link'))
+    setMediaRoots(() => [root, outside])
+    expect(await fsMedia(picture)).toMatchObject({ kind: 'image' })
+    const token = /file\/([a-f0-9]{32})\//.exec((await fsMedia(picture))!.url)![1]
+    setMediaDenied(() => [history])
+    try {
+      expect(await fsMedia(picture)).toBeNull()
+      expect(await fsMedia(join(outside, 'data-link', 'computer', 'history', 't1', 'steps', '1.jpg'))).toBeNull()
+      // a URL minted before the fence closed serves nothing either
+      expect(serveMedia(new Request(`tempcode-asset://file/${token}/1.jpg`)).status).toBe(403)
+      expect(await readMediaRange(token, 0, 16)).toBeNull()
+      // what sits beside the history is served as before
+      expect(await fsMedia(join(root, 'data', 'computer', 'beside.png'))).toMatchObject({ kind: 'image' })
+      expect(await fsMedia(join(root, 'img', 'a.png'))).toMatchObject({ kind: 'image' })
+    } finally {
+      setMediaDenied(() => [])
+    }
   })
 
   it('refuses a root spelled as a prefix of another directory', () => {

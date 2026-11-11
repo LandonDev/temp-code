@@ -158,6 +158,22 @@ function allRoots(): string[] {
   return [...rootsProvider(), MEDIA_SCRATCH_DIR]
 }
 
+let deniedProvider: () => string[] = () => []
+
+/**
+ * Directories no media URL ever serves from, whatever root reaches them: the
+ * computer history (computer/history.ts), whose pictures are the person's
+ * windows and are read only by this desktop's own `computer.history.step`.
+ */
+export function setMediaDenied(provider: () => string[]): void {
+  deniedProvider = provider
+}
+
+/** Inside a root, and under no denied directory, by the real path. */
+function servable(realPath: string): boolean {
+  return insideRealRoots(realPath, allRoots()) && !insideRealRoots(realPath, deniedProvider())
+}
+
 // ── tokens ───────────────────────────────────────────────────────────────
 
 interface Entry {
@@ -213,7 +229,7 @@ export async function fsMedia(path: string): Promise<FsMedia | null> {
   const type = classifyMedia(abs, readHead(abs))
   if (!type) return null
   const real = realOrNull(abs)
-  if (!real || !insideRealRoots(real, allRoots())) return null
+  if (!real || !servable(real)) return null
   return describeMedia(abs, type, st.size, st.mtimeMs)
 }
 
@@ -254,7 +270,7 @@ function tokenFile(token: string): { entry: Entry; real: string; size: number; m
   const entry = tokens.get(token)
   if (!entry) return null
   const real = realOrNull(entry.path)
-  if (!real || !insideRealRoots(real, allRoots())) return null
+  if (!real || !servable(real)) return null
   let st
   try {
     st = statSync(real)
@@ -300,7 +316,7 @@ export function serveMedia(request: Request): Response {
   if (!entry) return new Response('not found', { status: 404 })
   const real = realOrNull(entry.path)
   if (!real) return new Response('not found', { status: 404 })
-  if (!insideRealRoots(real, allRoots())) return new Response('forbidden', { status: 403 })
+  if (!servable(real)) return new Response('forbidden', { status: 403 })
   let st
   try {
     st = statSync(real)

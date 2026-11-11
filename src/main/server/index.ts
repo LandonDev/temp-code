@@ -140,7 +140,7 @@ import { migrateHousePreamble, seedHousePreamble } from './projectPreamble'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { workRoot } from './workRoot'
-import { readMediaRange, serverMediaRoots, setMediaHost, setMediaRoots } from './media'
+import { readMediaRange, serverMediaRoots, setMediaDenied, setMediaHost, setMediaRoots } from './media'
 import { CheckpointStore, inHeadMany, listTracked } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { CheckpointTurns } from './checkpointTurns'
@@ -530,6 +530,10 @@ export async function startServer(
       attachments: dataAttachmentsRoot()
     })
   )
+  // The computer history's pictures are the person's windows (computer/history.ts): no media URL serves them and no
+  // remote request names them, whatever root a workspace adds; this desktop reads them by `computer.history.step`.
+  const computerHistoryRoot = historyRoot(join(options.dataDir ?? dirname(dbPath), 'computer'))
+  setMediaDenied(() => [computerHistoryRoot])
   /** What a remote key may name by path (remote/fence.ts): the media
    *  roots plus the work root new workspaces go under — unless that is the
    *  bare home directory, which no key gets to browse. */
@@ -2058,7 +2062,7 @@ export async function startServer(
         // A remote key names paths only inside the app-managed roots; the
         // refusal is one typed error that never carries the path. Ahead of
         // the lane gate: a bulk request never joins one it may not make.
-        if (principal.kind !== 'local') fenceRequest(req, managedRoots(), [ATTACH_DIR])
+        if (principal.kind !== 'local') fenceRequest(req, managedRoots(), [ATTACH_DIR], [computerHistoryRoot])
         // The lane gate (lane.ts): interactive and normal run now; bulk waits
         // its turn and a duplicate shares the answer of the one before it.
         const lane = laneOf(req, focus)
