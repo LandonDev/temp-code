@@ -545,7 +545,7 @@ type ComputerError = { kind: ComputerErrorKind; message: string } & Partial<{
 | `app_busy` | the app's action slot stayed taken for 5 s (another session's action, or its held button) | |
 | `cancelled` | `$/cancel` | |
 | `clipboard_busy` | the lock was not free in 2 s | |
-| `capture_failed` | ScreenCaptureKit refused or timed out | |
+| `capture_failed` | ScreenCaptureKit refused or timed out (a shot within 5 s; its window list and a stream's start within 3 s each, `CaptureTuning.listTimeout` and `streamStartTimeout`, since its Swift overlay once leaked its continuation and a read waited on it for good, 2026-11-11; a wait whose pixel watch cannot start goes on without pixels) | |
 | `timeout` | an AX call hung past 2 s (the app is not answering) | |
 | `text_not_found` | `select_text` found no match (with its prefix and suffix) | `element` |
 | `key_window_unavailable` | a `process`-tier key, `hold_key`, `type` by keys or `paste` whose target window is not the app's key window; nothing was posted | `keyWindow?` |
