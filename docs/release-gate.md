@@ -61,7 +61,10 @@ third failed e2e-addons' "ready again within 5 s" at 5115 ms with the load at
 179 from another app's build; the fourth passed every row before
 e2e-tc-computer, which failed active 9 on both tries: after save_as, a session
 step, TC Probe kept the front from the person's app (Aside), though the front
-hold read restored.
+hold read restored. So the full publish gate in the scratch clone was not
+green: run #4 failed e2e-tc-computer's active 9 (save_as) on both tries, TC
+Probe keeping the front from the person's app after save_as, and that is not
+traced yet.
 
 The rows `e2e-tc-computer` and `e2e-computer-bridge` start through
 `scripts/proof-bun.ts`: `bun run` puts every ancestor's node_modules/.bin on
@@ -283,7 +286,10 @@ one contract:
   in report.json (`flakes`, `reruns`), on `flake:` lines in the step's log,
   under the gate's row and in last-run.json. A rerun that fails a step, or
   skips or never reaches the one that failed, is red. A hand run never
-  reruns: its first failure stands.
+  reruns: its first failure stands. e2e-computer-preview has its own rule
+  (`needsVoidRerun`): under `--gate`, a run whose only shortfalls are voided
+  checks runs once more at once and names them as flakes when that passes; a
+  failed check never reruns, and a rerun that voids again stays red.
 - **Three greens.** A proof joined the gate only after three green `--gate`
   runs in a row on each host it runs on (the sweep of 2026-11-09, below).
 
