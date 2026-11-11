@@ -1,0 +1,31 @@
+{
+  "jsonrpc": "2.0",
+  "id": 45,
+  "method": "action.run",
+  "params": {
+    "session": "thread-9fK2",
+    "app": {
+      "app": "TextEdit"
+    },
+    "action": {
+      "action": "save_as",
+      "path": "~/run/note.rtf",
+      "replace": true
+    },
+    "tiers": [
+      "ax",
+      "process",
+      "front"
+    ],
+    "wait": {
+      "minMs": 300,
+      "quietMs": 450,
+      "maxMs": 1500,
+      "busyMaxMs": 5000
+    },
+    "observe": {
+      "mode": "auto",
+      "screenshot": "auto"
+    }
+  }
+}

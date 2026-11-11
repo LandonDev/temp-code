@@ -16,7 +16,7 @@ import {
   type StepEffect,
   type Tier
 } from '../../src/shared/computer/protocol'
-import { EFFECT_WORDS, FALLBACK_VIAS, NOT_EXECUTED_LINE, STEP_SEPARATOR } from '../../src/shared/computer/tools'
+import { DISK_PREFIX, EFFECT_WORDS, FALLBACK_VIAS, HINT_SEPARATOR, NOT_EXECUTED_LINE, STEP_SEPARATOR } from '../../src/shared/computer/tools'
 import type { Verdict } from './soakJudge'
 
 // ── what a run records ──────────────────────────────────────────────────
@@ -33,6 +33,8 @@ export interface BenchStep {
   /** how a `type` went in, said in the tier's place */
   via?: InputVia
   effect?: StepEffect
+  /** the step line's disk part (§25.12), after `on disk: ` */
+  disk?: string
   ok: boolean
   error?: string
 }
@@ -144,7 +146,7 @@ const runPassed = (run: BenchRun): boolean => run.outcome === 'passed' && runFau
 
 // ── the step lines ──────────────────────────────────────────────────────
 
-const TIERS: readonly string[] = ['ax', 'process', 'session']
+const TIERS: readonly string[] = ['ax', 'process', 'front', 'session']
 const VIAS: readonly string[] = ['ax-insert', 'ax-value', 'keys', 'paste']
 const EFFECTS = new Map(Object.entries(EFFECT_WORDS).map(([effect, words]) => [words, effect as StepEffect]))
 const FAILED = `${STEP_SEPARATOR}failed: `
@@ -174,16 +176,27 @@ export function parseStepLine(line: string): BenchStep | null {
   if (NO_INPUT_ACTIONS.includes(action)) return { action, tier: null, ok: true }
   // The target may hold the separator inside its quotes: read from the end.
   const parts = line.split(STEP_SEPARATOR)
+  // the disk part, when there is one, follows the effect (§25.12)
+  const last = parts[parts.length - 1]
+  const disk = last.startsWith(DISK_PREFIX) ? last.slice(DISK_PREFIX.length) : undefined
+  if (disk !== undefined) parts.pop()
   if (parts.length < 3) return null
-  const effect = EFFECTS.get(parts[parts.length - 1])
-  const how = parts[parts.length - 2]
+  // `uncommitted` carries what commits it after its words
+  const effectPart = parts[parts.length - 1]
+  const effect = EFFECTS.get(effectPart.split(HINT_SEPARATOR, 1)[0])
+  let how = parts[parts.length - 2]
   if (!effect) return null
-  if (TIERS.includes(how)) return { action, tier: how as Tier, effect, ok: true }
-  if (VIAS.includes(how)) return { action, tier: how.startsWith('ax-') ? 'ax' : null, via: how as InputVia, effect, ok: true }
+  const facts = { action, effect, ok: true, ...(disk !== undefined ? { disk } : {}) }
+  // `front menu File › Save`: the tier, then the route it took with the app in front
+  const front = how.startsWith('front ')
+  if (front) how = how.slice('front '.length)
+  if (TIERS.includes(how)) return { ...facts, tier: how as Tier }
+  if (how === 'panel') return { ...facts, tier: 'front', via: 'panel' }
+  if (VIAS.includes(how)) return { ...facts, tier: how.startsWith('ax-') ? 'ax' : null, via: how as InputVia }
   // a background route names what it acted on after its word (§24.8): `menu File › Close`
   const route = how.split(' ', 1)[0]
-  if ((FALLBACK_VIAS as readonly string[]).includes(route)) return { action, tier: 'ax', via: route as InputVia, effect, ok: true }
-  if (how === 'no tier') return { action, tier: null, effect, ok: true }
+  if ((FALLBACK_VIAS as readonly string[]).includes(route)) return { ...facts, tier: front ? 'front' : 'ax', via: route as InputVia }
+  if (how === 'no tier') return { ...facts, tier: null }
   return null
 }
 

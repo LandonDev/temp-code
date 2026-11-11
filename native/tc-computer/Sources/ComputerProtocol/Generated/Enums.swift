@@ -5,6 +5,7 @@ public enum Tier: RawRepresentable, Codable, Hashable, Sendable {
     case ax
     case process
     case session
+    case front
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -13,6 +14,7 @@ public enum Tier: RawRepresentable, Codable, Hashable, Sendable {
         case "ax": self = .ax
         case "process": self = .process
         case "session": self = .session
+        case "front": self = .front
         default: self = .unknown(rawValue)
         }
     }
@@ -22,6 +24,7 @@ public enum Tier: RawRepresentable, Codable, Hashable, Sendable {
         case .ax: "ax"
         case .process: "process"
         case .session: "session"
+        case .front: "front"
         case .unknown(let value): value
         }
     }
@@ -188,6 +191,7 @@ public enum ComputerActionName: RawRepresentable, Codable, Hashable, Sendable {
     case perform
     case selectText
     case paste
+    case saveAs
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -214,6 +218,7 @@ public enum ComputerActionName: RawRepresentable, Codable, Hashable, Sendable {
         case "perform": self = .perform
         case "select_text": self = .selectText
         case "paste": self = .paste
+        case "save_as": self = .saveAs
         default: self = .unknown(rawValue)
         }
     }
@@ -241,6 +246,7 @@ public enum ComputerActionName: RawRepresentable, Codable, Hashable, Sendable {
         case .perform: "perform"
         case .selectText: "select_text"
         case .paste: "paste"
+        case .saveAs: "save_as"
         case .unknown(let value): value
         }
     }
@@ -441,6 +447,7 @@ public enum InputVia: RawRepresentable, Codable, Hashable, Sendable {
     case caret
     case scrollBar
     case scrollPage
+    case panel
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -455,6 +462,7 @@ public enum InputVia: RawRepresentable, Codable, Hashable, Sendable {
         case "caret": self = .caret
         case "scroll-bar": self = .scrollBar
         case "scroll-page": self = .scrollPage
+        case "panel": self = .panel
         default: self = .unknown(rawValue)
         }
     }
@@ -470,6 +478,7 @@ public enum InputVia: RawRepresentable, Codable, Hashable, Sendable {
         case .caret: "caret"
         case .scrollBar: "scroll-bar"
         case .scrollPage: "scroll-page"
+        case .panel: "panel"
         case .unknown(let value): value
         }
     }
@@ -502,6 +511,7 @@ public enum StepEffect: RawRepresentable, Codable, Hashable, Sendable {
     case changed
     case none
     case unknown
+    case uncommitted
     /// A value this build does not know; `rawValue` keeps it.
     case unrecognized(String)
 
@@ -510,6 +520,7 @@ public enum StepEffect: RawRepresentable, Codable, Hashable, Sendable {
         case "changed": self = .changed
         case "none": self = .none
         case "unknown": self = .unknown
+        case "uncommitted": self = .uncommitted
         default: self = .unrecognized(rawValue)
         }
     }
@@ -519,6 +530,7 @@ public enum StepEffect: RawRepresentable, Codable, Hashable, Sendable {
         case .changed: "changed"
         case .none: "none"
         case .unknown: "unknown"
+        case .uncommitted: "uncommitted"
         case .unrecognized(let value): value
         }
     }
@@ -549,6 +561,8 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
     case sessionUnavailable
     case alreadyRunning
     case openRefused
+    case notCommitted
+    case fileExists
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -578,6 +592,8 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case "session_unavailable": self = .sessionUnavailable
         case "already_running": self = .alreadyRunning
         case "open_refused": self = .openRefused
+        case "not_committed": self = .notCommitted
+        case "file_exists": self = .fileExists
         default: self = .unknown(rawValue)
         }
     }
@@ -608,6 +624,8 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case .sessionUnavailable: "session_unavailable"
         case .alreadyRunning: "already_running"
         case .openRefused: "open_refused"
+        case .notCommitted: "not_committed"
+        case .fileExists: "file_exists"
         case .unknown(let value): value
         }
     }
@@ -788,6 +806,35 @@ public enum FrontRestore: RawRepresentable, Codable, Hashable, Sendable {
         case .personChose: "person-chose"
         case .failed: "failed"
         case .hidApp: "hid-app"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum FrontHoldRestore: RawRepresentable, Codable, Hashable, Sendable {
+    case restored
+    case personMoved
+    case appGone
+    case failed
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "restored": self = .restored
+        case "person-moved": self = .personMoved
+        case "app-gone": self = .appGone
+        case "failed": self = .failed
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .restored: "restored"
+        case .personMoved: "person-moved"
+        case .appGone: "app-gone"
+        case .failed: "failed"
         case .unknown(let value): value
         }
     }

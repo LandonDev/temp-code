@@ -30,7 +30,10 @@ import {
   StepResultSchema,
   TargetSchema,
   WaitOptionsSchema,
+  TIER_ORDER,
+  TierSchema,
   lockPath,
+  tierRank,
   waitActionWait
 } from './protocol'
 
@@ -106,8 +109,8 @@ describe('the action shape', () => {
   })
 
   it('names every action once, the first 17 as Anthropic does, and describes every parameter it lists', () => {
-    expect(new Set(COMPUTER_ACTION_NAMES).size).toBe(21)
-    expect(COMPUTER_ACTION_NAMES.slice(17)).toEqual(['set_value', 'perform', 'select_text', 'paste'])
+    expect(new Set(COMPUTER_ACTION_NAMES).size).toBe(22)
+    expect(COMPUTER_ACTION_NAMES.slice(17)).toEqual(['set_value', 'perform', 'select_text', 'paste', 'save_as'])
     for (const name of COMPUTER_ACTION_NAMES)
       for (const p of [...ACTION_PARAMS[name].required, ...ACTION_PARAMS[name].optional]) expect(COMPUTER_ACTION_SHAPE).toHaveProperty(p)
   })
@@ -389,5 +392,47 @@ describe('the front guard\'s additions (§23)', () => {
 
   it('keeps its numbers in SERVICE', () => {
     expect(SERVICE).toMatchObject({ frontWatchMs: 30_000, frontChoiceMs: 500, frontRestoreMs: 400, frontStealsMax: 3, openItemsMax: 8 })
+  })
+})
+
+describe('the front tier, save_as and the commit check (§25)', () => {
+  it('appends front to the tier enum and orders it between process and session', () => {
+    expect(TierSchema.options).toEqual(['ax', 'process', 'session', 'front'])
+    expect(TIER_ORDER).toEqual(['ax', 'process', 'front', 'session'])
+    expect(tierRank('front')).toBeGreaterThan(tierRank('process'))
+    expect(tierRank('front')).toBeLessThan(tierRank('session'))
+  })
+
+  it('takes save_as with a path and replace, and refuses a relative path, a folder, an empty one or replace elsewhere', () => {
+    expect(ok({ action: 'save_as', path: '~/run/note.rtf' })).toBe(true)
+    expect(ok({ action: 'save_as', path: '/tmp/run/note.txt', replace: true })).toBe(true)
+    expect(messages({ action: 'save_as', path: 'run/note.rtf' })).toContain('save_as takes an absolute path or one under ~/')
+    expect(messages({ action: 'save_as', path: '~/run/' })).toContain('save_as needs the file name at the end of path')
+    expect(ok({ action: 'save_as', path: '' })).toBe(false)
+    expect(ok({ action: 'save_as', path: '/' + 'a'.repeat(1_024) })).toBe(false)
+    expect(messages({ action: 'save_as' })).toContain('save_as needs path')
+    expect(messages({ action: 'key', text: 'a', replace: true })).toContain('key takes no replace')
+  })
+
+  it('carries a hold and a disk change on an ok step, and a hold in a failed step\'s error', () => {
+    const front = { heldMs: 600, activateMs: 80, restoreMs: 40, restored: 'restored' as const }
+    const step = { index: 0, action: 'key', status: 'ok', tier: 'front', effect: 'uncommitted', front, disk: { edited: { before: true, after: true }, hint: 'commit it with key Return in the field' } }
+    expect(StepResultSchema.safeParse(step).success).toBe(true)
+    expect(StepResultSchema.safeParse({ ...step, front: { ...front, restored: 'gone' } }).success).toBe(false)
+    expect(StepResultSchema.safeParse({ ...step, disk: { renamed: [{ from: '~/a.txt', to: '~/b.txt' }], unknown: true } }).success).toBe(true)
+    expect(ComputerErrorSchema.safeParse({ kind: 'timeout', message: 'x', front: { ...front, restored: 'person-moved' } }).success).toBe(true)
+  })
+
+  it('appends the panel route, the effect and the step-only kinds', () => {
+    expect(InputViaSchema.options.at(-1)).toBe('panel')
+    expect(COMPUTER_ERROR_KINDS.slice(-2)).toEqual(['not_committed', 'file_exists'])
+    expect(STEP_ONLY_ERROR_KINDS).toEqual(expect.arrayContaining(['not_committed', 'file_exists']))
+  })
+
+  it('lets initialize name its features both ways, and an older peer leave them out', () => {
+    const params = COMPUTER_METHODS.initialize.params
+    const base = { protocol: 1, client: { name: 'TempCode', version: '1' }, dataDir: '/tmp' }
+    expect(params.parse(base)).not.toHaveProperty('features')
+    expect(params.parse({ ...base, features: ['front', 'later-thing'] }).features).toEqual(['front', 'later-thing'])
   })
 })

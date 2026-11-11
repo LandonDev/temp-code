@@ -92,6 +92,24 @@ public enum ComputerDefaults {
         public static let durationMaxSeconds = 300
         public static let clickDurationMaxSeconds = 10
     }
+    public enum Front {
+        public static let activateMaxMs = 400
+        public static let pollMs = 10
+        public static let settleMs = 250
+        public static let settleMaxMs = 600
+        public static let restoreMaxMs = 400
+        public static let holdMaxMs = 2000
+        public static let quietMs = 800
+        public static let quietMaxMs = 5000
+        public static let keyRepeatMax = 10
+        public static let keysMaxUnits = 200
+        public static let panelOpenMaxMs = 3000
+        public static let commitSettleMs = 1500
+        public static let commitPollMs = 100
+        public static let commitListMax = 2000
+        public static let commitListMs = 20
+        public static let pathMaxUnits = 1024
+    }
     public enum RPCErrorCode {
         public static let parseError = -32700
         public static let invalidRequest = -32600

@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 46,
+  "result": {
+    "step": {
+      "index": 0,
+      "action": "save_as",
+      "status": "failed",
+      "error": {
+        "kind": "not_committed",
+        "message": "TextEdit closed the save panel and no file appeared in ~/run."
+      }
+    }
+  }
+}

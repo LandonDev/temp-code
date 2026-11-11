@@ -35,7 +35,17 @@ function walk(dir: string): string[] {
 }
 
 /** A second request of one method: `input.restoreSession` right after the person's touch stopped a step. */
-const VARIANTS: Readonly<Record<string, ComputerMethod>> = { 'input.restoreSession.after-interrupt.request.json': 'input.restoreSession' }
+const VARIANTS: Readonly<Record<string, ComputerMethod>> = {
+  'input.restoreSession.after-interrupt.request.json': 'input.restoreSession',
+  // a host that speaks the front tier, save_as and the commit check (§25); the plain files are an older peer's
+  'initialize.features.request.json': 'initialize',
+  'action.run.front.request.json': 'action.run',
+  'action.run.save_as.request.json': 'action.run'
+}
+const RESULT_VARIANTS: Readonly<Record<string, ComputerMethod>> = {
+  'initialize.features.response.json': 'initialize',
+  'action.run.front.response.json': 'action.run'
+}
 const notificationFile = (method: string): string => `notify-${method.replace(/^\$\//, '').replace(/\//g, '-')}.json`
 const serviceNotes = ComputerNotificationSchema.options.map((o) => o.shape.method.value)
 const hostNotes = HostNotificationSchema.options.map((o) => o.shape.method.value)
@@ -82,12 +92,26 @@ describe('wire fixtures', () => {
       const request = requestFrameSchema(method).safeParse(json(join(wire, file)))
       expect(request.error?.issues, file).toBeUndefined()
     }
+    for (const [file, method] of Object.entries(RESULT_VARIANTS)) {
+      const response = resultFrameSchema(method).safeParse(json(join(wire, file)))
+      expect(response.error?.issues, file).toBeUndefined()
+    }
+  })
+
+  it('keep the front tier, save_as and features out of what an older peer sends (§25, decision 14)', () => {
+    expect(json(join(wire, 'initialize.request.json'))).not.toHaveProperty('params.features')
+    expect(json(join(wire, 'initialize.response.json'))).not.toHaveProperty('result.features')
+    expect(resultFrameSchema('initialize').parse(json(join(wire, 'initialize.features.response.json'))).result.features).toEqual(['front', 'commit', 'save_as'])
+    const step = resultFrameSchema('action.run').parse(json(join(wire, 'action.run.front.response.json'))).result.step
+    expect(step.status === 'ok' && step.tier).toBe('front')
+    expect(step.status === 'ok' && step.disk?.saved).toBe('~/run/Total.txt')
   })
 
   it('hold nothing else', () => {
     const expected = new Set([
       ...Object.keys(COMPUTER_METHODS).flatMap((m) => [`${m}.request.json`, `${m}.response.json`]),
       ...Object.keys(VARIANTS),
+      ...Object.keys(RESULT_VARIANTS),
       ...COMPUTER_ERROR_KINDS.map((k) => `error-${k}.json`),
       ...[...serviceNotes, ...hostNotes].map(notificationFile)
     ])

@@ -127,7 +127,8 @@ const SAMPLE: Record<ComputerActionName, ComputerAction> = {
   set_value: { action: 'set_value', element: 7, value: 'Ana Ruiz' },
   perform: { action: 'perform', element: 11, name: 'AXPress' },
   select_text: { action: 'select_text', element: 7, text: 'world' },
-  paste: { action: 'paste', text: 'Ana · Ruiz', format: 'text', element: 7 }
+  paste: { action: 'paste', text: 'Ana · Ruiz', format: 'text', element: 7 },
+  save_as: { action: 'save_as', path: '~/run/note.rtf' }
 } as Record<ComputerActionName, ComputerAction>
 
 const ok = (action: ComputerAction, extra: Record<string, unknown>): StepResult =>
@@ -142,7 +143,7 @@ describe('parseStepLine', () => {
     for (const name of COMPUTER_ACTION_NAMES) {
       if (NO_INPUT_ACTIONS.includes(name)) continue
       const action = SAMPLE[name]
-      for (const tier of ['ax', 'process', 'session'] as const)
+      for (const tier of ['ax', 'process', 'front', 'session'] as const)
         for (const effect of Object.keys(EFFECT_WORDS) as (keyof typeof EFFECT_WORDS)[]) {
           const line = formatStepLine(ok(action, { tier, effect }), action)
           expect(parseStepLine(line), line).toEqual({ action: name, tier, effect, ok: true })
@@ -163,6 +164,19 @@ describe('parseStepLine', () => {
     expect(parseStepLine(key)).toEqual({ action: 'key', tier: 'ax', via: 'menu', effect: 'changed', ok: true })
     const click = formatStepLine(ok(SAMPLE.left_click, { tier: 'ax', effect: 'none', input: { via: 'hit', on: 'button "Save"' } }), SAMPLE.left_click)
     expect(parseStepLine(click)).toEqual({ action: 'left_click', tier: 'ax', via: 'hit', effect: 'none', ok: true })
+  })
+
+  it('reads a front route, save_as\'s panel, the hint and the disk part (§25.12)', () => {
+    expect(parseStepLine('key super+s · front menu File › Save · changed · on disk: saved ~/run/Total.txt')).toEqual({
+      action: 'key',
+      tier: 'front',
+      via: 'menu',
+      effect: 'changed',
+      disk: 'saved ~/run/Total.txt',
+      ok: true
+    })
+    expect(parseStepLine('key Return · front · on screen only, not on disk; commit it with key Return in the field')).toEqual({ action: 'key', tier: 'front', effect: 'uncommitted', ok: true })
+    expect(parseStepLine('save_as ~/run/note.rtf · panel · changed · on disk: saved ~/run/note.rtf')).toMatchObject({ action: 'save_as', tier: 'front', via: 'panel', disk: 'saved ~/run/note.rtf' })
   })
 
   it('reads a step with no tier', () => {

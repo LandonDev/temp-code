@@ -27,8 +27,10 @@ public struct OkStep: Codable, Hashable, Sendable {
     public let shot: Shot?
     public let waited: WaitReport?
     public let session: SessionChange?
+    public let front: FrontHold?
+    public let disk: DiskChange?
 
-    public init(index: Int, action: ComputerActionName, tier: Tier?, effect: StepEffect, element: ElementBrief? = nil, input: Input? = nil, cursor: Point? = nil, text: String? = nil, shot: Shot? = nil, waited: WaitReport? = nil, session: SessionChange? = nil) {
+    public init(index: Int, action: ComputerActionName, tier: Tier?, effect: StepEffect, element: ElementBrief? = nil, input: Input? = nil, cursor: Point? = nil, text: String? = nil, shot: Shot? = nil, waited: WaitReport? = nil, session: SessionChange? = nil, front: FrontHold? = nil, disk: DiskChange? = nil) {
         self.index = index
         self.action = action
         self.tier = tier
@@ -40,10 +42,12 @@ public struct OkStep: Codable, Hashable, Sendable {
         self.shot = shot
         self.waited = waited
         self.session = session
+        self.front = front
+        self.disk = disk
     }
 
     private enum CodingKeys: String, CodingKey {
-        case index, action, tier, effect, element, input, cursor, text, shot, waited, session
+        case index, action, tier, effect, element, input, cursor, text, shot, waited, session, front, disk
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -59,6 +63,8 @@ public struct OkStep: Codable, Hashable, Sendable {
         try container.encodeIfPresent(shot, forKey: .shot)
         try container.encodeIfPresent(waited, forKey: .waited)
         try container.encodeIfPresent(session, forKey: .session)
+        try container.encodeIfPresent(front, forKey: .front)
+        try container.encodeIfPresent(disk, forKey: .disk)
     }
 }
 

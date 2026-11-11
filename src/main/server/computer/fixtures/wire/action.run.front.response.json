@@ -1,0 +1,87 @@
+{
+  "jsonrpc": "2.0",
+  "id": 44,
+  "result": {
+    "step": {
+      "index": 0,
+      "action": "key",
+      "status": "ok",
+      "tier": "front",
+      "effect": "changed",
+      "input": {
+        "via": "menu",
+        "on": "File › Save"
+      },
+      "front": {
+        "heldMs": 612,
+        "activateMs": 88,
+        "restoreMs": 41,
+        "restored": "restored",
+        "person": {
+          "pid": 501,
+          "bundleId": "com.apple.Safari",
+          "name": "Safari"
+        },
+        "armedAt": 1762783331000,
+        "idleAtArmMs": 2100,
+        "lastInputAt": 1762783331120
+      },
+      "disk": {
+        "saved": "~/run/Total.txt",
+        "edited": {
+          "before": true,
+          "after": false
+        }
+      },
+      "waited": {
+        "waitedMs": 420,
+        "settled": true,
+        "busy": false,
+        "reason": "quiet"
+      }
+    },
+    "observation": {
+      "epoch": "e-7Kq2",
+      "session": "thread-9fK2",
+      "app": {
+        "pid": 16800,
+        "bundleId": "com.apple.TextEdit",
+        "name": "TextEdit"
+      },
+      "window": {
+        "id": 1581,
+        "title": "Total.txt",
+        "frame": {
+          "x": 3700,
+          "y": -244,
+          "w": 800,
+          "h": 670
+        }
+      },
+      "kind": "diff",
+      "seq": 2,
+      "text": "app \"TextEdit\" · window \"Total.txt\" · 1280×1072 · focused [3] · changes since your last read\n~ file \"~/run/Total.txt\" written 14:02:19",
+      "space": {
+        "width": 1280,
+        "height": 1072,
+        "scale": 1.6
+      },
+      "stats": {
+        "elements": 40,
+        "lines": 2,
+        "bytes": 139,
+        "omitted": 0,
+        "thin": false,
+        "partial": false,
+        "readMs": 34
+      },
+      "waited": {
+        "waitedMs": 812,
+        "settled": true,
+        "busy": false,
+        "reason": "quiet"
+      },
+      "base": 1
+    }
+  }
+}

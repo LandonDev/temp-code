@@ -17,6 +17,7 @@ import {
   TOOL_BATCH_MAX_ACTIONS,
   TierVerdictSchema,
   computerToolJsonSchema,
+  diskWords,
   formatShotLine,
   formatStepLine,
   mayRunAtAx,
@@ -297,5 +298,62 @@ describe('computer_apps open', () => {
     const confirm = { kind: 'upload', what: 'Uploads a.pdf to the form' }
     expect(ok({ launch: 'Safari', open: ['https://x.test'], confirm })).toBe(true)
     expect(ComputerAppsInputSchema.safeParse({ launch: 'Safari', confirm }).error?.issues[0].message).toBe('confirm goes with open')
+  })
+})
+
+describe('the front tier, the disk part and save_as (§25.12)', () => {
+  const ok = (action: ComputerAction['action'], extra: object): StepResult => ({ index: 0, action, status: 'ok', tier: 'front', effect: 'changed', ...extra }) as StepResult
+  const lines: [StepResult, ComputerAction, string, Partial<NonNullable<ReturnType<typeof parseStepLine>>>][] = [
+    [
+      ok('key', { input: { via: 'menu', on: 'File › Save' }, disk: { saved: '~/run/Total.txt' } }),
+      { action: 'key', text: 'super+s' },
+      'key super+s · front menu File › Save · changed · on disk: saved ~/run/Total.txt',
+      { tier: 'front', route: 'menu File › Save', effect: 'changed', disk: 'saved ~/run/Total.txt' }
+    ],
+    [
+      ok('key', { effect: 'uncommitted', disk: { edited: { before: false, after: false }, hint: 'commit it with key Return in the field' } }),
+      { action: 'key', text: 'Return' },
+      'key Return · front · on screen only, not on disk; commit it with key Return in the field',
+      { tier: 'front', effect: 'uncommitted', hint: 'commit it with key Return in the field' }
+    ],
+    [
+      ok('save_as', { input: { via: 'panel', on: '~/run/note.rtf' }, disk: { saved: '~/run/note.rtf' } }),
+      { action: 'save_as', path: '~/run/note.rtf' },
+      'save_as ~/run/note.rtf · panel · changed · on disk: saved ~/run/note.rtf',
+      { target: '~/run/note.rtf', tier: 'panel', effect: 'changed', disk: 'saved ~/run/note.rtf' }
+    ],
+    [
+      ok('key', { tier: 'ax', input: { via: 'menu', on: 'File › New' } }),
+      { action: 'key', text: 'super+n' },
+      'key super+n · menu File › New · changed',
+      { tier: 'menu File › New', effect: 'changed' }
+    ],
+    [
+      ok('key', { tier: 'process', disk: { renamed: [{ from: '~/run/a.txt', to: '~/run/b.txt' }], saved: '~/Library/Autosave/x', unexpected: true } }),
+      { action: 'key', text: 'Return' },
+      'key Return · process · changed · on disk: saved by the app itself to ~/Library/Autosave/x, renamed ~/run/a.txt to ~/run/b.txt',
+      { tier: 'process', disk: 'saved by the app itself to ~/Library/Autosave/x, renamed ~/run/a.txt to ~/run/b.txt' }
+    ],
+    [ok('key', { disk: { edited: { before: true, after: false } } }), { action: 'key', text: 'super+s' }, 'key super+s · front · changed · on disk: saved in place', { disk: 'saved in place' }],
+    [ok('key', { disk: { unknown: true } }), { action: 'key', text: 'super+s' }, "key super+s · front · changed · on disk: can't tell", { disk: "can't tell" }]
+  ]
+
+  it('writes each line of the spec and reads it back', () => {
+    for (const [step, action, line, want] of lines) {
+      expect(formatStepLine(step, action)).toBe(line)
+      expect(parseStepLine(line), line).toMatchObject(want)
+    }
+  })
+
+  it('says nothing about a disk that did not change, and names save_as with replace', () => {
+    expect(diskWords({})).toBeNull()
+    expect(diskWords({ edited: { before: true, after: true } })).toBeNull()
+    expect(formatStepLine(ok('save_as', { input: { via: 'panel' } }), { action: 'save_as', path: '/tmp/a.txt', replace: true })).toBe('save_as /tmp/a.txt replacing · panel · changed')
+  })
+
+  it('refuses a hint on another effect and a part after the effect that is not the disk', () => {
+    expect(parseStepLine('key Return · process · changed; commit it')).toBeNull()
+    expect(parseStepLine('key Return · process · changed · whatever')).toBeNull()
+    expect(parseStepLine('key Return · process · changed · on disk: a · on disk: b')).toBeNull()
   })
 })
