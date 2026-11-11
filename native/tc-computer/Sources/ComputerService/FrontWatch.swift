@@ -36,6 +36,9 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
 
         /// The watch ends `tail` from now.
         func end(in tail: Duration) { owner?.end(id, in: tail) }
+
+        /// The call's own step began or ended its input (FrontGuard's `inputRunning`).
+        func input(_ running: Bool) { owner?.input(id, running) }
     }
 
     private struct Entry {
@@ -199,6 +202,10 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
             tell(id)
             sweep()
         }
+    }
+
+    fileprivate func input(_ id: Int, _ running: Bool) {
+        queue.sync { handle(id, .input(running: running, at: source.now())) }
     }
 
     fileprivate func end(_ id: Int, in tail: Duration) {
@@ -422,6 +429,11 @@ final class FrontRun: @unchecked Sendable {
         guard watched else { return }
         let begun = front.begin(WatchedApp(bundleId: target.app.bundleId, pid: target.pid), session: target.session, name: target.app.name)
         lock.withLock { watch = begun }
+    }
+
+    /// A step's input began or ended: a restore's bound waits for it (FrontGuard's `inputRunning`).
+    func input(_ running: Bool) {
+        lock.withLock { watch }?.input(running)
     }
 
     /// The closing wait is over: the watch runs on for the tail.

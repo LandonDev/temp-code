@@ -583,3 +583,53 @@ private func stealAndRestore(_ g: inout FrontGuard, at: Double) {
         #expect(g.recorded == nil)
     }
 }
+
+/// The call's own step opens the scratch app's menu (a pick in Chrome): its window sits above the person's
+/// while the menu is open, which is the app's own doing (v1.0.341's publish shape, 2026-11-11).
+@Suite struct FrontGuardOwnInputTests {
+    private func orderedLaunch() -> FrontGuard {
+        var g = launch()
+        // the scratch app is bound and the person's app is someone else's: the order rule applies
+        _ = g.handle(.bound(stealer))
+        return g
+    }
+
+    @Test func noRestoreRunsOutWhileTheStepsOwnInputRunsAndItIsCheckedAfter() {
+        var g = orderedLaunch()
+        #expect(g.handle(.input(running: true, at: 50)) == .none)
+        #expect(g.handle(.orderedAbove(at: 100)) == .raiseFocusedWindow(person))
+        #expect(g.handle(.restoreStarted(at: 105)) == .none)
+        // the menu holds the window above past the 400 ms bound: not failed while the input runs
+        #expect(g.handle(.sample(front: person, window: nil, above: true, at: 600)) == .none)
+        #expect(g.handle(.tick(at: 650)) == .none)
+        #expect(g.report.restored == nil)
+        // the input ends: the person's window is raised again and the restore checked from then
+        #expect(g.handle(.input(running: false, at: 700)) == .raiseFocusedWindow(person))
+        #expect(g.handle(.restoreStarted(at: 705)) == .none)
+        #expect(g.handle(.sample(front: person, window: nil, above: false, at: 740)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .restored, ms: 640))
+    }
+
+    @Test func aWindowStillAboveAfterTheInputFailsInsideItsBound() {
+        var g = orderedLaunch()
+        _ = g.handle(.input(running: true, at: 50))
+        _ = g.handle(.orderedAbove(at: 100))
+        _ = g.handle(.restoreStarted(at: 105))
+        _ = g.handle(.input(running: false, at: 700))
+        _ = g.handle(.restoreStarted(at: 705))
+        #expect(g.handle(.sample(front: person, window: nil, above: true, at: 1_000)) == .none)
+        #expect(g.report.restored == nil)
+        #expect(g.handle(.sample(front: person, window: nil, above: true, at: 1_110)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .failed))
+    }
+
+    @Test func withNoInputRunningTheBoundIsAsBefore() {
+        var g = orderedLaunch()
+        _ = g.handle(.orderedAbove(at: 100))
+        _ = g.handle(.restoreStarted(at: 105))
+        #expect(g.handle(.sample(front: person, window: nil, above: true, at: 600)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .failed))
+        // an input ending after the steal settled changes nothing
+        #expect(g.handle(.input(running: false, at: 700)) == .none)
+    }
+}

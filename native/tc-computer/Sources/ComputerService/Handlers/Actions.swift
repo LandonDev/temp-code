@@ -213,7 +213,9 @@ extension ComputerService {
                 break
             }
             let next = index + 1 < actions.count ? actions[index + 1] : nil
+            front.input(true)
             var run = await step(index, action, target: current, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, call: call, facts: facts, ignored: ignored, next: next, ctx: ctx)
+            front.input(false)
             let isLast = index == actions.count - 1
             if case .ok(let ok) = run.step { routes.append(ok.tier) }
             if !run.stops && !isLast, let t0 = run.t0, case .ok(let ok) = run.step {

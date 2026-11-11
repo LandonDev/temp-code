@@ -129,6 +129,8 @@ public enum FrontEvent: Equatable, Sendable {
     case endBy(Double)
     /// the 100 ms tick
     case tick(at: Double)
+    /// the call's own step began (true) or ended (false) its input
+    case input(running: Bool, at: Double)
 }
 
 /// What the live side does next.
@@ -193,6 +195,11 @@ public struct FrontGuard: Equatable, Sendable {
     /// this steal's undo already raised the person's window: a window undo starts with that raise, and an app
     /// restore that brought the app back on another window raises it once
     private var windowRaised = false
+    /// the call's own step is putting in its input: a menu it opened may hold the app's window above the person's until
+    /// it closes, which is the app's own doing, so no restore runs out meanwhile; once the input ends a restore still
+    /// running is undone again and checked inside its bound from then (v1.0.341, 2026-11-11: Chrome's select menu held
+    /// its window above the person's 426 ms into a pick, while the person's app stayed front)
+    public private(set) var inputRunning = false
 
     public init(recorded: FrontRecord?, watched: WatchedApp, at: Double, watchMs: Int = ComputerDefaults.Service.frontWatchMs) {
         self.recorded = recorded
@@ -284,6 +291,12 @@ public struct FrontGuard: Equatable, Sendable {
             return .none
         case .tick(let at):
             return tick(at: at)
+        case .input(let running, _):
+            inputRunning = running
+            guard !running, case .restoring(let undo, let stealAt, _) = phase else { return .none }
+            phase = .pending(undo, stealAt: stealAt)
+            windowRaised = undo.isWindow
+            return decision(undo)
         }
     }
 
@@ -436,14 +449,14 @@ public struct FrontGuard: Equatable, Sendable {
         }
         if back {
             settle(.restored, ms: at - stealAt)
-        } else if at - startedAt > Double(ComputerDefaults.Service.frontRestoreMs) {
+        } else if !inputRunning, at - startedAt > Double(ComputerDefaults.Service.frontRestoreMs) {
             settle(.failed, ms: nil)
         }
         return .none
     }
 
     private mutating func tick(at: Double) -> FrontDecision {
-        if case .restoring(_, _, let startedAt) = phase, at - startedAt > Double(ComputerDefaults.Service.frontRestoreMs) {
+        if !inputRunning, case .restoring(_, _, let startedAt) = phase, at - startedAt > Double(ComputerDefaults.Service.frontRestoreMs) {
             settle(.failed, ms: nil)
         }
         if at >= endsAt {
