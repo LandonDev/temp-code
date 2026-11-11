@@ -62,9 +62,9 @@ third failed e2e-addons' "ready again within 5 s" at 5115 ms with the load at
 e2e-tc-computer, which failed active 9 on both tries: after save_as, a session
 step, TC Probe kept the front from the person's app (Aside), though the front
 hold read restored. So the full publish gate in the scratch clone was not
-green: run #4 failed e2e-tc-computer's active 9 (save_as) on both tries, TC
-Probe keeping the front from the person's app after save_as, and that is not
-traced yet.
+green in its four tries: the last failed e2e-tc-computer's active 9 (save_as)
+on both tries, TC Probe keeping the front from the person's app, and that is
+not traced yet. The real v1.0.343 publish gate then passed whole on the Mac.
 
 The rows `e2e-tc-computer` and `e2e-computer-bridge` start through
 `scripts/proof-bun.ts`: `bun run` puts every ancestor's node_modules/.bin on
