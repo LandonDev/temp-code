@@ -164,8 +164,10 @@ enum AXTier {
     /// the range read back for up to `caretEvidenceMs`: `none` when the app accepted the writes and moved neither.
     static func placeCaret(_ e: AXUIElement, at p: ScreenPoint, clock: InputClock) throws -> StepEffect {
         let before = (AX.bool(e, "AXFocused"), AX.range(e))
-        let location = AXHit.characterIndex(e, at: p)
+        var location = AXHit.characterIndex(e, at: p)
         AX.set(e, "AXFocused", kCFBooleanTrue)
+        // a field nobody was editing answers the position only once focus gave it a field editor
+        if location == nil { location = AXHit.characterIndex(e, at: p) }
         if let location {
             let err = AX.set(e, "AXSelectedTextRange", AX.rangeValue(TextRange(location: location, length: 0)))
             if err != .success, err != .cannotComplete { throw AX.failure(err, element: nil, what: "take the caret") }

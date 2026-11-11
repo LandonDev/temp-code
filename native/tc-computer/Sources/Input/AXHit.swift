@@ -50,8 +50,8 @@ enum AXHit {
         return Chain(elements: elements, facts: elements.map { facts($0, inTarget: inTarget) })
     }
 
-    /// the AX roles of text a caret goes into (a search field is an AXTextField by its subrole)
-    static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox"]
+    /// the AX roles of text a caret goes into
+    static var textRoles: Set<String> { caretAXRoles }
 
     static func facts(_ e: AXUIElement, inTarget: Bool) -> HitFacts {
         let axRole = AX.string(e, "AXRole") ?? ""
@@ -60,7 +60,7 @@ enum AXHit {
             let table = AX.ancestor(e, role: "AXTable") ?? AX.ancestor(e, role: "AXOutline")
             selectableRow = AX.settable(e, "AXSelected") || table.map { AX.settable($0, "AXSelectedRows") } == true
         }
-        let isText = textRoles.contains(axRole) && AX.settable(e, "AXSelectedTextRange")
+        let isText = takesCaret(axRole: axRole, rangeSettable: AX.settable(e, "AXSelectedTextRange"), focusSettable: AX.settable(e, "AXFocused"))
         return HitFacts(role: AXTier.roleWord(e, fallback: nil), actions: Set(AX.actions(e)), isIncrementor: axRole == "AXIncrementor",
                         selectableRow: selectableRow, isText: isText, frame: AX.frame(e), inTargetWindow: inTarget)
     }

@@ -215,6 +215,16 @@ private let win = Rect(x: 0, y: 0, w: 400, h: 300)
     }
 }
 
+@Suite struct TakesCaretTests {
+    @Test func aFieldNobodyIsEditingTakesTheCaretByItsFocus() {
+        // TC Probe's Digits field in the background: the range settable only once focused
+        #expect(takesCaret(axRole: "AXTextField", rangeSettable: false, focusSettable: true))
+        #expect(takesCaret(axRole: "AXTextArea", rangeSettable: true, focusSettable: true))
+        #expect(!takesCaret(axRole: "AXTextField", rangeSettable: false, focusSettable: false))
+        #expect(!takesCaret(axRole: "AXStaticText", rangeSettable: true, focusSettable: true))
+    }
+}
+
 @Suite struct HitPlanTests {
     @Test func aLabelInAButtonPressesTheButton() {
         let chain = [HitFacts(role: "text"), HitFacts(role: "button", actions: ["AXPress"])]

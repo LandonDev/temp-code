@@ -60,6 +60,16 @@ public struct HitChoice: Equatable, Sendable {
     }
 }
 
+/// Whether a text element of an AX role may take the caret (§24.4): one whose AXSelectedTextRange is
+/// settable, or one that takes focus, since an NSTextField nobody is editing has no field editor yet and
+/// lists its range as settable only once focused.
+public func takesCaret(axRole: String, rangeSettable: Bool, focusSettable: Bool) -> Bool {
+    caretAXRoles.contains(axRole) && (rangeSettable || focusSettable)
+}
+
+/// The AX roles of text a caret goes into (a search field is an AXTextField by its subrole).
+public let caretAXRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox"]
+
 /// The containers the walk stops before: pressing one would act on far more than the click.
 public let hitStopRoles: Set<String> = ["window", "sheet", "dialog", "scroll area", "web area", "table", "outline", "list", "text area"]
 
