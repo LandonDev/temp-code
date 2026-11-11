@@ -1896,6 +1896,25 @@ byte, an act, the card denied then allowed, the cap, pause, Stop, Away, the
 codex bridge, the switch off mid-turn, archive and the Mac offline. Its report
 and the Mac's trace are copied to `.temp-code/computer-bridge/mac/` here.
 
+What the bridge costs. A box thread's call costs what the same call costs
+from a Mac thread plus about one round trip: the field test of 2026-11-10
+measured +12 to +38 ms at the median, call for call, and the link from the
+Mac is 43 ms ICMP, 60 ms through the tunnel. A picture costs its bytes on
+the Mac's uplink (5 to 16 Mbit/s), 150 to 480 ms for a 300 KB one; that
+stays. Every bridged call carries the Mac's legs back with its answer, and
+the box joins them with its own: `TEMP_CODE_COMPUTER_TRACE=1` writes one
+`[computer-bridge] thread=<id> timing …` line per call, and a call whose
+bridge part passes 250 ms writes a `computer-bridge` line to stalls.log with
+the loop's lag, traced or not. The Mac's connect line names the WebSocket
+extensions the box agreed to. A reply past 2 MiB sends its chunks two at a
+time. The proof's timing leg holds the bridge to its bound: ten interleaved
+pairs of observe, observe with a picture and `set_value` from a box thread
+and a Mac thread, box minus Mac at most 40 ms median and 100 ms p90 on
+loopback, and over the network at most the run's own round trip plus 40 ms
+for a call without a picture. A direct link, binary frames and smaller
+pictures were ruled out; docs/computer-protocol.md §18 "What the bridge
+costs" says why.
+
 ### The fleet switches: Pause all, Resume all, Stop all, Archive done
 
 Fifteen threads need one click, not fifteen. Every scope has the same five

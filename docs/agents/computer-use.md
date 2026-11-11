@@ -116,10 +116,22 @@ why and the measured headline.
   `macBridge.maxComputer.<envId>` (2) live sessions. A call the Mac holds
   (`running.held` on its row) is the box thread's tool hold, so its status
   says the Mac's line ("Waiting for the Mac, load 12.3 of 8, 3rd in line").
-  §18 and docs/box.md "Computer use from a box thread".
+  The bridge costs about one round trip a call and is held there: the Mac
+  sends its legs with each answer (`timing`, src/shared/computer/
+  bridgeTiming.ts), the box joins them with its own into one
+  `[computer-bridge] thread=<id> timing total=… queue=… box=… transit=…
+  mac=… run=…` line under `TEMP_CODE_COMPUTER_TRACE=1` (a Mac thread's call:
+  `[computer] thread=<id> timing …`), and a call whose bridge part passes
+  250 ms writes a `computer-bridge` line to stalls.log with the loop's lag.
+  The bridge proof's timing leg (scripts/lib/computerBridgeTiming.ts
+  `BRIDGE_TIMING_RULE`) judges ten interleaved pairs: box minus Mac at most
+  40 ms median and 100 ms p90 on loopback, at most the run's round trip
+  plus 40 ms over the network. A reply past 2 MiB sends its chunks two at a
+  time. §18 "What the bridge costs" and docs/box.md "Computer use from a box
+  thread".
 - **Seams.** `TEMP_CODE_COMPUTER=0` (off; `=1` serves a headless Mac
   instance), `TEMP_CODE_COMPUTER_BIN` (the binary),
-  `TEMP_CODE_COMPUTER_TRACE=1` (every frame), `TEMP_CODE_COMPUTER_PIN`
+  `TEMP_CODE_COMPUTER_TRACE=1` (every frame and every call's timing line), `TEMP_CODE_COMPUTER_PIN`
   ("TextEdit=<pid>", isolated instances only), `TEMP_CODE_SKIP_NATIVE`,
   `TEMP_CODE_REQUIRE_NATIVE`, `TC_PROOF_UNGATED=1` (a Mac proof without its
   idle wait, for a run the person sits beside or one on TC Probe alone).

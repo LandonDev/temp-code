@@ -218,7 +218,7 @@ one contract:
 | e2e-skills-store | `e2e` | both | two paired headless instances | nothing (no model) | 13 s, 15 s, 15 s | 13 s, 13 s, 13 s | 11 min |
 | e2e-skills-drivers | `e2e` | both | one headless instance, the real CLIs against scripts/lib/spikeFakes.ts | the real-model legs (`--host box\|mac`) | 10 s, 10 s, 10 s | 29 s, 28 s, 29 s | 12 min |
 | e2e-tc-computer | `computer` | Mac | the service and TC Probe (three instances: plain, `--windows`, `--fallbacks`) | the TextEdit legs and the paste | n/a | 19 s, 19 s, 19 s, measured before the fallbacks leg (docs/computer-protocol.md §24.11), whose time is not yet measured: its first run failed at step 3 on the proof's own expectation (§24.9), and the fixed leg is not run, the Mac was locked (2026-11-10) | 11 min |
-| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 28 s, 29 s, 28 s | 12 min |
+| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 28 s, 29 s, 28 s, measured before the timing leg (ten interleaved pairs of three kinds, judged by `BRIDGE_TIMING_RULE`: box minus Mac at most 40 ms median and 100 ms p90, the box's own legs at most 25 ms median), whose time and numbers are to measure: the Mac was locked (2026-11-10) | 12 min |
 | e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | 24 s, 23 s, 23 s | 12 min |
 
 The four store rows run one at a time in the `e2e` lane after the fence;
@@ -275,7 +275,7 @@ otherwise.
 | `script:e2e-computer-images` | Mac | the same on the real service | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-tc-computer` (whole) | Mac | 5 idle minutes (TextEdit and the paste come forward) | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-computer` | Mac | real Sonnet turns | — | not run: the Mac was locked, the person away (2026-11-09) |
-| `script:e2e-computer-bridge` over SSH | Mac and box | both clones built at one commit | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-computer-bridge` over SSH | Mac and box | both clones built at one commit | — | not run: the Mac was locked, the person away (2026-11-09); its timing leg (the full mode: a call without a picture adds at most the run's own round trip plus 40 ms, median; pictures reported with their bytes and the upload rate) is to measure |
 | `script:e2e-computer-ax` | Mac | the person away; IntelliJ only with `TC_AX_INTELLIJ=1` | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-computer-input -- --session` | Mac | the person away | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-computer-capture -- --keep <dir>` | Mac | Screen Recording; minutes of watch scenes on its own inert windows | — | not run: the Mac was locked, the person away (2026-11-09) |
@@ -466,7 +466,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 | e2e-skills-store | 13 s (three runs) | | 12 to 15 s | 11 min | the same lane |
 | e2e-skills-drivers | 28 to 29 s (three runs) | | 10 s | 12 min | the same lane, last; the real CLIs against fakes |
 | e2e-tc-computer | 19 s (three runs) | | n/a | 11 min | Mac only; the `computer` lane, before the bench |
-| e2e-computer-bridge | 28 to 29 s (three runs) | | n/a | 12 min | Mac only; both halves on the Mac |
+| e2e-computer-bridge | 28 to 29 s (three runs, before the timing leg; with it, to measure) | | n/a | 12 min | Mac only; both halves on the Mac |
 | e2e-computer-preview | 23 to 24 s (three runs) | | n/a | 12 min | Mac only; the Escape leg skipped |
 | computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run") | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
 
