@@ -18,7 +18,7 @@ import { promisify } from 'node:util'
 import { ComputerConnection } from '../src/main/server/computer/connection'
 import { parseObservation } from '../src/shared/computer/observation'
 import type { ComputerAction, ComputerNotification, SessionRestore, StepResult } from '../src/shared/computer/protocol'
-import { readMacScreen } from './lib/macScreen'
+import { readMacScreen, readyMacScreen } from './lib/macScreen'
 import { otherProof } from './lib/proofOrder'
 import { COMPUTER_PROOF_ENV, stopProofPids, sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { repoRoot } from './lib/repoRoot'
@@ -226,8 +226,8 @@ async function armKeyClock(): Promise<void> {
   await until(() => ready ? true : null, 'the key clock', 3_000)
 }
 async function countdown(instruction: string): Promise<void> {
-  const screen = readMacScreen(SCRATCH)
-  if (!screen || screen.locked || screen.asleep) throw new Error('The screen is locked, dark or unreadable')
+  const screen = readyMacScreen(() => readMacScreen(SCRATCH))
+  if (!screen || screen.locked || screen.asleep || screen.saver) throw new Error('The screen is locked, dark or unreadable')
   console.log(`\n[${leg!.name}] After GO: ${instruction}`)
   console.log('Keep the pointer still unless this leg asks you to move it. Stop at the STOP cue.')
   for (let n = 3; n; n--) { console.log(n); await sleep(1_000) }
@@ -338,8 +338,8 @@ try {
     await sleep(2_000)
   }
   mkdirSync(SCRATCH, { recursive: true })
-  const screen = readMacScreen(SCRATCH)
-  if (!screen || screen.locked || screen.asleep) throw new Error('Refused: screen is locked, dark or unreadable')
+  const screen = readyMacScreen(() => readMacScreen(SCRATCH))
+  if (!screen || screen.locked || screen.asleep || screen.saver) throw new Error('Refused: screen is locked, dark or unreadable')
   if (!existsSync(BIN)) throw new Error('Build resources/native/tc-computer before this hand run')
   sweepComputerProofProcesses(line => report.cleanup.push(line))
   autosavesBefore = new Set(listAutosaves())

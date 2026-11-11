@@ -41,7 +41,7 @@
  * TC_BOX_BUN names bun on the box (default /srv/agents/home/.bun/bin/bun);
  * TC_BOX_REPORT_DIR where the report is copied there.
  */
-import { gateScreenSkip } from './lib/macScreen'
+import { gateScreenSkip, parseMacScreen, readyMacScreen } from './lib/macScreen'
 import { spawn, type ChildProcess, execFileSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -521,8 +521,9 @@ async function orchestrator(): Promise<void> {
   execFileSync('codesign', ['-s', '-', '--force', PROBE], { stdio: 'pipe' })
   const frontmost = (): { pid: number; bundleId: string | null } => JSON.parse(execFileSync(PROBE, ['frontmost'], { encoding: 'utf8', timeout: 10_000 }))
   const screenReady = (): boolean => {
-    const screen = JSON.parse(execFileSync(PROBE, ['screen'], { encoding: 'utf8', timeout: 10_000 })) as { locked: boolean; asleep: boolean }
-    return !screen.locked && !screen.asleep
+    // a passwordless screen saver is dismissed and read again (macScreen.ts readyMacScreen)
+    const screen = readyMacScreen(() => parseMacScreen(execFileSync(PROBE, ['screen'], { encoding: 'utf8', timeout: 10_000 })))
+    return !!screen && !screen.locked && !screen.asleep && !screen.saver
   }
   /** AX sees no window on a locked or dark screen: wait for it to be unlocked and awake (at most 90 minutes), else stop. */
   const awaitScreen = async (): Promise<void> => {

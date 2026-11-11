@@ -72,7 +72,7 @@
  *
  * Run on the Mac: bun run script:e2e-tc-computer
  */
-import { gateScreenSkip } from './lib/macScreen'
+import { gateScreenSkip, parseMacScreen, readyMacScreen } from './lib/macScreen'
 import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import {
   appendFileSync,
@@ -433,10 +433,11 @@ async function paceOwnInput(): Promise<void> {
 /** The screen is unlocked, on this console, and the main display awake. */
 async function screenAwake(): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync(PROBE_TOOL, ['screen'], { encoding: 'utf8', timeout: 5_000 })
-    const screen = JSON.parse(stdout) as { locked: boolean; asleep: boolean }
-    if (screen.locked || screen.asleep) lastDarkRead = `${new Date().toISOString()} ${stdout.trim()}`
-    return !screen.locked && !screen.asleep
+    let stdout = ''
+    // a passwordless screen saver is dismissed and the screen read again (macScreen.ts readyMacScreen)
+    const screen = readyMacScreen(() => parseMacScreen((stdout = execFileSync(PROBE_TOOL, ['screen'], { encoding: 'utf8', timeout: 5_000 }))))
+    if (!screen || screen.locked || screen.asleep || screen.saver) lastDarkRead = `${new Date().toISOString()} ${stdout.trim()}`
+    return !!screen && !screen.locked && !screen.asleep && !screen.saver
   } catch (e) {
     lastDarkRead = `${new Date().toISOString()} the screen read failed: ${(e as Error).message.split('\n')[0]}`
     return false

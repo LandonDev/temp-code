@@ -28,7 +28,7 @@
 //   pasteboard  {"changeCount":..}  the count alone
 //   hide <pid>  {"hidden":..}    hides that app's windows, the first half of an abort when the
 //               person comes back while a scratch app runs (the proof kills it next)
-//   screen      {"locked":..,"asleep":..}  the session's screen lock (or another user on the console)
+//   screen      {"locked":..,"asleep":..,"session":..,"console":..}  the session's screen cover (or another user on the console)
 //               and the main display's sleep: an idle Mac that is locked or dark is no gap to run in
 //   pasteboard save <file> | restore <file> | copy <text> | digest
 //               the person's pasteboard kept aside and put back around the proof's own copy; digest is
@@ -249,7 +249,8 @@ case "screen":
     let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
     let locked = session["CGSSessionScreenIsLocked"] as? Bool ?? false
     let onConsole = session["kCGSSessionOnConsoleKey"] as? Bool ?? true
-    emit(["locked": locked || !onConsole, "asleep": CGDisplayIsAsleep(CGMainDisplayID()) != 0])
+    // `locked` is the raw cover; `session` and `console` let scripts/lib/macScreen.ts tell a passwordless saver from a lock
+    emit(["locked": locked || !onConsole, "asleep": CGDisplayIsAsleep(CGMainDisplayID()) != 0, "session": locked, "console": onConsole])
 
 case "hide":
     guard args.count > 1, let pid = pid_t(args[1]) else { fail("usage: computer-proof-probe.swift hide <pid>") }

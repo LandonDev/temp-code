@@ -35,7 +35,7 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-import { readMacScreen, SCREEN_SKIP_NOTE, type MacScreen } from './lib/macScreen'
+import { readMacScreen, readyMacScreen, SCREEN_SKIP_NOTE, type MacScreen } from './lib/macScreen'
 
 export type Tier = 'commit' | 'publish'
 
@@ -333,8 +333,9 @@ export function screenOnlySkips(
   const rows = steps.filter((s) => s.tier === 'publish' && s.screen)
   if (platform !== 'darwin' || rows.length === 0) return new Map()
   try {
-    const screen = read()
-    if (screen && !screen.locked && !screen.asleep) return new Map()
+    // a passwordless screen saver is dismissed first; a lock, or a dark display the setting may not wake, skips
+    const screen = readyMacScreen(read)
+    if (screen && !screen.locked && !screen.asleep && !screen.saver) return new Map()
   } catch { /* An unreadable screen cannot run the proof. */ }
   return new Map(rows.map((s) => [s.name, SCREEN_SKIP_NOTE]))
 }

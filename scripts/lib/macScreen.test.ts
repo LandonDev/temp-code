@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { gateScreenSkip, parseMacScreen, readMacScreen, SCREEN_SKIP_LINE } from './macScreen'
+import { gateScreenSkip, parseMacScreen, readMacScreen, readyMacScreen, SCREEN_SKIP_LINE, type MacScreen } from './macScreen'
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }))
 afterEach(() => {
@@ -98,7 +98,51 @@ describe('the screen probe replies', () => {
   })
 })
 
+describe('a screen saver is not a lock', () => {
+  const covered = '{"locked":true,"asleep":false,"session":true,"console":true}'
+  it('classifies a covered reply that carries the raw session', () => {
+    expect(parseMacScreen(covered, () => 'saver')).toEqual({ locked: false, asleep: false, saver: true })
+    expect(parseMacScreen(covered, () => 'locked')).toEqual({ locked: true, asleep: false })
+    expect(parseMacScreen('{"locked":false,"asleep":false,"session":false,"console":true}', () => { throw new Error('not asked') })).toEqual({ locked: false, asleep: false })
+  })
+
+  const seq = (...reads: (MacScreen | null)[]) => {
+    let i = 0
+    return () => reads[Math.min(i++, reads.length - 1)]
+  }
+
+  it('dismisses a passwordless saver and reads until the desktop is back', () => {
+    const declare = vi.fn()
+    const screen = readyMacScreen(seq({ locked: false, asleep: false, saver: true }, { locked: false, asleep: false, saver: true }, { locked: false, asleep: false }), { declare, sleep: () => {} })
+    expect(screen).toEqual({ locked: false, asleep: false })
+    expect(declare).toHaveBeenCalledTimes(1)
+  })
+
+  it('never touches a lock, and wakes a dark display only when the setting allows it', () => {
+    const declare = vi.fn()
+    expect(readyMacScreen(seq({ locked: true, asleep: false }), { declare })).toEqual({ locked: true, asleep: false })
+    expect(readyMacScreen(seq({ locked: false, asleep: true }), { declare, wake: false })).toEqual({ locked: false, asleep: true })
+    expect(declare).not.toHaveBeenCalled()
+    expect(readyMacScreen(seq({ locked: false, asleep: true }, { locked: false, asleep: false }), { declare, wake: true, sleep: () => {} })).toEqual({ locked: false, asleep: false })
+    expect(declare).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives up after the wait when the saver stays', () => {
+    let t = 0
+    const screen = readyMacScreen(() => ({ locked: false, asleep: false, saver: true }), { declare: () => {}, now: () => t, sleep: (ms) => void (t += ms) })
+    expect(screen?.saver).toBe(true)
+    expect(t).toBeGreaterThanOrEqual(3_000)
+  })
+})
+
 describe('direct --gate proof admission', () => {
+  it('runs once a passwordless saver is dismissed', () => {
+    vi.mocked(execFileSync).mockReturnValue('' as never)
+    const reads = [{ locked: false, asleep: false, saver: true }, { locked: false, asleep: false }]
+    expect(gateScreenSkip(true, '/repo', 'darwin', () => reads.shift() ?? { locked: false, asleep: false })).toBeNull()
+    expect(vi.mocked(execFileSync)).toHaveBeenCalledWith('/usr/bin/caffeinate', ['-u', '-t', '1'], expect.anything())
+  })
+
   it.each([
     () => ({ locked: true, asleep: false }),
     () => ({ locked: false, asleep: true }),

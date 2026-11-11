@@ -258,7 +258,10 @@ export class ScreenWatch {
   }
 
   private judge(out: string): void {
-    const s = JSON.parse(out) as { locked: boolean; asleep: boolean }
+    const read = parseMacScreen(out)
+    if (!read) throw new Error('unreadable screen reply')
+    // a passwordless screen saver is put away, not a lost screen (macScreen.ts readyMacScreen)
+    const s = read.saver ? (readyMacScreen(() => read, { wake: false }) ?? read) : read
     if (this.why || (!s.locked && !s.asleep)) return
     this.why = `stopped: ${s.locked ? 'the Mac locked' : "the Mac's display went dark"} at ${new Date().toISOString()}`
     this.stop()
