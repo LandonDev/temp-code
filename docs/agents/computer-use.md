@@ -264,7 +264,9 @@ short hostname, uses a full TC Probe tree for held-click indices and rejects
 missing indices or held ids. Its scratch app launches without the agent’s
 process-guard marks: Launch Services gives it PID 1 as parent, and the
 proof owns its PID cleanup. A cancellation notice passes only when the
-observation that follows it also succeeds. Away allows the ordinary click and records an
+observation that follows it also succeeds. Proof ordering counts real
+runners and Bun/script wrappers, rather than shell `-c` text left after a
+proof ends; a later child takes its own age. Away allows the ordinary click and records an
 allowed notice, but refuses a `pay`-flagged click before it runs. The
 2026-11-10 timing leg added 3–10 ms at p50 and 19–42 ms at p90 on loopback
 (§18); it passed while the old proof’s other checks failed.

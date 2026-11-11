@@ -57,6 +57,52 @@ describe('proofOrder', () => {
     expect(otherProofIn(ps, 101)).toBeNull()
   })
 
+  it('ignores a shell mentioning a finished proof when its only child is sleep', () => {
+    const ps = [
+      row(50, 1, '17:00', '/bin/bash -lc bun scripts/e2e-tc-computer.ts --gate; sleep 3600'),
+      row(51, 50, '00:20', 'sleep 3600'),
+      ...bridge(200, 201, '00:10')
+    ].join('\n')
+    expect(otherProofIn(ps, 201)).toBeNull()
+  })
+
+  it('still waits for an older actual runner under a shell, through an intermediate process', () => {
+    const ps = [
+      row(50, 1, '17:00', '/bin/bash -lc bun scripts/e2e-tc-computer.ts --gate; sleep 3600'),
+      row(51, 50, '02:00', '/usr/bin/env helper'),
+      row(52, 51, '02:00', 'bun scripts/e2e-tc-computer.ts --gate'),
+      ...bridge(200, 201, '01:00')
+    ].join('\n')
+    expect(otherProofIn(ps, 201)).toBe('e2e-tc-computer')
+    expect(otherProofIn(ps, 52)).toBeNull()
+  })
+
+  it('does not backdate a new runner to an old shell and let it jump ahead of a live proof', () => {
+    const ps = [
+      row(50, 1, '17:00', '/bin/bash -lc bun scripts/e2e-tc-computer.ts --gate; sleep 3600'),
+      row(51, 50, '00:20', '/usr/bin/env helper'),
+      row(52, 51, '00:20', 'bun scripts/e2e-tc-computer.ts --gate'),
+      ...bridge(200, 201, '01:00')
+    ].join('\n')
+    expect(otherProofIn(ps, 201)).toBeNull()
+    expect(otherProofIn(ps, 52)).toBe('e2e-computer-bridge')
+  })
+
+  it('still waits for a genuine benchmark after ignoring an old shell mention', () => {
+    const ps = [
+      row(50, 1, '17:00', '/bin/bash -c echo e2e-tc-computer; sleep 3600'),
+      row(51, 50, '00:20', 'sleep 3600'),
+      row(60, 1, '13:00', '/opt/homebrew/bin/bun --preload ./scripts/lib/electron-stub.ts scripts/e2e-computer-bench.ts --set field'),
+      ...bridge(200, 201, '00:10')
+    ].join('\n')
+    expect(otherProofIn(ps, 201)).toBe('e2e-computer-bench')
+  })
+
+  it('still counts a shell running a proof script by path', () => {
+    const ps = [row(50, 1, '01:00', '/bin/sh scripts/mac/input-proof.sh --active'), ...bridge(200, 201, '00:10')].join('\n')
+    expect(otherProofIn(ps, 201)).toBe('input-proof')
+  })
+
   it('lets the next proof sweep orphaned scratch processes instead of waiting forever behind them', () => {
     const leftovers = [
       row(50, 1, '01:30:00', '/private/tmp/tc-computer-proof/TC Probe.app/Contents/MacOS/TC Probe'),

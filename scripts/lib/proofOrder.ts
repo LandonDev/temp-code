@@ -52,7 +52,19 @@ export function otherProofIn(ps: string, self: number, patterns: readonly string
     // Scratch children can outlive a failed runner. Its wrapper owns the turn;
     // an orphaned app/helper must reach the next proof's startup sweep.
     if (/^\/.*\/tc-computer-proof\/(?:TC Probe\.app\/Contents\/MacOS\/TC Probe|computer-proof-probe)(?:\s|$)/.test(command)) return null
-    return patterns.find((p) => command.includes(p)) ?? null
+    const hit = patterns.find((p) => command.includes(p))
+    if (!hit) return null
+    // A shell's -c text can keep naming a finished proof while only sleep
+    // remains. Count its actual runner, at that runner's age: a later child
+    // must not inherit an old shell's place and jump ahead of a live proof.
+    const [exe, ...args] = command.split(/\s+/)
+    if (/(?:^|\/)(?:bash|zsh|sh|dash|ksh)$/.test(exe)) {
+      for (const arg of args) {
+        if (!arg.startsWith('-')) break
+        if (arg === '--command' || /^-[^-]*c/.test(arg)) return null
+      }
+    }
+    return hit
   }
   /** The wrapper: the topmost process up the chain that names a proof. */
   const wrapper = (pid: number): number => {
