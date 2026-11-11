@@ -415,7 +415,7 @@ host's legacy `activity` takes a capital (`legacyDetail`).
 
 A computer action's tier is never named on screen: `COMPUTER_TIER_WORDS`
 (src/shared/statusWords.ts) words it for a person, "in the background",
-"to the app" or "on the screen", the Activity row's detail; a held computer
+"to the app", "in front" (the app brought forward for a moment) or "on the screen", the Activity row's detail; a held computer
 step says the scheduler's words as a Queued detail.
 
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that

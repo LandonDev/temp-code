@@ -208,6 +208,7 @@ describe("computer rows", () => {
     expect(r).toMatchObject({ key: "computer:local:s1", kind: "computer", label: "Untitled in TextEdit", tierWords: "in the background", since: 500, open: "preview", stop: { type: "computer", entry: e } });
     expect(rows([entry(row({ tier: "process" }))])[0].tierWords).toBe("to the app");
     expect(rows([entry(row({ tier: "session" }))])[0].tierWords).toBe("on the screen");
+    expect(rows([entry(row({ tier: "front" }))])[0].tierWords).toBe("in front");
   });
 
   it("names the app alone for an untitled window, says Computer use before any app, and leaves the tier out until one ran", () => {

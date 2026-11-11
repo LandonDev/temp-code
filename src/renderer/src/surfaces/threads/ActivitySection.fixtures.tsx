@@ -47,6 +47,7 @@ const tiers = activityRows({
     session("s1", {}),
     session("sub1", { since: now - 2 * 60_000, apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "New Message" }], tier: "process" }),
     session("sub2", { since: now - 60_000, apps: [{ name: "Finder", bundleId: "com.apple.finder", window: null }], tier: "session" }),
+    session("sub4", { since: now - 45_000, apps: [{ name: "TextEdit", bundleId: "com.apple.TextEdit", window: "Total.txt" }], tier: "front" }),
     session("sub3", { since: now - 30_000, apps: [], tier: null }),
   ],
 });

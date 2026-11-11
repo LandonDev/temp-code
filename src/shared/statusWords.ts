@@ -117,9 +117,11 @@ export const COMPACTING_WORDS = 'Compacting context'
 export const BACKGROUND_CHECK_WORDS = 'Checking background tasks'
 
 /** The tier a computer action ran at, as a person reads it: the Activity row's detail and the held line. Never ax, process or session. */
-export const COMPUTER_TIER_WORDS: Readonly<Record<'ax' | 'process' | 'session', string>> = {
+export const COMPUTER_TIER_WORDS: Readonly<Record<'ax' | 'process' | 'front' | 'session', string>> = {
   ax: 'in the background',
   process: 'to the app',
+  /** the app brought forward for a moment (§25) */
+  front: 'in front',
   session: 'on the screen'
 }
 
