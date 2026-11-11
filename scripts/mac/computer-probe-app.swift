@@ -17,6 +17,7 @@
 // `--windows` (opt-in, for the window actions leg; docs/computer-protocol.md §22): see ProbeWindows below.
 //
 // `--fallbacks <dir>` (opt-in, for the background fallbacks leg; §24): see ProbeFallbacks below.
+// `--fewer` (opt-in, for the fewer calls leg; §27): see ProbeFewer below.
 // `--cover <x,y,w,h>` (field hand runs): one opaque normal-level window in global top-left points,
 // ordered in front without becoming key or taking input; no other probe window opens.
 //
@@ -42,6 +43,7 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     private var pauseSignal: DispatchSourceSignal?
     private let windows = ProbeWindows()
     private let fallbacks = ProbeFallbacks()
+    private let fewer = ProbeFewer()
     private var documents: [NSWindow] = []
     /// the stealer's Info.plist says so
     private let steals = Bundle.main.object(forInfoDictionaryKey: "TCProbeSteal") as? Bool ?? false
@@ -64,6 +66,10 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
             cover.isReleasedWhenClosed = false
             cover.orderFrontRegardless()
             self.window = cover
+            return
+        }
+        if CommandLine.arguments.contains("--fewer") {
+            fewer.open()
             return
         }
         let ticking = CommandLine.arguments.contains("--tick")
@@ -383,6 +389,143 @@ final class ProbeFallbacks: NSObject {
             guard response == .OK, let url = panel.url else { return }
             try? "saved by the fallbacks leg\n".write(to: url, atomically: true, encoding: .utf8)
         }
+    }
+}
+
+// MARK: --fewer
+
+/// Return edits the selected row inline; AppKit's field editor commits on the next Return.
+final class RenameTable: NSTableView {
+    override func keyDown(with event: NSEvent) {
+        if (event.keyCode == 36 || event.keyCode == 76), selectedRow >= 0, editedRow < 0 {
+            editColumn(0, row: selectedRow, with: nil, select: true)
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
+
+/// Standard AppKit controls for §27's single-call proofs. Key only inside its background app, like
+/// --fallbacks: no activation, no mouse input from the person, and no saved documents or state.
+final class ProbeFewer: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    private var window: NSWindow?
+    private var notes: [NSWindow] = []
+    private let table = RenameTable()
+    private var names = ["Draft note", "Second note", "Third note"]
+
+    func open() {
+        installMenu()
+        let window = makeWindow("TC Probe Fewer", height: 240)
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        popup.addItems(withTitles: ["Personal", "Team", "Archive"])
+        popup.setAccessibilityLabel("Destination")
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+        column.title = "Notes"
+        column.width = 320
+        column.isEditable = true
+        let cell = NSTextFieldCell(textCell: "")
+        cell.isEditable = true
+        column.dataCell = cell
+        table.addTableColumn(column)
+        table.headerView = nil
+        table.rowHeight = 28
+        table.frame = NSRect(x: 0, y: 0, width: 320, height: 84)
+        table.autoresizingMask = [.width]
+        table.allowsEmptySelection = true
+        table.allowsMultipleSelection = false
+        table.dataSource = self
+        table.delegate = self
+        table.setAccessibilityLabel("Notes")
+        table.reloadData()
+        table.deselectAll(nil)
+        let scroll = NSScrollView()
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+
+        // AXPress succeeds and leaves the tree unchanged, a deliberate test of §27.8.
+        let unchanged = NSButton(title: "No Change", target: self, action: #selector(noChange(_:)))
+        let stack = NSStackView(views: [popup, scroll, unchanged])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let content = NSView()
+        content.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: content.topAnchor),
+            popup.widthAnchor.constraint(equalToConstant: 320),
+            scroll.widthAnchor.constraint(equalToConstant: 320),
+            scroll.heightAnchor.constraint(equalToConstant: 100),
+        ])
+        window.contentView = content
+        window.orderBack(nil)
+        window.makeKey()
+        self.window = window
+    }
+
+    private func makeWindow(_ title: String, height: CGFloat) -> NSWindow {
+        let window = KeyableWindow(contentRect: NSRect(x: 560, y: 360, width: 360, height: height), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.title = title
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        window.ignoresMouseEvents = true
+        return window
+    }
+
+    private func installMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quit TC Probe", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+        let probeItem = NSMenuItem()
+        let probe = NSMenu(title: "Probe")
+        let newNote = NSMenuItem(title: "New Note", action: #selector(newNote(_:)), keyEquivalent: "n")
+        newNote.keyEquivalentModifierMask = [.command, .shift]
+        newNote.target = self
+        probe.addItem(newNote)
+        probeItem.submenu = probe
+        main.addItem(probeItem)
+        NSApp.mainMenu = main
+    }
+
+    @objc private func newNote(_ sender: Any?) {
+        let note = makeWindow("TC Probe Note", height: 180)
+        let text = NSTextView(frame: NSRect(x: 0, y: 0, width: 360, height: 180))
+        text.isRichText = false
+        text.font = .systemFont(ofSize: 13)
+        text.textContainerInset = NSSize(width: 16, height: 16)
+        text.setAccessibilityLabel("Note")
+        note.contentView = text
+        note.orderBack(nil)
+        note.makeKey()
+        note.makeFirstResponder(text)
+        notes.append(note)
+    }
+
+    @objc private func noChange(_ sender: Any?) {}
+
+    func numberOfRows(in tableView: NSTableView) -> Int { names.count }
+
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        names[row]
+    }
+
+    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
+        guard let name = object as? String else { return }
+        names[row] = name
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        // AXSelectedRows follows the same path as a mouse selection, including keyboard focus.
+        if table.selectedRow >= 0 { window?.makeFirstResponder(table) }
     }
 }
 

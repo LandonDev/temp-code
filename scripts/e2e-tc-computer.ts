@@ -24,6 +24,9 @@
  *    a background click with no ax route, a stepper's upper half, the scroll
  *    bar and its end, a text paste by AX with the pasteboard untouched, and a
  *    save sheet driven by AX into the scratch folder.
+ *  - the fewer calls leg (§27), on TC Probe `--fewer`: five single batches prove a named
+ *    pop-up pick, a menu path opening and following a note, live-focus inline rename,
+ *    keys stopped after a no-change click, and the closing opened-menu block.
  *  - a scratch TextEdit, its own process opened with `open -n -g` and
  *    targeted by that pid alone: a full read, set_value, a process-tier
  *    click, the clipboard lock and a 2,500-character paste, a screenshot,
@@ -121,6 +124,7 @@ import {
   type StepResult,
   type WaitReport
 } from '../src/shared/computer/protocol'
+import { FEWER_PROBE, judgeFewerPopup, judgeFewerNote, judgeFewerRename, judgeFewerStopped, judgeFewerMenu } from './lib/fewerLeg'
 import { waitForGateBuild } from './lib/gateBuild'
 import { chromiumForTests, CHROMIUM_MISSING, TEST_CHROMIUM_BUNDLE, SCRATCH_CHROME_FRAME, hasChromeProfile, stopScratchChromium } from './lib/chromiumForTests'
 import { createProcScan } from './lib/procScan'
@@ -1298,6 +1302,109 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
   rmSync(scratch, { recursive: true, force: true })
 }
 
+/** §27.15: one action.batch per intent, with no read between its steps. */
+async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
+  const held = await macReady({ idleSeconds: personIdleSecondsAsync, screen: async () => probe<{ locked: boolean; asleep: boolean }>('screen') }, false)
+  if (held) {
+    record({ name: 'fewer: launch', outcome: 'skipped', ms: 0, why: `skipped: ${held}` })
+    return
+  }
+  const leg = new Chain()
+  let pid = 0
+  let o: Observation | null = null
+  const read = (): Promise<Observation> => a.call('state.get', {
+    session: SESSION, app: { pid }, window: { title: FEWER_PROBE.window },
+    mode: 'full', wait: COMPUTER_WAIT.observe
+  })
+  const frontmost = () => ({ pid: probe<{ pid: number }>('frontmost').pid, bundleId: null })
+  const batch = async (
+    actions: ComputerParams<'action.batch'>['actions'],
+    judge: (result: ComputerResult<'action.batch'>) => string[],
+    data: Record<string, unknown>
+  ): Promise<void> => {
+    const before = personState()
+    const t0 = performance.now()
+    const r = await a.call('action.batch', {
+      session: SESSION, app: { pid }, window: { id: o!.window.id }, epoch: o!.epoch,
+      textWindowId: o!.window.id, actions, tiers: ['ax', 'process'],
+      wait: COMPUTER_WAIT.action, stepWait: COMPUTER_WAIT.step,
+      axWait: COMPUTER_WAIT.axAction, axStepWait: COMPUTER_WAIT.axStep
+    })
+    data.batchMs = Math.round(performance.now() - t0)
+    data.result = r
+    data.person = assertPersonUntouched(before, 'after the fewer calls batch')
+    const errors = judge(r)
+    check(errors.length === 0, errors.join('; '), r)
+    o = r.observation!
+  }
+
+  try {
+    await leg.step('fewer: launch a TC Probe with --fewer in the background', async (data) => {
+      const before = personState()
+      mayLaunch()
+      pid = (await launchProbe(PROBE_BUILD, ['--fewer'], frontmost)).pid
+      data.pid = pid
+      o = await until(async () => (await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows?.some((w) => w.title === FEWER_PROBE.window) ? read() : null, 10_000, 'the fewer calls window')
+      data.person = assertPersonUntouched(before, 'after the launch', pid)
+    })
+    await leg.step('fewer 1: open the pop-up and pick Team by named in one batch', async (data) => {
+      const popup = findElement(o!, 'the Destination pop-up', (e) => e.role === 'pop up' && e.name === FEWER_PROBE.popup)
+      await batch([
+        { action: 'left_click', element: popup.index },
+        { action: 'left_click', named: FEWER_PROBE.choice }
+      ], judgeFewerPopup, data)
+    })
+    await leg.step('fewer 2: Probe > New Note follows opened and types at its live focus in one batch', async (data) => {
+      const originalId = o!.window.id
+      await batch([
+        { action: 'left_click', menu: 'Probe > New Note' },
+        { action: 'type', text: FEWER_PROBE.text }
+      ], (r) => judgeFewerNote(r, originalId), data)
+    })
+    await leg.step('fewer: close the scratch note and read the original window', async (data) => {
+      const close = findElement(o!, 'the note close button', (e) => e.role === 'button' && e.name === 'close')
+      const before = personState()
+      const r = await a.call('action.run', {
+        session: SESSION, app: { pid }, window: { id: o!.window.id }, epoch: o!.epoch,
+        action: { action: 'left_click', element: close.index }, tiers: ['ax'], wait: COMPUTER_WAIT.action
+      })
+      okStep(r.step)
+      data.person = assertPersonUntouched(before, 'after closing the scratch note')
+      o = await read()
+    })
+    await leg.step('fewer 3: select a row, Return, type, Return commits an inline rename in one batch', async (data) => {
+      const row = findElement(o!, 'the Draft note row', (e) => e.role === 'row' && (e.name === FEWER_PROBE.row || e.value === FEWER_PROBE.row))
+      await batch([
+        { action: 'left_click', element: row.index },
+        { action: 'key', text: 'Return' },
+        { action: 'type', text: FEWER_PROBE.renamed },
+        { action: 'key', text: 'Return' }
+      ], judgeFewerRename, data)
+    })
+    await leg.step('fewer 4: a no-change click stops every later key and text step in one batch', async (data) => {
+      o = await read()
+      const unchanged = findElement(o, 'the No Change button', (e) => e.role === 'button' && e.name === FEWER_PROBE.unchanged)
+      await batch([
+        { action: 'left_click', element: unchanged.index },
+        { action: 'key', text: 'Return' },
+        { action: 'type', text: FEWER_PROBE.forbidden },
+        { action: 'key', text: 'Return' }
+      ], judgeFewerStopped, data)
+    })
+    await leg.step('fewer 5: a click-only batch closes with the opened-menu block', async (data) => {
+      o = await read()
+      const popup = findElement(o, 'the Destination pop-up', (e) => e.role === 'pop up' && e.name === FEWER_PROBE.popup)
+      await batch([{ action: 'left_click', element: popup.index }], judgeFewerMenu, data)
+    })
+  } finally {
+    // Also closes a menu left open by the last check, without posting Escape outside its batch.
+    if (pid && alive(pid)) {
+      process.kill(pid, 'SIGKILL')
+      await until(() => alive(pid) ? null : true, 5_000, 'the --fewer probe exit')
+    }
+  }
+}
+
 /** §25, on an unmodified Chrome for Testing and a private scratch profile. */
 async function webLeg(): Promise<void> {
   const browser = chromiumForTests()
@@ -1641,6 +1748,7 @@ async function appSections(
   })
   await windowLeg(a, mayLaunch)
   await fallbackLeg(a, mayLaunch)
+  await fewerLeg(a, mayLaunch)
   await webLeg()
   if (GATE) {
     for (const name of [
