@@ -179,6 +179,12 @@ const NOT_QUIET = `the clipboard was not quiet for ${QUIET_MS / 1000} s after ${
 /** For a run the person sits beside by their own leave: no idle wait and no abort on input; the screen check stays. */
 const UNGATED = process.env.TC_PROOF_UNGATED === '1'
 /**
+ * A hand run with the person at the Mac who accepts scratch apps coming forward (`TC_PROOF_PRESENT=1`, with
+ * TC_PROOF_UNGATED): no step waits for quiet. The screen check, the put-back after each front step and the
+ * checks that tell a step the person disturbed stay.
+ */
+const PRESENT = UNGATED && process.env.TC_PROOF_PRESENT === '1'
+/**
  * A hand run's legs, by name, comma separated (`TC_PROOF_LEGS=fallbacks,web`): windows, fallbacks, web,
  * active, fewer, stealer; each other one is recorded skipped. Unset (the gate) runs every leg.
  */
@@ -403,6 +409,7 @@ const FRONT_QUIET_WAIT_MS = 120_000
  * there was that much quiet. A hand run's rule for every step that may take the front (TC_PROOF_UNGATED).
  */
 async function awaitQuiet(seconds = FRONT_QUIET_S, waitMs = FRONT_QUIET_WAIT_MS): Promise<boolean> {
+  if (PRESENT) return true
   for (const end = Date.now() + waitMs; ; ) {
     if ((await personIdleSecondsAsync()) >= seconds) return true
     if (Date.now() >= end) return false
@@ -1360,7 +1367,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
 
 /** §27.15: one action.batch per intent, with no read between its steps. */
 async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
-  const held = await macReady({ idleSeconds: personIdleSecondsAsync, screen: async () => probe<{ locked: boolean; asleep: boolean }>('screen') }, false)
+  const held = await macReady({ idleSeconds: personIdleSecondsAsync, screen: async () => probe<{ locked: boolean; asleep: boolean }>('screen') }, PRESENT)
   if (held) {
     record({ name: 'fewer: launch', outcome: 'skipped', ms: 0, why: `skipped: ${held}` })
     return
@@ -1469,7 +1476,7 @@ async function webLeg(): Promise<void> {
     record({ name: 'web: Chrome for Testing', outcome: 'skipped', ms: 0, why: CHROMIUM_MISSING })
     return
   }
-  const held = await macReady({ idleSeconds: personIdleSecondsAsync, screen: async () => probe<{ locked: boolean; asleep: boolean }>('screen') }, false)
+  const held = await macReady({ idleSeconds: personIdleSecondsAsync, screen: async () => probe<{ locked: boolean; asleep: boolean }>('screen') }, PRESENT)
   if (held) {
     record({ name: 'web: launch', outcome: 'skipped', ms: 0, why: `skipped: ${held}` })
     return
@@ -1552,7 +1559,7 @@ async function webLeg(): Promise<void> {
         `--window-position=${frame.x},${frame.y}`, `--window-size=${frame.w},${frame.h}`,
         ...['front.html', 'report.html', 'form.html'].map((name) => pathToFileURL(join(scratch, name)).href)]
       // Recheck after disk work, immediately before open; no forced AX or throttling flags.
-      if (personIdleSeconds() < 5 || !(await screenAwake())) throw skip('skipped: no quiet, unlocked launch gap')
+      if ((!PRESENT && personIdleSeconds() < 5) || !(await screenAwake())) throw skip('skipped: no quiet, unlocked launch gap')
       webCleanups.add(stopBrowser)
       try {
         execFileSync('open', args, { stdio: 'pipe', timeout: 10_000, env: guiLaunchEnvironment() })
