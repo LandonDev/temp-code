@@ -435,11 +435,14 @@ try {
   check('the crashing call answers its exit line', !!crashed.isError && text(crashed as never) === 'Exited (code 3): fake crashing on purpose', JSON.stringify(crashed))
   const t0 = Date.now()
   const back = await until('fake ready after the crash', 15_000, async () => (await statusOf(box, 'fake'))?.state === 'ready')
+  const readyMs = Date.now() - t0
+  // The ready PUSH can trail the RPC's answer by a coalescer window under the gate's load: wait for it before reading the sequence.
+  await until('the ready push lands', 5_000, () => pushes.seen.some((s) => s[fakeId]?.state === 'ready'))
   const states = pushes.seen.map((s) => s[fakeId]?.state).filter((s, i, a) => s && s !== a[i - 1])
   pushes.close()
   check('the pushes read failed, starting, ready', JSON.stringify(states) === JSON.stringify(['failed', 'starting', 'ready']), JSON.stringify(states))
-  check('ready again within 5 s', back && Date.now() - t0 < 5_000, `${Date.now() - t0} ms`)
-  log(`restart after a crash: ${Date.now() - t0} ms`)
+  check('ready again within 5 s', back && readyMs < 5_000, `${readyMs} ms`)
+  log(`restart after a crash: ${readyMs} ms`)
   check('fake__echo answers again', text(await rpc(box, 'app.addonCall', { sessionId: boxAuto.id, tool: 'fake__echo', arguments: { text: 'again' } })) === 'again')
 
   // ── 7. the add-on host itself ─────────────────────────────────────────
