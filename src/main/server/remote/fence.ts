@@ -186,7 +186,9 @@ export function fenceRequest(req: ClientRequest, roots: readonly string[], attac
 const FILE_METHOD = /^(fs|git|github|project|search|attachment|lsp|fim|build|projectLogo)\./
 /** A string longer than this, or of several lines, is content, not a path. */
 const PATH_MAX = 4096
-const STRINGS_MAX = 4096
+/** More strings than any real request names (a sync's path lists run to thousands); past it the request is refused. */
+const STRINGS_MAX = 100_000
+const DEPTH_MAX = 8
 
 /** Methods that carry a whole directory along: their source may not hold a denied one. */
 const CARRIED: Record<string, (params: Record<string, unknown>) => unknown[]> = {
@@ -197,12 +199,16 @@ const CARRIED: Record<string, (params: Record<string, unknown>) => unknown[]> = 
 /** Params that hold what a file says or a person wrote, never where a file is. */
 const CONTENT_KEYS: ReadonlySet<string> = new Set(['content', 'query', 'text', 'message', 'body', 'title', 'prefix', 'suffix'])
 
-function pathStrings(value: unknown, out: string[], depth = 0): void {
-  if (out.length >= STRINGS_MAX || depth > 6) return
+/** The strings of a request's params that could be paths; false when there are more, or deeper, than this reads: such a request is refused, never passed unread. */
+function pathStrings(value: unknown, out: string[], depth = 0): boolean {
+  if (depth > DEPTH_MAX) return false
   if (typeof value === 'string') {
     if (value && value.length <= PATH_MAX && !value.includes('\n')) out.push(value)
-  } else if (Array.isArray(value)) for (const v of value) pathStrings(v, out, depth + 1)
-  else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) if (!CONTENT_KEYS.has(k)) pathStrings(v, out, depth + 1)
+    return out.length <= STRINGS_MAX
+  }
+  if (Array.isArray(value)) return value.every((v) => pathStrings(v, out, depth + 1))
+  if (value && typeof value === 'object') return Object.entries(value).every(([k, v]) => CONTENT_KEYS.has(k) || pathStrings(v, out, depth + 1))
+  return true
 }
 
 /**
@@ -221,8 +227,11 @@ export function fenceDenied(req: ClientRequest, bases: readonly string[], denied
   if (!denied.length || !FILE_METHOD.test(req.method)) return
   const params = (req as { params?: unknown }).params
   const strings: string[] = []
-  pathStrings(params, strings)
+  if (!pathStrings(params, strings)) throw new FenceError(req.method)
+  // the paths the request names outright were judged by fenceRequest already
+  const judged = new Set(fencedPaths(req) ?? [])
   for (const s of strings) {
+    if (judged.has(s)) continue
     const whole = s.startsWith('~') || isAbsolute(s)
     const candidates = whole ? [s] : bases.map((base) => join(expandPath(base), s))
     if (candidates.some((c) => insideRoots(c, denied))) throw new FenceError(req.method)

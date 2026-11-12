@@ -258,6 +258,15 @@ describe('fenceRequest', () => {
     expect(() => check('fs.write', { projectId: 'p-root', path: 'src/a.ts', content: join(history, 't1') })).not.toThrow()
     expect(() => check('search.project', { options: { cwd: data, query: 'computer/history' } })).not.toThrow()
     expect(() => check('session.send', { sessionId: 's1', text: join(history, 't1', 'steps', '1.txt') })).not.toThrow()
+    // a request with more strings, or deeper params, than the check reads is refused, never passed unread
+    const padded = [...Array.from({ length: 100_001 }, () => 'x'), 'computer/history/t1/steps/1.txt']
+    expect(() => check('project.commit', { projectId: 'p-root', files: padded })).toThrow(FenceError)
+    // a long list of real paths is read whole
+    expect(() => check('project.commit', { projectId: 'p-data', files: [...Array.from({ length: 500 }, (_, i) => `src/${i}.ts`), 'computer/history/t1/steps/1.txt'] })).toThrow(FenceError)
+    expect(() => check('project.commit', { projectId: 'p-root', files: Array.from({ length: 500 }, (_, i) => `src/${i}.ts`) })).not.toThrow()
+    let deep: unknown = 'computer/history/t1/steps/1.txt'
+    for (let i = 0; i < 12; i++) deep = { in: deep }
+    expect(() => check('fs.read', { projectId: 'p-data', path: 'computer/beside.txt', extra: deep })).toThrow(FenceError)
     // nothing denied, nothing refused
     const open = req('fs.read', { projectId: 'p-data', path: 'computer/history/t1/steps/1.txt' })
     expect(() => fenceDenied(open, requestBases(open, project), [])).not.toThrow()
