@@ -80,7 +80,9 @@ export class ComputerPreviews {
     )
     this.off.push(
       deps.service.onEpoch(() => {
-        for (const s of this.streams.values()) if (s.stream) void this.restart(s, true)
+        // (one that ended for want of Screen Recording too: the grant restarts the service, and its watchers are
+        // still there, reading the line that told them to turn it on)
+        for (const s of this.streams.values()) if (s.stream || s.ended === 'permission') void this.restart(s, true)
       })
     )
   }

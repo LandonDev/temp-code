@@ -240,6 +240,21 @@ describe('ComputerPreviews over tc-computer', () => {
     expect(a.filter((f) => f.state === 'live').at(-1)?.preview).toBe(result.preview)
     expect(h.requests().filter((r) => r.method === 'session.open')).toHaveLength(2)
   })
+  it('a preview that ended for want of Screen Recording starts again when the grant restarts the service', async () => {
+    const { h, previews, va, a } = await setup({ FAKE_SCREEN_RECORDING: '0' })
+    const answer = await previews.start(va, { threadId: 't1', maxEdge: 512 })
+    expect(answer.ended).toBe('permission')
+    // the person turns it on: from here a stream starts, and the service comes back in a new epoch
+    const real = h.service.request.bind(h.service) as (...args: unknown[]) => Promise<unknown>
+    vi.spyOn(h.service, 'request').mockImplementation(((method: string, ...rest: unknown[]) =>
+      method === 'capture.stream.start' ? Promise.resolve({ stream: (rest[0] as { stream: string }).stream, width: 512, height: 429 }) : real(method, ...rest)) as never)
+    const conn = await h.service.connection()
+    conn.kill()
+    await conn.exited
+    await h.service.connection()
+    // the watcher that was told to turn it on is live again, under the id it has
+    await vi.waitFor(() => expect(a.at(-1)).toMatchObject({ state: 'live', preview: answer.preview }))
+  })
   it('ends a failed restart with restarted, and leaves no stream after a start races socket close', async () => {
     const { h, previews, va, a } = await setup()
     await previews.start(va, { threadId: 't1', maxEdge: 512 })

@@ -94,8 +94,12 @@ const keptLabel = (call: ComputerHistoryCall): string => `${windowIn(call)} at $
 const wantOf = (row: StepRow | null, born: (key: string) => number): MediaWant | null =>
   row ? { id: `${row.key}:${born(row.key)}:${row.call.n}`, key: row.key, call: row.call } : null;
 
-/** The running calls as lines: each live session's card, hold or call, worded from the journal's start where it has one. */
-export function runningLines(entries: readonly ComputerEntry[], list: Steps): RunningLine[] {
+/**
+ * The running calls as lines: each live session's card, hold or call, worded from the journal's start where it has
+ * one. `shown` is the followed session and the app its row is drawn with (its live stream's, which can be a push
+ * ahead of or behind the session's row): a line leaves its app out only when that row says it.
+ */
+export function runningLines(entries: readonly ComputerEntry[], list: Steps, shown?: { id: string; app: string }): RunningLine[] {
   const starts = new Map(list.running.map((r) => [r.key, r]));
   const several = entries.length > 1;
   // each session's newest finished call: the rows stand newest first
@@ -117,7 +121,8 @@ export function runningLines(entries: readonly ComputerEntry[], list: Steps): Ru
     const id = `running:${sessionId(entry)}`;
     // with one session its row above says the app; with several each line says its own, and so does a call on
     // another app than the one the session read last (the row and the picture stay with that one until it reads)
-    const names = several || (!!start?.call.app && start.call.app !== (entry.row.apps[0]?.name ?? start.call.app));
+    const rowApp = shown?.id === sessionId(entry) ? shown.app : entry.row.apps[0]?.name;
+    const names = several || (!!start?.call.app && start.call.app !== (rowApp ?? start.call.app));
     const words = start ? rowWords({ ...start, namesApp: names }, true) : null;
     if (state === "waiting") lines.push({ id, state, verb: "", object: entry.row.asking?.line ?? "" });
     else if (state === "queued") {
@@ -415,9 +420,16 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   );
   // The running lines keep their order as the sessions take turns: the followed session's first, next to the box,
   // then the others as they began.
+  // (the app the followed session's row is drawn with: its live stream's while one is live and nothing is pinned)
+  const leadApp = lead && !pinnedRow && stream.state.status === "live" && stream.state.app ? stream.state.app : null;
   const running = useMemo(
-    () => runningLines([...data.entries].sort((a, b) => Number(sessionId(b) === leadId) - Number(sessionId(a) === leadId) || a.row.since - b.row.since), list),
-    [data.entries, leadId, list],
+    () =>
+      runningLines(
+        [...data.entries].sort((a, b) => Number(sessionId(b) === leadId) - Number(sessionId(a) === leadId) || a.row.since - b.row.since),
+        list,
+        leadId && leadApp ? { id: leadId, app: leadApp } : undefined,
+      ),
+    [data.entries, leadApp, leadId, list],
   );
 
   // ── the journal's own state ──

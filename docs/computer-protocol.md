@@ -446,7 +446,10 @@ push goes out before any frame of the new stream: a frame the service
 sends before the new stream's start answers waits for it
 (`PreviewGate.hold`). The desktop draws another window by its own first
 frame alone: until then the skeleton, in the new shape, and a frame of
-the old window still decoding is dropped and acked. A stream that ended while a start
+the old window still decoding is dropped and acked. A preview that ended for want of
+Screen Recording starts again at the service's next epoch (the grant
+restarts it), for the watchers still reading the line that says to turn
+it on. A stream that ended while a start
 waited says so in that start's answer (`ended`), since the push came before
 the client knew its id. A row leaving ends it as `closed`;
 `capture/streamEnded` maps a closed window or missing grant to

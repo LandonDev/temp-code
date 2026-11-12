@@ -366,6 +366,14 @@ describe("following", () => {
     // a call on the session's own app says no app: the row above does
     const own = running(2, { steps: [step("Clicking", "Save", { state: undefined })] });
     expect(runningLines([row], rowsOf([{ key: "t1", threadId: "t1", calls: [call(1), own] }]))[0]).toMatchObject({ verb: "Clicking", object: "Save" });
+    // what counts is the app the row is drawn with: the session's row has moved on to Mail, the stream (and so the
+    // row above the box) still says TextEdit, and a Mail call says so
+    const moved = entry({ apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }], running: { tool: "computer_act", words: "Clicking Reply in Mail", startedAt: AT + 3000 } });
+    const steps = rowsOf([{ key: "t1", threadId: "t1", calls: [call(1), start] }]);
+    expect(runningLines([moved], steps)[0]).toMatchObject({ object: "Reply" });
+    expect(runningLines([moved], steps, { id: "local:t1", app: "TextEdit" })[0]).toMatchObject({ object: "Reply in Mail" });
+    // and the other way: the stream is Mail's already, the row still TextEdit's
+    expect(runningLines([row], steps, { id: "local:t1", app: "Mail" })[0]).toMatchObject({ object: "Reply" });
   });
 
   it("a held step that has not begun reads as what is asked under its line, never as under way", () => {
