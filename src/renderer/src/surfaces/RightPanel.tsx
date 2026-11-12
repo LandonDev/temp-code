@@ -295,12 +295,14 @@ function usePanelFacts(session: Session, state: PanelState, inPane: boolean): Pa
       agents: agents.length,
       // The rows A6 joins: background tasks, a batch, the thread's dev servers and Mac bridge calls.
       activity: activity.length,
-      // A live session this desktop can draw, or steps this Mac kept (lib/computerSection.ts).
-      computer: computer.exists,
+      // A live session this desktop can draw, or steps this Mac kept (lib/computerSection.ts). While the first
+      // read of a thread left on Computer is out, the section holds (it draws its own loading rows): the panel
+      // must not open on another section and jump back when the steps land.
+      computer: computer.exists || (state.section === "computer" && computer.loading),
       computerLive: computer.live,
       debug: DEBUG_SECTION || state.debug,
     }),
-    [session, project, workspace, agents.length, activity.length, computer.exists, computer.live, state.debug, inPane],
+    [session, project, workspace, agents.length, activity.length, computer.exists, computer.loading, computer.live, state.section, state.debug, inPane],
   );
   return { facts, project, workspace };
 }

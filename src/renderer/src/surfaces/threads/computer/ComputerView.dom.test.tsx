@@ -25,7 +25,7 @@ vi.mock("../../../lib/tcserver/store", () => ({
   useSessionMetas: () => [{ id: "sub1", title: "Fill in the form" }],
   useSessionTitles: (ids: readonly string[]) => ids.map((id) => (id === "sub1" ? "Fill in the form" : "")).join("\u0000"),
 }));
-vi.mock("../../../lib/computerSection", () => ({ useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: false, live: false }) }));
+vi.mock("../../../lib/computerSection", () => ({ useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: false, loading: false, live: false }) }));
 vi.mock("../../../chrome/lightboxStore", () => ({ openLightbox: h.openLightbox }));
 vi.mock("sonner", () => ({ toast: { error: h.toastError } }));
 // The stream: what the hook says, and whether it was asked to run.
@@ -96,6 +96,7 @@ const data = (calls: ComputerHistoryCall[], entries: ComputerEntry[] = [], over:
   keys: [{ key: "t1", threadId: "t1" }],
   histories: { t1: { born: 1, calls, more: false, status: "ready", ...over } },
   exists: true,
+  loading: false,
   live: entries.length > 0,
 });
 const live = (over: Partial<Extract<PreviewState, { status: "live" }>> = {}): PreviewState => ({ status: "live", app: "TextEdit", window: "Untitled", width: 960, height: 600, drawn: true, ...over });
@@ -380,6 +381,7 @@ describe("following", () => {
       keys: [{ key: "t1", threadId: "t1" }, { key: "sub1", threadId: "sub1" }],
       histories: { t1: { born: 1, calls: [call(1)], more: false, status: "ready" }, sub1: { born: 2, calls: [], more: false, status: "ready" } },
       exists: true,
+      loading: false,
       live: true,
     });
     const order = (): (string | null)[] => [...document.querySelectorAll('[data-slot="computer-session"]')].map((s) => s.textContent);
@@ -410,6 +412,7 @@ describe("following", () => {
       keys: [{ key: "t1", threadId: "t1" }, { key: "sub1", threadId: "sub1" }],
       histories: { t1: { born: 1, calls: [], more: false, status: "ready" }, sub1: { born: 2, calls: [], more: false, status: "ready" } },
       exists: true,
+      loading: false,
       live: true,
     });
     // the hook gives the sessions with the one that acted last first; that order changes with every call
@@ -440,6 +443,7 @@ describe("following", () => {
         sub1: { born: 2, calls: [running(1, { app: "Mail", steps: [step("Clicking", "Send", { state: undefined, inApp: "Send in Mail" })] })], more: false, status: "ready" },
       },
       exists: true,
+      loading: false,
       live: true,
     };
     mount(d);
@@ -448,6 +452,11 @@ describe("following", () => {
     const sessionRows = [...document.querySelectorAll<HTMLElement>('[data-slot="computer-session"]')];
     expect(sessionRows.map((s) => s.textContent)).toEqual(["Untitled in TextEdit", "Inbox in Mail"]);
     expect(sessionRows[1].nextElementSibling).toBe(document.querySelector('[data-slot="computer-viewport"]'));
+    // more sessions than a short pane holds: the rows and the box give way and scroll, the steps keep a floor
+    const head = sessionRows[0].parentElement!;
+    expect(head.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-0", "overflow-y-auto"]));
+    expect(head.className).not.toMatch(/shrink-0/);
+    expect(document.querySelector('[data-slot="computer-steps"]')!.className.split(/\s+/)).toContain("min-h-16");
     expect(h.preview.entries.at(-1)).toBe(lead);
     expect(box()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
     // each Stop says whose it is
@@ -1167,6 +1176,7 @@ describe("once the turn settled", () => {
         sub1: { born: 2, calls: [call(1, { at: AT + 300_000, endedAt: AT + 300_400 })], more: false, status: "ready" },
       },
       exists: true,
+      loading: false,
       live: false,
     };
     mount(d);
@@ -1210,6 +1220,7 @@ describe("once the turn settled", () => {
         sub1: { born: 2, calls: [call(2, { app: "Mail", window: "Inbox" })], more: false, status: "ready" },
       },
       exists: true,
+      loading: false,
       live: false,
     };
     const view = mount(d);
@@ -1279,6 +1290,7 @@ describe("when the preview ends", () => {
         t1: { born: 1, calls: [call(1)], more: false, status: "ready" },
       },
       exists: true,
+      loading: false,
       live: true,
     };
     mount(d);
@@ -1319,6 +1331,7 @@ describe("when the preview ends", () => {
         sub1: { born: 2, calls: [call(9, { app: "Mail", window: "Inbox" })], more: false, status: "ready" },
       },
       exists: true,
+      loading: false,
       live: true,
     });
     const view = mount(d([call(1)]));

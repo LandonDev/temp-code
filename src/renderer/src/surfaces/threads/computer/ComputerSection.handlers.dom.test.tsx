@@ -24,7 +24,7 @@ vi.mock("../../../lib/tcserver/store", () => ({
   useSessionMeta: () => null,
   useSessionTitles: (ids: readonly string[]) => ids.map((id) => h.metas.find((m) => m.id === id)?.title ?? "").join("\u0000"),
 }));
-vi.mock("../../../lib/computerSection", () => ({ useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: false, live: false }) }));
+vi.mock("../../../lib/computerSection", () => ({ useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: false, loading: false, live: false }) }));
 vi.mock("../../../chrome/lightboxStore", () => ({ openLightbox: vi.fn() }));
 vi.mock("../../../lib/computerPreview", () => ({ useComputerPreview: () => ({ state: { status: "starting" }, retry: vi.fn() }) }));
 vi.mock("../../../lib/computerHistory", async (original) => ({
@@ -52,6 +52,7 @@ const data = (calls: ComputerHistoryCall[], keys = [{ key: "t1", threadId: "t1" 
   keys,
   histories: { t1: { born: 1, calls, more: false, status: "ready" } },
   exists: true,
+  loading: false,
   live: false,
 });
 const last = (): ComputerViewProps => h.props.at(-1) as ComputerViewProps;

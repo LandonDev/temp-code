@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({
   workspaces: [] as { id: string; environmentId: string; path: string; git: boolean }[],
   agents: [] as SessionMeta[],
   meta: null as SessionMeta | null,
-  computer: { exists: false, live: false },
+  computer: { exists: false, live: false, loading: false },
 }));
 
 vi.mock("../lib/threads/agents", () => ({
@@ -24,7 +24,7 @@ vi.mock("../lib/activity", () => ({
 }));
 // What the Computer section reads for the thread: whether it exists (a drawable live session or kept steps) and is live.
 vi.mock("../lib/computerSection", () => ({
-  useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: state.computer.exists, live: state.computer.live }),
+  useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: state.computer.exists, loading: state.computer.loading, live: state.computer.live }),
 }));
 vi.mock("../hooks/useGitFileStatuses", () => ({ useGitFileStatuses: () => ({}) }));
 vi.mock("./threads/fleet/FleetPanel", () => ({
@@ -77,7 +77,7 @@ beforeEach(() => {
   state.agents = [];
   state.workspaces = [];
   state.meta = null;
-  state.computer = { exists: false, live: false };
+  state.computer = { exists: false, live: false, loading: false };
 });
 afterEach(() => {
   cleanup();
@@ -205,14 +205,14 @@ describe("RightPanel", () => {
 
   it("lists Computer after Activity once the thread used the Mac, and opens on it only while a session is live", () => {
     state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
-    state.computer = { exists: true, live: false };
+    state.computer = { exists: true, live: false, loading: false };
     rightPanel.open("s1");
     const { unmount } = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Activity", "Computer", "Changes", "Notes", "Files", "Build", ...(import.meta.env.DEV ? ["Debug"] : [])]);
     // kept steps alone: the thread's state still picks the default
     expect(screen.getByRole("tab", { name: "Activity" }).getAttribute("aria-selected")).toBe("true");
     unmount();
-    state.computer = { exists: true, live: true };
+    state.computer = { exists: true, live: true, loading: false };
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(screen.getByRole("tab", { name: "Computer" }).getAttribute("aria-selected")).toBe("true");
     // a section the person picked stays theirs
@@ -223,26 +223,48 @@ describe("RightPanel", () => {
 
   it("a panel that showed Computer by default keeps it when the turn settles: the steps are still what the person reads", () => {
     state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
-    state.computer = { exists: true, live: true };
+    state.computer = { exists: true, live: true, loading: false };
     rightPanel.open("s1");
     const view = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(screen.getByRole("tab", { name: "Computer" }).getAttribute("aria-selected")).toBe("true");
     // shown by default, it is now the thread's section
     expect(rightPanel.get("s1").section).toBe("computer");
     // the session ends: Activity would be the default again, and the panel stays where it was
-    state.computer = { exists: true, live: false };
+    state.computer = { exists: true, live: false, loading: false };
     view.rerender(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(screen.getByRole("tab", { name: "Computer" }).getAttribute("aria-selected")).toBe("true");
     view.unmount();
     // a closed panel takes nothing: its thread's section is still the person's to pick, or the default's
     rightPanel.reset();
-    state.computer = { exists: true, live: true };
+    state.computer = { exists: true, live: true, loading: false };
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(rightPanel.get("s1").section).toBeNull();
   });
 
+  it("a thread left on Computer opens on it while its steps are read, and only an empty answer gives the default", async () => {
+    state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
+    rightPanel.open("s1");
+    rightPanel.set("s1", { section: "computer" });
+    // the read is out: nothing is known yet, and the panel does not guess another section
+    state.computer = { exists: false, live: false, loading: true };
+    const view = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getByRole("tab", { name: "Computer" }).getAttribute("aria-selected")).toBe("true");
+    expect(await screen.findByTestId("computer-body")).toBeTruthy();
+    // it came back empty: no section, the default
+    state.computer = { exists: false, live: false, loading: false };
+    view.rerender(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.queryByRole("tab", { name: "Computer" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Activity" }).getAttribute("aria-selected")).toBe("true");
+    view.unmount();
+    // a thread on another section does not gain Computer from a read that is out
+    rightPanel.set("s1", { section: "notes" });
+    state.computer = { exists: false, live: false, loading: true };
+    render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.queryByRole("tab", { name: "Computer" })).toBeNull();
+  });
+
   it("the Computer section starts afresh for another thread in the same pane: its pin, scroll and landing are the thread's", async () => {
-    state.computer = { exists: true, live: true };
+    state.computer = { exists: true, live: true, loading: false };
     rightPanel.open("s1");
     computerMounts.length = 0;
     const view = render(<RightPanel session={session} paneId="s1" onOpenFile={noop} onOpenDiff={noop} />);
@@ -264,7 +286,7 @@ describe("RightPanel", () => {
   it("a header whose segments do not fit the panel draws them 24px wide with no gap", () => {
     state.agents = [agent("a1", "running")];
     state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
-    state.computer = { exists: true, live: true };
+    state.computer = { exists: true, live: true, loading: false };
     rightPanel.open("s1");
     // seven or eight sections (Debug is a dev build's) in the narrowest panel
     const { unmount } = render(<RightPanel session={session} width={260} onOpenFile={noop} onOpenDiff={noop} />);

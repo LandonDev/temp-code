@@ -175,7 +175,7 @@ export interface RunHost {
 
 /** What a call's journal entry needs of how it went: runChecked and runApps fill it as they go, runComputerTool writes it. */
 interface CallNote {
-  /** the service's results, one per action that got one */
+  /** the service's results, one per action, in the actions' order: `not-run` where none came */
   results?: StepResult[]
   /** the call's closing read, whether or not the model got it: the picture is of the window it names */
   observation?: Observation
@@ -185,6 +185,8 @@ interface CallNote {
   menusLeftOpen?: string[]
   /** a request failed whole */
   error?: ComputerError
+  /** the call threw: its end belongs to the first step with no answer, whatever ran before it */
+  threw?: boolean
   /** computer_apps: what the launch did */
   launched?: AppsOutcome
   /** why the tier gate refused a step, by the step's index: the journal words a Skip, a locked screen, a sleeping Mac as what they were */
@@ -345,8 +347,11 @@ export async function runComputerTool(
           ...(note.front ? { front: note.front } : {}),
           person: note.person ?? null,
           ...(note.menusLeftOpen ? { menusLeftOpen: note.menusLeftOpen } : {}),
-          ...(!out || (out.isError && !note.results?.length && !note.error) ? { refused: { ...(out?.refused ? { kind: out.refused } : {}), line: out?.body ?? '' } } : {}),
+          ...(!out || (out.isError && !note.error && (note.threw || !note.results?.some((r) => r.status !== 'not-run')))
+            ? { refused: { ...(out?.refused ? { kind: out.refused } : {}), line: out?.body ?? '' } }
+            : {}),
           ...(note.error ? { error: note.error } : {}),
+          ...(note.threw ? { threw: true } : {}),
           ...(abort ? { abort } : {}),
           ...(note.launched ? { launched: note.launched } : {}),
           ...(note.gate ? { gate: note.gate } : {})
@@ -749,11 +754,12 @@ async function runChecked(
       wordsOf: (a) => actionWords(a, titleCtx()),
       callKey: `${threadId}:${++callSeq}`,
       // what the service has confirmed is the journal's whatever comes after: a later request of the batch that
-      // fails leaves these steps as they ran
-      onSteps: (answered) => (note.results = answered)
+      // fails leaves these steps as they ran, and a step the gate refused keeps the gate's reason
+      onSteps: (steps, gate) => {
+        note.results = steps
+        if (gate) note.gate = gate
+      }
     })
-    note.results = result.steps
-    if (result.gate) note.gate = result.gate
     if (result.front) note.front = result.front
     if (result.menusLeftOpen?.length) note.menusLeftOpen = result.menusLeftOpen
     for (const s of result.steps) if (s.status === 'failed') noteMissing(s.error)
@@ -780,6 +786,7 @@ async function runChecked(
     if (stoppedLine && result.observation) discarded()
     return { ...out, steps: [...out.steps, ...notes], ...(stoppedLine ? { body: stoppedLine, isError: true } : {}) }
   } catch (e) {
+    note.threw = true
     const stoppedLine = abortedLine(signal)
     if (stoppedLine) return refusal(stoppedLine)
     if (e instanceof ComputerHostError) return { ...refusal(e.message), refused: e.kind }
@@ -906,8 +913,11 @@ export function remember(t: ThreadComputer, query: string, obs: Observation): vo
 }
 
 interface ActionsRun {
-  /** the steps the service has answered so far, told after each request of a split batch: a later request that fails must not lose them */
-  onSteps?: (answered: StepResult[]) => void
+  /**
+   * The call's results so far, one per action in the actions' order, and why the gate refused a step: told before
+   * the first request, after each one, when a retry clears a step and at the end, so a request that throws loses none.
+   */
+  onSteps?: (steps: StepResult[], gate?: Record<number, string>) => void
   threadId: string
   session: string
   args: Args
@@ -945,7 +955,7 @@ let callSeq = 0
  * retry drops the first run's closing observation, so that app's next read is
  * full.
  */
-async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult & { hostLines: Map<number, string>; requestLine?: string; gate?: Record<number, string> }> {
+async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult & { hostLines: Map<number, string>; requestLine?: string }> {
   const { actions, signal, gateCtx } = run
   const gate = host.gate()
   const bundleOf = (): string | null => run.appOf()?.bundleId ?? null
@@ -959,7 +969,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   const hostLines = new Map<number, string>()
   /** why the gate refused each step it refused */
   const gateWhy: Record<number, string> = {}
-  const gateNote = (): { gate?: Record<number, string> } => (Object.keys(gateWhy).length ? { gate: gateWhy } : {})
+  const tell = (): void => run.onSteps?.(steps.slice(), Object.keys(gateWhy).length ? { ...gateWhy } : undefined)
   /** a step that waited before it ran: the line said before its own */
   const heldLines = new Map<number, string>()
   let observation: Observation | undefined
@@ -1037,6 +1047,8 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     override.set(i, tiers)
   }
 
+  // a step the gate refused up front is the journal's from here, whatever a request does after
+  tell()
   // probe an app once, before the first process-tier input, after the card
   await probeOnce(host, run, actions.slice(0, stopAt))
 
@@ -1096,7 +1108,8 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
         if (!decision.admit) {
           // the refusal is this step's: the journal says a Skip or a locked screen as it does for any held step
           gateWhy[at] = decision.reason
-          return { steps: steps.filter((s) => s.status !== 'not-run'), hostLines, requestLine: decision.message, ...gateNote() }
+          tell()
+          return { steps: steps.filter((s) => s.status !== 'not-run'), hostLines, requestLine: decision.message }
         }
         const line = decision.via && decision.waitedMs !== undefined ? formatHeldLine({ waitedMs: decision.waitedMs, via: decision.via }) : null
         if (line) heldLines.set(at, line)
@@ -1107,7 +1120,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
       front = mergeFront(front, r.front)
       for (const m of r.menusLeftOpen ?? []) if (!menusLeftOpen.includes(m)) menusLeftOpen.push(m)
       r.steps.forEach((s, k) => (steps[at + k] = { ...s, index: at + k }))
-      run.onSteps?.(steps.filter((s) => s.status !== 'not-run'))
+      tell()
       for (const s of r.steps)
         if (s.status === 'ok' && s.opened) {
           run.follow(s.opened)
@@ -1186,6 +1199,8 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     observation = undefined
     observationError = undefined
     for (let i = failedAt; i < actions.length; i++) steps[i] = { index: i, action: actions[i].action, status: 'not-run' }
+    // the first try's failure is no longer the step's answer
+    tell()
     from = failedAt
   }
 
@@ -1206,7 +1221,8 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     }
   }
   for (const [i, line] of heldLines) if (steps[i].status !== 'not-run') hostLines.set(i, `${line}\n${hostLines.get(i) ?? formatStepLine(steps[i], actions[i])}`)
-  return { steps, observation, observationError, hostLines, ...(front ? { front } : {}), ...(menusLeftOpen.length ? { menusLeftOpen } : {}), ...gateNote() }
+  tell()
+  return { steps, observation, observationError, hostLines, ...(front ? { front } : {}), ...(menusLeftOpen.length ? { menusLeftOpen } : {}) }
 }
 
 /** One acting request, through the gate: it may take `session` out of the tiers, holds the Mac for it and puts it back after. */

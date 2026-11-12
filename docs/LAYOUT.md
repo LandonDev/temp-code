@@ -528,7 +528,10 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   on the thread. The default is Agents when the thread has subagents (live
   or done), else Computer while a session is live, else Activity, else
   Changes, else Notes (a panel that showed Computer by default keeps it
-  as the thread's section, so the steps stay up when the turn settles);
+  as the thread's section, so the steps stay up when the turn settles;
+  a thread left on Computer opens on it while its kept steps are being
+  read, `loading` in `useComputerSection`, and falls to the default only
+  when the read comes back empty);
   the section the person
   picks is remembered per thread, and a remembered section that no longer
   exists falls back to the default. The transcript's Watching line opens

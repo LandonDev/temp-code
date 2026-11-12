@@ -51,6 +51,18 @@ describe("useComputerSection", () => {
     expect(result.current).toMatchObject({ exists: false, live: false, keys: [{ key: "root", threadId: "root" }] });
   });
 
+  it("says its first read is still out, so the panel does not take an unread history for an empty one", () => {
+    // before the store has the key, and while the read is out
+    const { result, rerender } = renderHook(() => useComputerSection("root"));
+    expect(result.current).toMatchObject({ exists: false, loading: true });
+    h.histories = { root: history({ status: "loading" }) };
+    rerender();
+    expect(result.current).toMatchObject({ exists: false, loading: true });
+    h.histories = { root: history() };
+    rerender();
+    expect(result.current).toMatchObject({ exists: false, loading: false });
+  });
+
   it("is there for a read that failed, so its Retry can be reached: a failure is not an empty history", () => {
     h.histories = { root: history({ status: "failed" }) };
     const { result } = renderHook(() => useComputerSection("root"));

@@ -426,6 +426,18 @@ const fixtures: ComputerFixture[] = [
     widths: [260],
   },
   {
+    name: "23b. Eight live sessions in a 260×420 pane: the steps keep their room, the sessions and the box scroll above them",
+    props: base({
+      sessions: [live, ...["Inbox in Mail", "run in Finder", "Notes", "Budget in Numbers", "Calendar", "Preview", "Computer fixture form in Google Chrome"].map((label, i) => ({ id: `local:sub${i + 1}`, label }))],
+      followedId: "local:sub7",
+      viewport: liveBox("chrome", "form", CHROME, { label: "Live view of Computer fixture form in Google Chrome" }),
+      running: [working("Typing", "into Name in Google Chrome")],
+      ...listOf(own(run)),
+    }),
+    height: 420,
+    widths: [260],
+  },
+  {
     name: "24a. Loading the steps",
     props: base({ sessions: [live], viewport: liveBox("textedit", "doc", TEXTEDIT), running: [working("Reading", "TextEdit")], status: "loading" }),
   },

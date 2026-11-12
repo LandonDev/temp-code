@@ -22,6 +22,8 @@ export interface ComputerSectionData {
   histories: Record<string, KeyHistory>;
   /** a drawable live session, or kept steps */
   exists: boolean;
+  /** a key's first read is still out: whether the thread kept steps is not known yet */
+  loading: boolean;
   live: boolean;
 }
 
@@ -47,7 +49,14 @@ export function useComputerSection(threadId: string): ComputerSectionData {
   const histories = useComputerHistory(keys);
   return useMemo(
     // a read that failed keeps the section there, with its Retry: a failure is not an empty history
-    () => ({ entries, keys, histories, exists: entries.length > 0 || hasHistory(histories) || Object.values(histories).some((h) => h.status === "failed"), live: entries.length > 0 }),
+    () => ({
+      entries,
+      keys,
+      histories,
+      exists: entries.length > 0 || hasHistory(histories) || Object.values(histories).some((h) => h.status === "failed"),
+      loading: keys.some((k) => (histories[k.key]?.status ?? "loading") === "loading"),
+      live: entries.length > 0,
+    }),
     [entries, histories, keys],
   );
 }

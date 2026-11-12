@@ -399,7 +399,7 @@ export interface SettleInput {
   ctx: WordsContext
   /** the start record's steps: their words and targets were read from the book before the call ran */
   planned?: readonly PlannedStep[]
-  /** the service's results, one per action that got one */
+  /** the service's results, one per action in the actions' order: `not-run` (or none) where no answer came */
   results?: readonly StepResult[]
   /** the closing read's wait */
   waited?: WaitReport
@@ -408,10 +408,12 @@ export interface SettleInput {
   person?: string | null
   /** menus the call opened and could not close (§26.11) */
   menusLeftOpen?: readonly string[]
-  /** nothing ran: the host refused, by kind where it has one */
+  /** nothing ran, or the call threw: the host refused, by kind where it has one */
   refused?: { kind?: HostErrorKind; line: string }
   /** a request failed whole */
   error?: ComputerError
+  /** the call threw (a host error, a service that went): `refused` ends the first step with no answer, whatever ran before */
+  threw?: boolean
   /** the call's signal fired: its reason (`stopped`, `interrupt`, `paused`, …) */
   abort?: string
   /** computer_apps: what the launch did */
@@ -501,9 +503,9 @@ export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
       ended = true
       return { ...base, ...gated }
     }
-    // (a request that failed after earlier ones of the batch answered fails the first step it held, and leaves
-    // those that ran as they ran)
-    if (!ended && end && (!ran || s.abort || s.error)) {
+    // (a request that failed or threw after earlier ones of the batch answered ends the first step it held, and
+    // leaves those that ran as they ran)
+    if (!ended && end && (!ran || s.abort || s.error || s.threw)) {
       ended = true
       return { ...base, ...end }
     }

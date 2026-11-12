@@ -7,7 +7,7 @@ import { hostErrorLine } from '@shared/computer/hostErrors'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { PERMISSION_SWITCH, remember, waitedIn, type ThreadComputer } from './run'
 import { CallTiming, parseTimingLine } from '@shared/computer/bridgeTiming'
-import { ComputerRpcError } from './connection'
+import { ComputerHostError, ComputerRpcError } from './connection'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
 import { ManualClock, settle } from './testFake'
@@ -954,6 +954,23 @@ describe('steps that need the app active (§26)', () => {
     expect(o.steps[0]).toMatch(/^key super\+s · front menu File › Save · changed/)
   })
 
+  it('a retry that fails whole is the step’s end in the journal, not the first try’s refusal', async () => {
+    const h = make({ gate: frontGate([], false), history: { pictures: () => false } })
+    await h.run('computer_observe', { app: 'Fronty' })
+    // the first try says it needs the app in front; the gate admits that; the retry's request finds the window minimized
+    const send = h.service.request.bind(h.service) as (...a: unknown[]) => Promise<unknown>
+    let sent = 0
+    h.service.request = ((method: string, ...rest: unknown[]) =>
+      method === 'action.run' && ++sent === 2
+        ? Promise.reject(new ComputerRpcError(-32000, 'gone', { kind: 'window_minimized', message: 'gone' }))
+        : send(method, ...rest)) as typeof h.service.request
+    expect((await h.run('computer_act', { app: 'Fronty', action: 'key', text: 'super+s' })).isError).toBe(true)
+    expect(sent).toBe(2)
+    await h.sessions.drained('t1')
+    const call = (await h.history!.read(['t1']))[0].calls.at(-1)!
+    expect(call.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Press', 'failed', 'The window was minimized']])
+  })
+
   it('a refused front step says the app must come forward and that the person chose to wait', async () => {
     const h = make({ gate: frontGate([], false, false) })
     await h.run('computer_observe', { app: 'Fronty' })
@@ -1489,24 +1506,59 @@ describe('fewer calls (§27)', () => {
       expect(last(h, 'state.get').params.mode).toBe('auto')
     })
 
+    /** the nth acting request of the harness is refused whole with `error`, as the service or the connection would */
+    const failRequest = (h: ComputerHarness, nth: number, error: Error): void => {
+      const send = h.service.request.bind(h.service) as (...a: unknown[]) => Promise<unknown>
+      let sent = 0
+      h.service.request = ((method: string, ...rest: unknown[]) =>
+        (method === 'action.batch' || method === 'action.run') && ++sent === nth ? Promise.reject(error) : send(method, ...rest)) as typeof h.service.request
+    }
+    const minimized = (): Error => new ComputerRpcError(-32000, 'gone', { kind: 'window_minimized', message: 'gone' })
+    const journal = async (h: ComputerHarness): Promise<(string | undefined)[][]> => {
+      await h.sessions.drained('t1')
+      return (await h.history!.read(['t1']))[0].calls.at(-1)!.steps.map((s) => [s.verb, s.state, s.reason])
+    }
+    const twoRequests = [{ action: 'left_click', named: 'Search' }, { action: 'type', text: 'hello' }]
+
     it('a later request that fails leaves the journal the steps the service already answered, as they ran', async () => {
       const h = make({ gate: admitAll(), history: { pictures: () => false } })
       verdict(h, 'dev.fake.splitty', { key: 'session', type: 'session' })
       await h.run('computer_observe', { app: 'Splitty' })
       // the click's request answers; the text is its own request, and the service refuses that one whole
-      const send = h.service.request.bind(h.service)
-      let sent = 0
-      h.service.request = ((method: string, ...rest: unknown[]) =>
-        method === 'action.batch' && ++sent === 2
-          ? Promise.reject(new ComputerRpcError(-32000, 'gone', { kind: 'window_minimized', message: 'gone' }))
-          : (send as (...a: unknown[]) => unknown)(method, ...rest)) as typeof h.service.request
-      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'left_click', named: 'Search' }, { action: 'type', text: 'hello' }] })
-      expect(o.isError).toBe(true)
-      await h.sessions.drained('t1')
-      const call = (await h.history!.read(['t1']))[0].calls.at(-1)!
-      expect(call.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([
+      failRequest(h, 2, minimized())
+      expect((await h.run('computer_batch', { app: 'Splitty', actions: twoRequests })).isError).toBe(true)
+      expect(await journal(h)).toEqual([
         ['Clicked', 'ok', undefined],
         ['Type', 'failed', 'The window was minimized']
+      ])
+    })
+
+    it('a service that goes during a later request ends the step that request held, with the host’s reason', async () => {
+      const h = make({ gate: admitAll(), history: { pictures: () => false } })
+      verdict(h, 'dev.fake.splitty', { key: 'session', type: 'session' })
+      await h.run('computer_observe', { app: 'Splitty' })
+      // no service error to word: the connection's own refusal is the call's end, on the first step with no answer
+      failRequest(h, 2, new ComputerHostError('service_restarted'))
+      expect((await h.run('computer_batch', { app: 'Splitty', actions: twoRequests })).isError).toBe(true)
+      expect(await journal(h)).toEqual([
+        ['Clicked', 'ok', undefined],
+        ['Type', 'failed', 'The computer service restarted']
+      ])
+    })
+
+    it('a step the gate refused up front keeps its place and its reason when a request before it fails', async () => {
+      const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: false, reason: 'skipped', message: 'no' }), run: (c, send) => send(c.tiers) }
+      const h = make({ gate, history: { pictures: () => false } })
+      verdict(h, 'dev.fake.splitty', { key: 'session', type: 'session' })
+      await h.run('computer_observe', { app: 'Splitty' })
+      // the key needs the session tier and the card says no before anything runs; the click answers; the text's request fails
+      failRequest(h, 2, minimized())
+      await h.run('computer_batch', { app: 'Splitty', actions: [...twoRequests, { action: 'key', text: 'Return' }] })
+      expect(batches(h).map((r) => (r.params.actions as { action: string }[]).map((a) => a.action))).toEqual([['left_click']])
+      expect(await journal(h)).toEqual([
+        ['Clicked', 'ok', undefined],
+        ['Type', 'failed', 'The window was minimized'],
+        ['Press', 'stopped', 'Run now was not chosen']
       ])
     })
 

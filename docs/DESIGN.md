@@ -526,7 +526,9 @@ Mac or a held step (`ComputerLines`).
 
 A column on the panel's 12px inset with no card, border or header bar of
 its own. The session rows and the viewport do not scroll; the step list
-under them is the section's one scroller.
+under them is the section's scroller, and it keeps a 64px floor: with
+more live sessions than a short pane holds, the rows and the box give
+way and scroll above it, so no Stop and no step is out of reach.
 
 - **A session row** (36px, one per live session, none once the turn
   settles): the `SquareMousePointer` glyph, the window in its app,

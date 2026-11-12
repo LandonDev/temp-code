@@ -524,7 +524,7 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
       onScroll={(e) => {
         atTop.current = e.currentTarget.scrollTop <= AT_TOP;
       }}
-      className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pb-3"
+      className="relative min-h-16 flex-1 overflow-x-hidden overflow-y-auto px-1 pb-3"
     >
       {status === "failed" ? <FailedLine onRetry={onRetry} className="px-2 pb-2" /> : null}
       {running.map((line) => (

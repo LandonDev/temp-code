@@ -2,6 +2,7 @@ import { forwardRef, type Ref } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { TruncateTip } from "@renderer/components/tip";
+import { cn } from "@renderer/lib/cn";
 import { Square, SquareMousePointer } from "../../../chrome/icons";
 import type { StepGroup } from "../../../lib/computerHistory";
 import { StepList, type ReadFold, type RunningLine } from "./StepList";
@@ -93,7 +94,9 @@ export const ComputerView = forwardRef(function ComputerView(props: ComputerView
     // A size container, so the viewport's cap can be a share of the section's height.
     <div ref={ref} data-slot="computer-section" data-following={!pinned || undefined} className="flex min-h-0 flex-1 flex-col [container-type:size]">
       {head ? (
-        <div className={sessions.length ? "shrink-0 px-3 pt-1.5 pb-2" : "shrink-0 px-3 pt-3 pb-2"}>
+        // It gives way before the steps do: with more live sessions than a short pane holds, the rows and the box
+        // scroll here and the list keeps its floor (StepList's `min-h-16`), so no Stop and no step is out of reach.
+        <div className={cn("min-h-0 overflow-x-hidden overflow-y-auto px-3 pb-2", sessions.length ? "pt-1.5" : "pt-3")}>
           {/* The session the viewport follows is the last row, right above the box, so the picture is never read as
               another session's; the others stand above it. */}
           {sessions.map((session, i) => (

@@ -468,6 +468,24 @@ describe('settledSteps', () => {
     expect(steps[1].reason).toBeTruthy()
   })
 
+  it('results are read by their place: a step with no answer between one that ran and one the gate refused takes the call’s end', () => {
+    const three = { app: 'TextEdit', actions: [{ action: 'left_click', element: 44 }, { action: 'key', text: 'super+s' }, { action: 'key', text: 'Return' }] }
+    const base = { tool: 'computer_batch' as const, args: three, ctx, planned: plannedSteps('computer_batch', three, ctx) }
+    const held = [ok('left_click'), { index: 1, action: 'key', status: 'not-run' }, failed('key', { kind: 'needs_tier', needed: 'session' })] as StepResult[]
+    // the gate said no to the third before anything ran; the first answered; the second's request failed whole
+    const steps = settledSteps({ ...base, results: held, gate: { 2: 'skipped' }, error: { kind: 'window_minimized', message: 'm' } })
+    expect(steps.map((x) => [x.verb, x.state, x.reason])).toEqual([
+      ['Clicked', 'ok', undefined],
+      ['Press', 'failed', 'The window was minimized'],
+      ['Press', 'stopped', 'Run now was not chosen']
+    ])
+    // a call that threw with no service error (the service went): the host's refusal ends the step with no answer
+    const gone = settledSteps({ ...base, results: held.slice(0, 2), refused: { kind: 'service_restarted', line: 'x' }, threw: true })
+    expect(gone.map((x) => [x.state, x.reason])).toEqual([['ok', undefined], ['failed', 'The computer service restarted'], ['not-run', undefined]])
+    // without the throw a refusal after steps ran is still not the call's end
+    expect(settledSteps({ ...base, results: held.slice(0, 2), refused: { kind: 'service_restarted', line: 'x' } }).map((x) => x.state)).toEqual(['ok', 'not-run', 'not-run'])
+  })
+
   it('a request that failed whole says the service’s kind', () => {
     const steps = settledSteps({ tool: 'computer_act', args: { app: 'TextEdit', action: 'left_click', element: 44 }, ctx, error: { kind: 'window_minimized', message: 'm' } })
     expect(steps[0]).toMatchObject({ state: 'failed', reason: 'The window was minimized' })
