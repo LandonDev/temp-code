@@ -226,11 +226,11 @@ describe("following", () => {
 
   it("a batch runs as one line, Working in its app, with its planned steps under it; when it answers, one row per step", async () => {
     h.preview.state = live();
-    const plan = ['click button "To"', 'type 6 characters into input "Subject"', "press super+Return"];
+    const plan = ["Click To", "Type into Subject", "Press ⌘Return"];
     const batch = running(2, {
       app: "Mail",
       plan,
-      steps: [step("Clicking", "To", { state: undefined, inApp: "To in Mail" }), step("Typing", "into Subject", { state: undefined, kind: "type", inApp: "into Subject in Mail" }), step("Pressing", "super+Return", { state: undefined, kind: "key", inApp: "super+Return in Mail" })],
+      steps: [step("Clicking", "To", { state: undefined, inApp: "To in Mail" }), step("Typing", "into Subject", { state: undefined, kind: "type", inApp: "into Subject in Mail" }), step("Pressing", "⌘Return", { state: undefined, kind: "key", inApp: "⌘Return in Mail" })],
     });
     const e = entry({ apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "New Message" }], running: { tool: "computer_batch", words: "Working in Mail", startedAt: AT } });
     const view = mount(data([call(1), batch], [e]));
@@ -244,12 +244,12 @@ describe("following", () => {
     // it answers: three rows, newest first, and no running line
     const done = call(2, {
       app: "Mail",
-      steps: [step("Clicked", "To", { inApp: "To in Mail" }), step("Typed", "into Subject", { kind: "type", inApp: "into Subject in Mail" }), step("Pressed", "super+Return", { kind: "key", inApp: "super+Return in Mail" })],
+      steps: [step("Clicked", "To", { inApp: "To in Mail" }), step("Typed", "into Subject", { kind: "type", inApp: "into Subject in Mail" }), step("Pressed", "⌘Return", { kind: "key", inApp: "⌘Return in Mail" })],
     });
     view.again(data([call(1), done], [entry({ apps: e.row.apps })]));
     await flush();
     expect(runningRows()).toHaveLength(0);
-    expect(rows().map(words)).toEqual(["Pressedsuper+Return", "Typedinto Subject", "ClickedTo in Mail", "ClickedStep 1 in TextEdit"]);
+    expect(rows().map(words)).toEqual(["Pressed⌘Return", "Typedinto Subject", "ClickedTo in Mail", "ClickedStep 1 in TextEdit"]);
     // the steps that landed while following take the house's landing cue, a step apart; the one there at mount does not
     expect(rows().map((r) => [r.classList.contains("step-land"), r.style.getPropertyValue("--stagger")])).toEqual([
       [true, "2"],
@@ -688,7 +688,7 @@ describe("pinning", () => {
 
   it("a pinned step of a batch that is not its last shows the call's picture and says After all 3 steps", async () => {
     h.preview.state = live();
-    const batch = call(2, { steps: [step("Clicked", "To"), step("Typed", "into Subject", { kind: "type" }), step("Pressed", "super+Return", { kind: "key" })] });
+    const batch = call(2, { steps: [step("Clicked", "To"), step("Typed", "into Subject", { kind: "type" }), step("Pressed", "⌘Return", { kind: "key" })] });
     mount(data([call(1), batch], [entry()]));
     await flush();
     fireEvent.click(rowButton("t1:2:0"));
@@ -704,7 +704,7 @@ describe("pinning", () => {
 
   it("a batch that stopped part way says After the steps that ran: the picture is not of steps that never ran", async () => {
     h.preview.state = live();
-    const batch = call(2, { steps: [step("Clicked", "To"), step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), step("Press", "super+Return", { kind: "key", state: "not-run", tier: undefined })] });
+    const batch = call(2, { steps: [step("Clicked", "To"), step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), step("Press", "⌘Return", { kind: "key", state: "not-run", tier: undefined })] });
     mount(data([call(1), batch], [entry()]));
     await flush();
     fireEvent.click(rowButton("t1:2:0"));
@@ -772,7 +772,7 @@ describe("the row states", () => {
 
   it("a failed step: the red mark, a red line that says why, and the batch's later steps muted, Not run", async () => {
     const batch = call(1, {
-      steps: [step("Clicked", "To"), step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), step("Press", "super+Return", { kind: "key", state: "not-run", tier: undefined })],
+      steps: [step("Clicked", "To"), step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), step("Press", "⌘Return", { kind: "key", state: "not-run", tier: undefined })],
     });
     const failed = await openOn(batch, "t1:1:1");
     expect(failed.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("failed");
@@ -782,7 +782,7 @@ describe("the row states", () => {
     expect(why.className).toContain("text-destructive");
     // the step that did not run is muted whole, a dash in its glyph's place
     const notRun = rows()[0];
-    expect(words(notRun)).toBe("Presssuper+Return");
+    expect(words(notRun)).toBe("Press⌘Return");
     expect(notRun.querySelector(".text-foreground")).toBeNull();
     expect(notRun.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("not-run");
     expect(rows()[2].querySelector('[data-slot="step-glyph"]')!.hasAttribute("data-mark")).toBe(false);
@@ -819,6 +819,14 @@ describe("the row states", () => {
     fireEvent.click(rowButton("t1:2:3"));
     await flush();
     expect(openRow()!.querySelector('[data-slot="step-read"]')).toBeNull();
+    // Home follows again: the open row is the failure once more, and the focus goes there, where the tab stop is
+    const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((fn) => (fn(0), 0));
+    fireEvent.keyDown(rowButton("t1:2:3"), { key: "Home" });
+    await flush();
+    expect(openRow()!.getAttribute("data-step")).toBe("t1:2:1");
+    expect(document.activeElement).toBe(rowButton("t1:2:1"));
+    expect(rowButton("t1:2:1").tabIndex).toBe(0);
+    raf.mockRestore();
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 
@@ -875,7 +883,7 @@ describe("the row states", () => {
   it("the facts line: the tier first, what it acted on, how it went, then its time; nothing for the plain case", async () => {
     const el = await openOn(
       call(1, {
-        steps: [step("Pressed", "super+s", { kind: "key", tier: "front", facts: ["saved ~/run/Total.txt", "through the menu File › Save…", "still changing after 1.5 s"] })],
+        steps: [step("Pressed", "⌘S", { kind: "key", tier: "front", facts: ["saved ~/run/Total.txt", "through the menu File › Save…", "still changing after 1.5 s"] })],
       }),
     );
     expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in front", "saved ~/run/Total.txt", "through the menu File › Save…", "still changing after 1.5 s", clockTime(AT + 1400)]);

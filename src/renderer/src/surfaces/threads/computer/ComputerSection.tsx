@@ -207,7 +207,8 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   }
   // Following, the open row is the newest step with an outcome: after a batch that failed part way that is the
   // step that failed, not the last of the steps that never ran.
-  const openRow = pinnedRow ?? rows.find((r) => r.step.state !== "not-run") ?? rows[0] ?? null;
+  const followRow = rows.find((r) => r.step.state !== "not-run") ?? rows[0] ?? null;
+  const openRow = pinnedRow ?? followRow;
   const lead = data.entries[0] ?? null;
   const stream = useLiveStream(lead, !pinnedRow && paneShown && docShown, box, root);
   const over = stream.state.status === "ended" || stream.state.status === "failed";
@@ -341,6 +342,7 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
       running={running}
       groups={list.groups}
       openId={openRow?.id ?? null}
+      followId={followRow?.id ?? null}
       read={{
         open: readOpen,
         text: readText,

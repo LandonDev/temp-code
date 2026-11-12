@@ -369,7 +369,7 @@ describe("rowsOf", () => {
         threadId: "t1",
         calls: [
           call(1, { steps: [step("Read", "", { kind: "read", inApp: "TextEdit" })] }),
-          call(2, { steps: [step("Clicked"), step("Typed", "into Save As", { kind: "type" }), step("Pressed", "super+s", { kind: "key" })] }),
+          call(2, { steps: [step("Clicked"), step("Typed", "into Save As", { kind: "type" }), step("Pressed", "⌘S", { kind: "key" })] }),
           call(3, { state: "running", endedAt: undefined, rev: 1, steps: [step("Clicking", "Replace", { state: undefined })] }),
         ],
       },
@@ -390,11 +390,11 @@ describe("rowsOf", () => {
           call(2, { steps: [step("Typed", "into Subject", { kind: "type" })] }),
           call(3, { app: "Mail", steps: [step("Clicked", "Send", { inApp: "Send in Mail" })] }),
           call(4, { app: "Mail", steps: [step("Clicked", "", { inApp: "in Mail" })] }),
-          call(5, { steps: [step("Pressed", "super+s", { kind: "key" })] }),
+          call(5, { steps: [step("Pressed", "⌘S", { kind: "key" })] }),
         ],
       },
     ]);
-    expect(words(list.groups[0].rows)).toEqual(["Pressed super+s in TextEdit", "Clicked in Mail", "Clicked Send in Mail", "Typed into Subject", "Clicked New Document in TextEdit"]);
+    expect(words(list.groups[0].rows)).toEqual(["Pressed ⌘S in TextEdit", "Clicked in Mail", "Clicked Send in Mail", "Typed into Subject", "Clicked New Document in TextEdit"]);
   });
 
   it("groups are a session's turns; a heading stands only where two groups meet", () => {

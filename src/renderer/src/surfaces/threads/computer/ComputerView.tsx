@@ -37,6 +37,8 @@ export interface ComputerViewProps {
   running: readonly RunningLine[];
   groups: readonly StepGroup[];
   openId: string | null;
+  /** the row that is open while the section follows: where Home and Go live put the focus */
+  followId?: string | null;
   read: ReadFold;
   status: "loading" | "ready" | "failed";
   more: boolean;
@@ -104,6 +106,7 @@ export const ComputerView = forwardRef(function ComputerView(props: ComputerView
         running={props.running}
         groups={props.groups}
         openId={props.openId}
+        followId={props.followId}
         pinned={pinned}
         read={props.read}
         status={props.status}

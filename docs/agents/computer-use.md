@@ -119,7 +119,9 @@ why and the measured headline.
   its newest when it is loaded; a history not written for 30 days goes at
   boot and daily; a Mac thread's goes when the thread is removed. `fsMedia` and
   the path fence refuse every path under the history root, so the one way
-  to a picture is the `local` read: `computer.history.read`,
+  to a picture the app serves is the `local` read (the fence also refuses
+  a file named through a project id or a `cwd`, a copy that would carry
+  the root out, and search reports nothing from it): `computer.history.read`,
   `computer.history.step` and the `computer-history` push to the sockets
   that read the key (computer/historyRpc.ts).
 - **The app tools.** The four `computer_*` tools on every Mac thread,

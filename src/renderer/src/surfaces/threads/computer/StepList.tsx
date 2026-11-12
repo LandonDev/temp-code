@@ -339,8 +339,16 @@ function RowsSkeleton() {
  * ↓ the older, Home the live end, End the oldest loaded. Focus goes with the
  * choice, and nothing animates.
  */
-export function useStepKeys(opts: { ids: readonly string[]; openId: string | null; scroller: RefObject<HTMLElement | null>; onSelect: (id: string) => void; onFollow: () => void }) {
-  const { ids, openId, scroller, onSelect, onFollow } = opts;
+export function useStepKeys(opts: {
+  ids: readonly string[];
+  openId: string | null;
+  /** the row that is open once the section follows again: the newest step with an outcome */
+  followId?: string | null;
+  scroller: RefObject<HTMLElement | null>;
+  onSelect: (id: string) => void;
+  onFollow: () => void;
+}) {
+  const { ids, openId, followId, scroller, onSelect, onFollow } = opts;
   return useCallback(
     (e: KeyboardEvent<HTMLElement>) => {
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !ids.length) return;
@@ -354,13 +362,14 @@ export function useStepKeys(opts: { ids: readonly string[]; openId: string | nul
       else if (e.key === "End") next = ids[ids.length - 1];
       if (next === null) return;
       e.preventDefault();
-      const id = next === "live" ? ids[0] : next;
+      // the live end's open row is the tab stop there: the focus goes to it, not to a step above it that never ran
+      const id = next === "live" ? (followId ?? ids[0]) : next;
       if (next === "live") onFollow();
       else if (next !== openId) onSelect(next);
       // after the commit the row is the tab stop: focus goes there without scrolling the list twice
       requestAnimationFrame(() => scroller.current?.querySelector<HTMLElement>(`[data-row="${quoted(id)}"]`)?.focus());
     },
-    [ids, onFollow, onSelect, openId, scroller],
+    [followId, ids, onFollow, onSelect, openId, scroller],
   );
 }
 
@@ -369,6 +378,8 @@ export interface StepListProps {
   groups: readonly StepGroup[];
   /** the open row: the pinned one, else the newest finished step */
   openId: string | null;
+  /** the row that is open while the section follows */
+  followId?: string | null;
   /** a row was chosen by hand */
   pinned: boolean;
   read: ReadFold;
@@ -401,7 +412,7 @@ function FailedLine({ onRetry, className }: { onRetry: () => void; className: st
   );
 }
 
-export function StepList({ running, groups, openId, pinned, read, status, more, loadingMore, onSelect, onFollow, onToggleRead, onRetry, onOlder }: StepListProps) {
+export function StepList({ running, groups, openId, followId, pinned, read, status, more, loadingMore, onSelect, onFollow, onToggleRead, onRetry, onOlder }: StepListProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const ids = groups.flatMap((g) => g.rows.map((r) => r.id));
   const idsKey = ids.join("|");
@@ -468,7 +479,7 @@ export function StepList({ running, groups, openId, pinned, read, status, more, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId, pinned]);
 
-  const onKeyDown = useStepKeys({ ids, openId, scroller, onSelect, onFollow });
+  const onKeyDown = useStepKeys({ ids, openId, followId, scroller, onSelect, onFollow });
 
   if (status === "failed" && !ids.length && !running.length) return <FailedLine onRetry={onRetry} className="px-3 py-2" />;
 

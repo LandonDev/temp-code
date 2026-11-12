@@ -33,7 +33,13 @@
   was demoted to `local`: the /ui bundle and the desktop's remote-host
   flows call the whole donor family, and the phone calls `fs.readPreview`,
   `search.project` and `github.*`. `fence.test.ts` asserts every
-  path-taking contract method has a row.
+  path-taking contract method has a row. Inside the roots one directory
+  is denied to every remote file method: the computer history
+  (docs/computer-protocol.md §17.9), by a path named outright
+  (`fenceRequest`'s `denied`), by one named through a project id or
+  inside a `cwd`, and by a copy or a move whose source holds it
+  (`fenceDenied`); `fsMedia` and project search leave it out for every
+  caller.
 - Pairing: an admin makes a code (`XXXXX-XXXXX`, 10 minutes, single use) in
   the pane or over `POST /api/pairings`; the link is `<origin>/pair#<code>`.
   Redemption claims the row in one conditional UPDATE before minting, so

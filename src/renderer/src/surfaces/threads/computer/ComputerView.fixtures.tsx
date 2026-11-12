@@ -85,7 +85,7 @@ const READ_SHEET = [
 const read = call(AT - 3 * MIN, [step("read", "Read", "")], { read: "Read 41 elements", text: true });
 const clicked = call(AT - 2 * MIN - 30_000, [step("click", "Clicked", "a text area", { target: "at (412, 300)" })], { read: "Read no changes" });
 const typed = call(AT - 2 * MIN, [step("type", "Typed", "into a text area", { kind: "type", target: '"Second line!"', element: 3 })], { read: "Read 1 change", text: true });
-const pressed = call(AT - MIN, [step("key", "Pressed", "super+s", { tier: "front", facts: ["through the menu File › Save…", "opened the save sheet"] })], { read: "Read 5 changes", text: true });
+const pressed = call(AT - MIN, [step("key", "Pressed", "⌘S", { tier: "front", facts: ["through the menu File › Save…", "opened the save sheet"] })], { read: "Read 5 changes", text: true });
 const typedName = call(AT - 20_000, [step("type", "Typed", "into Save As", { target: '"Total"', element: 48 })], { read: "Read 2 changes", text: true });
 const run = [read, clicked, typed, pressed, typedName];
 
@@ -146,13 +146,13 @@ export interface ComputerFixture {
   kept?: Record<number, number>;
 }
 
-const batchPlan = ['click button "To"', 'type 6 characters into input "Subject"', "press super+Return"];
+const batchPlan = ["Click To", "Type into Subject", "Press ⌘Return"];
 const batchDone = call(
   AT - 30_000,
   [
     step("click", "Clicked", "To", { target: 'an input in the "New Message" group' }, "Mail"),
     step("type", "Typed", "into Subject", { kind: "type", target: "6 characters" }, "Mail"),
-    step("key", "Pressed", "super+Return", { facts: ["nothing changed"] }, "Mail"),
+    step("key", "Pressed", "⌘Return", { facts: ["nothing changed"] }, "Mail"),
   ],
   { app: "Mail", window: "New Message", read: "Read 3 changes", text: true },
 );
@@ -196,7 +196,7 @@ const fixtures: ComputerFixture[] = [
     props: base({ sessions: [live], viewport: liveBox("textedit", "doc", TEXTEDIT), running: [working("Reading", "TextEdit")], ...listOf(own([read])) }),
   },
   {
-    name: "3. Live, a batch running: its planned steps under one line",
+    name: "3. Live, a batch running: its planned steps under one line, as what is asked",
     props: base({
       sessions: [{ id: "local:t1", label: "New Message in Mail" }],
       viewport: liveBox("chrome", "form", CHROME, { label: "Live view of New Message in Mail" }),
@@ -209,11 +209,11 @@ const fixtures: ComputerFixture[] = [
     props: base({ sessions: [live], viewport: { face: { kind: "live", picture: <canvas className={pictureClass(false)} />, drawn: false }, label: "Live view of Untitled in TextEdit", size: null }, running: [working("Reading", "TextEdit")] }),
   },
   {
-    name: "5. Held for the person: the Mac not free, and what waits under it",
+    name: "5. Held for the person: the Mac not free, and under it what waits, as what is asked",
     props: base({
       sessions: [live],
       viewport: liveBox("textedit", "typed", TEXTEDIT),
-      running: [{ id: "running:local:t1", state: "queued", verb: "", object: "Waiting for the Mac to be free, 2nd in line", waits: "Pressing super+s" }],
+      running: [{ id: "running:local:t1", state: "queued", verb: "", object: "Waiting for the Mac to be free, 2nd in line", waits: "Press ⌘S" }],
       ...listOf(own(run.slice(0, 3))),
     }),
   },
@@ -240,7 +240,7 @@ const fixtures: ComputerFixture[] = [
     props: base({
       sessions: [live],
       viewport: liveBox("textedit", "typed", TEXTEDIT),
-      running: [{ id: "running:env_box:b1", state: "queued", verb: "", object: "Waiting for the Mac, load 12.3 of 8, 3rd in line", waits: "Typing into Save As" }],
+      running: [{ id: "running:env_box:b1", state: "queued", verb: "", object: "Waiting for the Mac, load 12.3 of 8, 3rd in line", waits: "Type into Save As" }],
       ...listOf(own(run.slice(0, 4))),
     }),
   },
@@ -293,7 +293,7 @@ const fixtures: ComputerFixture[] = [
           ...run.slice(0, 2),
           call(AT - 110_000, [step("read", "Read", "", { state: "failed", reason: "Computer use was off" })], { picture: { none: "no-read" } }),
           call(AT - 100_000, [step("click", "Click", "Save", { state: "stopped", tier: undefined, reason: "You didn't allow it", target: 'a button in the "save" sheet' })], { picture: { none: "no-read" } }),
-          call(AT - 70_000, [step("key", "Press", "super+s", { state: undefined, tier: undefined })], { state: "unfinished", endedAt: undefined, picture: undefined, rev: 1 }),
+          call(AT - 70_000, [step("key", "Press", "⌘S", { state: undefined, tier: undefined })], { state: "unfinished", endedAt: undefined, picture: undefined, rev: 1 }),
           call(AT - 40_000, [step("type", "Type", "into Save As", { state: "stopped", tier: undefined, reason: "Stopped" })], { picture: { none: "no-read" } }),
         ]),
       ),
@@ -402,7 +402,7 @@ const fixtures: ComputerFixture[] = [
     }),
   },
   {
-    name: "22. Two live sessions in one tree: the one that acted last first, each with its own Stop",
+    name: "22. Two live sessions in one tree: the one the viewport follows right above the box, each with its own Stop",
     props: base({
       sessions: [{ id: "local:sub1", label: "Computer fixture form in Google Chrome" }, live],
       viewport: liveBox("chrome", "form", CHROME, { label: "Live view of Computer fixture form in Google Chrome" }),

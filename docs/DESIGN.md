@@ -426,7 +426,10 @@ changed", "on screen only, not on disk"), why it failed
 shows the service's error kind or the model's own text. A row's verb is in
 the past only for a step that ran ("Clicked Save"); one that failed, was
 stopped, was refused or never ran reads as what was asked ("Click Save"),
-so no row says a thing was done that was not.
+so no row says a thing was done that was not. A key combo reads in the
+Mac's own marks, in its menus' order ("⌘S", "⇧⌘Return": `keyCaps` in
+src/shared/computer/words.ts, the transcript's rows too); the model's
+grammar (`super+s`) stays on the approval card, which quotes the call.
 
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
 would only say "nothing is happening" is noise. Two places draw done's
@@ -526,7 +529,10 @@ under them is the section's one scroller.
 - **A session row** (36px, one per live session, none once the turn
   settles): the `SquareMousePointer` glyph, the window in its app,
   truncating, then Go live (a ghost `xs` button, drawn only while a step
-  is pinned) and Stop (the Activity row's ghost icon button).
+  is pinned) and Stop (the Activity row's ghost icon button; with several
+  sessions each is named for its session). The session the viewport
+  follows is the row right above the box, the others above it, so a
+  picture is never read as another session's.
 - **The viewport**: a box at the pane's width less 24px in the picture's
   shape, at most `min(240px, 45cqh)` of the section, on the `card` fill
   with `rounded-lg`, the picture centred in it on the `image-outline`
@@ -541,8 +547,11 @@ under them is the section's one scroller.
   ended; "After all 3 steps" (or "After the steps that ran") for a
   batch's earlier step; "As it was after this step" for a step pinned
   while a session is live; "As it was at 2:03 PM" where the newest step
-  kept nothing and an older picture stands in. The box fades in once,
-  when the viewport arrives; a change of face moves nothing.
+  kept nothing and an older picture of its session stands in (another
+  window's is named: "Inbox in Mail, as it was at 2:03 PM"); and
+  "Couldn't read the picture" with Retry when the read failed, which is
+  never said as nothing kept. The box fades in once, when the viewport
+  arrives; a change of face moves nothing.
 - **A step row** is on the transcript's step grid (`STEP_LINE`,
   `GLYPH_SLOT`; 28px): a 14px glyph for the step's kind (click, type,
   key, scroll, read, look, wait, app), uncoloured, the verb muted, the
@@ -555,15 +564,21 @@ under them is the section's one scroller.
   names its app only when the step before it was in another app. Hover
   and press are `ROW_PRESS`.
 - **The running row** is one line; a batch's planned steps, one a line,
-  and what a held step waits for sit under it in 12px muted, and a held
-  line or a card's question wraps whole, never truncates.
+  and what a held step waits for sit under it in 12px muted, each as what
+  is asked ("Click To", "Press ⌘Return": the words its rows settle into),
+  and a held line or a card's question wraps whole, never truncates.
 - **The open row** is the `muted` fill behind the row and what opens
-  under it (8px radius, `aria-current`), with no height animation. Under
+  under it (8px radius, `aria-current`), with no height animation. While
+  the section follows it is the newest step with an outcome: after a
+  batch that failed part way, the step that failed, brought into view,
+  not the last of the steps that never ran. A row's accessible name adds
+  how it ended ("Click Save, failed"), since the mark is drawn. Under
   the words: a 12px line saying why, for a step that did not end well
   (red for a failed step, the one red; foreground for a stopped or
   unfinished one; muted "Not run"); a facts line (`Facts`: the tier's
   words, what it acted on, how it went, the clock time); and a read line
-  ("46 elements" after a read row, "Read 3 changes" after an act) whose
+  ("46 elements" after a read row, "Read 3 changes" after an act; a
+  batch's read sits on the last step that was tried) whose
   chevron trails its words and opens the text in a `CONSOLE` capped at
   240px, the acted element's lines in foreground. Opening it pins the
   row, so the text stays while more steps land; where the viewport
@@ -819,7 +834,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 | The Computer section's viewport arriving | fades in over `--dur-fast` (`FADE_IN`, `@starting-style`, on its wrapper, which stays through every change of face: a pin, Go live and a step by key fade nothing) | at once | the same fade |
 | A frame, or a kept picture, replacing another in the viewport | none: the old picture stays until the new one has decoded, and dims to 40% over `--dur-fast` only when that takes more than 150 ms | — | the same |
-| A step landing at the top of the Computer section while it follows; a batch settling into its steps | `.step-land` (fade and rise 4px, `--dur-base`), `--stagger-step` apart; never at mount, for the first read's rows, for a page of earlier steps, while a row is pinned or on a key | — | fade only |
+| A step landing at the top of the Computer section while it follows; a batch settling into its steps | `.step-land` (fade and rise 4px, `--dur-base`), `--stagger-step` apart; never at mount, for the first read's rows, for a page of earlier steps, while a row is pinned or on a key | — | none (the class's own rule) |
 | A row chosen in the Computer section, its facts opening, the running row's words changing | none | none | none |
 | A step's read text opening | `Collapsible` (`--dur-slow` open, `--dur-base` close) | the same | opacity |
 | The computer cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`FADE_IN`); its words morph (`MorphText`) | at once | the fade |
