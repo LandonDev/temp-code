@@ -335,6 +335,16 @@ describe("following", () => {
     // the journal's call began before the row's call was marked running and has ended: the row's push is on its way
     const ended = rowsOf([{ key: "t1", threadId: "t1", calls: [call(1)] }]);
     expect(runningLines([row], ended)).toEqual([]);
+    // the same for a row that still says its call waits on a card, or is held for the Mac: the person pressed Deny,
+    // or the held step was stopped, and the settled row is already there
+    const asking = entry({ running: { tool: "computer_act", words: "Clicking Save in TextEdit", startedAt: AT + 1100 }, asking: { line: "Click Save in TextEdit?", since: AT + 1100 } });
+    expect(runningLines([asking], ended)).toEqual([]);
+    const held = entry({ running: { tool: "computer_act", words: "Waiting for the Mac to be free, 2nd in line", startedAt: AT + 1100, held: true } });
+    expect(runningLines([held], ended)).toEqual([]);
+    // a card that waits on a call the journal has not ended is still its line
+    expect(runningLines([entry({ running: { tool: "computer_act", words: "Clicking Save in TextEdit", startedAt: AT + 5000 }, asking: { line: "Click Save in TextEdit?", since: AT + 5000 } })], ended)).toEqual([
+      { id: "running:local:t1", state: "waiting", verb: "", object: "Click Save in TextEdit?" },
+    ]);
     // a call that began after the journal's newest ended is another call: the row's words stand in for its start
     const later = entry({ running: { tool: "computer_act", words: "Clicking Save in TextEdit", startedAt: AT + 5000 } });
     expect(runningLines([later], ended)).toEqual([{ id: "running:local:t1", state: "working", verb: "", object: "Clicking Save in TextEdit" }]);

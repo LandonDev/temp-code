@@ -499,6 +499,33 @@ describe("the live viewport", () => {
     expect(skeleton()).toBeNull();
   });
 
+  it("another session's box starts from nothing: the last session's picture is never shown under it, with or without a window of its own to stream", async () => {
+    const skeleton = () => box().querySelector('[data-slot="skeleton"], .animate-pulse');
+    const view = mount();
+    await flush();
+    await act(async () => link.push(frame(1)));
+    await flush();
+    expect(skeleton()).toBeNull();
+    // the section follows another session, which has read no window yet (it only listed or launched apps)
+    const other: ComputerEntry = { ...entry({ threadId: "s2", apps: [] }), previewKey: "s2" };
+    view.again({}, other);
+    await flush();
+    // the first session's stream is stopped, no stream is asked for the second, and its box is the skeleton
+    expect(link.methods().at(-1)).toBe("computer.preview.stop");
+    expect(link.methods().filter((m) => m === "computer.preview.start")).toHaveLength(1);
+    expect(skeleton()).not.toBeNull();
+    // it reads a window: its stream starts, and only its own first frame is its picture
+    link.answer = async () => ({ preview: "pv_2", app: "Mail", window: "Inbox", width: 600, height: 1200 });
+    view.again({}, { ...entry({ threadId: "s2", apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }] }), previewKey: "s2" });
+    await flush();
+    expect(link.methods().filter((m) => m === "computer.preview.start")).toHaveLength(2);
+    expect(skeleton()).not.toBeNull();
+    await act(async () => link.push(frame(2, "pv_2")));
+    await flush();
+    expect(skeleton()).toBeNull();
+    expect(box().getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
+  });
+
   it("asks for no frames with no session to draw, or one this desktop cannot draw", async () => {
     mount(null);
     await flush();

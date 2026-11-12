@@ -69,6 +69,15 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
   const box = opts.box;
   const host = entry.previewHost;
   const key = entry.previewKey;
+  // The state is its session's. When the section follows another session, what the last one drew is not this
+  // one's picture: it starts from nothing before anything paints, whether or not its stream can start yet (a
+  // session that has read no window has none), so the canvas's old frame is never shown under the new row.
+  const owner = `${host ?? ""}\n${key ?? ""}`;
+  const [owned, setOwned] = useState(owner);
+  if (owned !== owner) {
+    setOwned(owner);
+    setState({ status: "starting" });
+  }
   // The host previews the window the thread last read: before its first read there is none, and a start would be
   // refused for good. The stream starts when the row names a window, and one that failed tries again when that
   // window changes.

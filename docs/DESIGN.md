@@ -549,9 +549,9 @@ is out of reach.
   the window room to be read; a short one keeps its list), on the `card` fill
   with `rounded-lg`, the picture centred in it on the `image-outline`
   edge, a `Skeleton` in its shape until the first picture (and again
-  when the stream moves to another window, until that window's own
-  first frame: the last window's picture is never shown as the new
-  one). It shows the
+  when the stream moves to another window or the section follows
+  another session, until that window's own first frame: the last
+  picture is never shown as the new one's). It shows the
   live stream, or a pinned step's kept picture (a click opens the
   lightbox), or the text the model read in a `CONSOLE` of the box's
   shape, or nothing. While a step is pinned the box keeps its height: a

@@ -101,6 +101,12 @@ export function runningLines(entries: readonly ComputerEntry[], list: Steps): Ru
     if (key) starts.delete(key);
     const state = nowState(entry.row);
     if (!state && !start) continue;
+    // The journal's end is told at once and the live row a moment later: a call the journal already ended (it
+    // began before the row's call was marked running, and ended after) is not drawn as running again from the
+    // row, whether the row still says it works, waits on a card or is held for the Mac.
+    const last = key ? newest.get(key) : undefined;
+    const running = entry.row.running;
+    if (!start && running && last?.endedAt !== undefined && last.at <= running.startedAt && last.endedAt >= running.startedAt) continue;
     const id = `running:${sessionId(entry)}`;
     // with one session its row above says the app; with several each line says its own
     const words = start ? rowWords({ ...start, namesApp: several }, true) : null;
@@ -112,15 +118,7 @@ export function runningLines(entries: readonly ComputerEntry[], list: Steps): Ru
       const under = start?.call.plan?.length ? { plan: start.call.plan } : waits ? { waits: [waits.verb, waits.object].filter(Boolean).join(" ") } : {};
       lines.push({ id, state, verb: "", object: entry.row.running?.words ?? "", ...under });
     } else if (words) lines.push({ id, state: "working", ...words, ...(start?.call.plan?.length ? { plan: start.call.plan } : {}) });
-    else {
-      // The journal's end is told at once and the live row a moment later: a call the journal already ended (it
-      // began before the row's call was marked running, and ended after) is not drawn as running again from the
-      // row's own words.
-      const last = key ? newest.get(key) : undefined;
-      const running = entry.row.running;
-      if (running && last?.endedAt !== undefined && last.at <= running.startedAt && last.endedAt >= running.startedAt) continue;
-      lines.push({ id, state: "working", verb: "", object: running?.words ?? "" });
-    }
+    else lines.push({ id, state: "working", verb: "", object: running?.words ?? "" });
   }
   // a call the journal says runs whose live row has not come yet
   for (const start of starts.values()) lines.push({ id: `running:${start.key}`, state: "working", ...rowWords({ ...start, namesApp: true }, true), ...(start.call.plan?.length ? { plan: start.call.plan } : {}) });
