@@ -213,7 +213,7 @@ export function springEasing(spring: Spring, points = 32, rest = 0.005): { ms: n
 export const SPRING_LAYOUT_CSS = springEasing(SPRING_LAYOUT);
 
 /**
- * The agent's click on a computer preview (surfaces/threads/ComputerPreview.tsx):
+ * The agent's click on the live viewport (surfaces/threads/computer/Viewport.tsx):
  * a ring that grows from 0.6 at full opacity over `--dur-base` on `--ease-out`,
  * holds `FOLD_HOLD_MS`, then fades over `--dur-slow`. One element, restarted
  * for each click, transform and opacity alone so the compositor runs it;

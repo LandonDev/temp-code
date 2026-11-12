@@ -1809,7 +1809,8 @@ The parts, and who owns each:
 | The service shell: the router, the locks, the exit codes (§16) | native/tc-computer/Sources/ComputerServiceKit/ | the service |
 | Sessions, the tools, the cards, the tier verdicts (§17, §19) | src/main/server/computer/ | the host |
 | The tier scheduling (§20) | computer/schedule.ts, src/main/personIdle.ts | the host and main |
-| The Activity row, the preview, the screenshot row (§8) | lib/computerSessions.ts, ComputerPreview.tsx, ComputerShotRow.tsx | the renderer |
+| The Computer section, the cue, the Activity row where the section cannot draw, the screenshot row (§8) | surfaces/threads/computer/, chrome/ComputerCue.tsx, lib/computerSessions.ts, ComputerShotRow.tsx | the renderer |
+| The journal a box thread's steps are read from, on the Mac it drove (§17.9) | src/main/server/computer/history.ts | the Mac's host |
 | The Mac's banner (§8) | src/main/computerBanner.ts | main |
 | A box thread's calls (§18) | remote/macComputer.ts (Mac), computer/bridge.ts (box) | the bridge |
 
@@ -1898,7 +1899,7 @@ held calls wait as they did. Claude threads are unchanged
 
 Pause, Stop, Away. A paused box thread's computer calls are refused at the
 box; a pause or the composer's Stop cancels the call out on the Mac. Stop on
-the Activity row ends computer use for the turn on both hosts: the call in
+the session's row (the Computer section's, or Activity's) ends computer use for the turn on both hosts: the call in
 flight answers what it did and "stopped by the person". With Away on, every
 card the call raises is allowed on the Mac and the box writes an allowed row,
 except a call flagged pay or subscribe, which is refused (before it waits,

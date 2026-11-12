@@ -593,32 +593,69 @@ instances refuse it. No thread is stopped for a proof hold.
 
 ### What the person sees
 
-Computer use shows in four places; none of them names a tier, an index or a
+Computer use shows in five places; none of them names a tier, an index or a
 path on a line a person reads at a glance.
 
-- **The Computer row** in the right panel's Activity section, one per live
-  session of the thread's tree (`lib/computerSessions.ts` keeps every host's
-  rows from `computer.sessions` and the `computer` push; `lib/activity.ts`
-  joins them): the cursor-in-window glyph, "Untitled in TextEdit" (the window
-  in the app it used last; the app alone when the window has no title;
-  "Computer use" before any app), the tier of the last action in
-  `COMPUTER_TIER_WORDS` muted after it ("in the background", "to the app",
-  "on the screen"), the age, and Stop (`computer.stop` on the thread's own
-  host, so a box thread's Stop reaches its Mac through the box). A bridged
-  computer call is never a Mac command row.
-- **The preview**, under that row when it opens, on the Mac's desktop only:
-  `computer.preview.*` are `local` methods, so a remote key, the phone and
-  the browser /ui never see a frame. A box thread driving this Mac is
-  previewed through this Mac's own link by the bridge's key. The box is the
-  pane's width in the stream's shape and at most 240px tall; frames are
-  decoded off the main thread and acked only after they are drawn; it runs
-  only while the fold is open, the section is shown and the window is
-  visible. The agent's click is a ring that grows, holds and fades
-  (`CLICK_MARK`), placed by the click's own frame size. One line under it
-  says a card waiting on the Mac (Needs you), a held step (Queued with the
-  scheduler's words) or why the preview ended (the window closed or is
-  minimized, Screen Recording is off, or it stopped, with Retry). A row
-  that cannot preview opens only for those lines.
+- **The Computer section** of the right panel, on the Mac's desktop only
+  (`surfaces/threads/computer/`, one lazy chunk). It is there while a
+  session this desktop can draw is live in the thread's tree, and after
+  that for as long as the thread has kept steps (§17.9), so it is both the
+  live look and the thread's history. Top to bottom:
+  - **A session row** per live session: the cursor-in-window glyph,
+    "Untitled in TextEdit" (the window in the app it used last; the app
+    alone when the window has no title; "Computer use" before any app),
+    Go live while a step is pinned, and Stop (`computer.stop` on the
+    thread's own host, so a box thread's Stop reaches its Mac through the
+    box). No session row once the turn settles.
+  - **The viewport**: the window as it is, or as it was. Live, it is the
+    preview stream: `computer.preview.*` are `local` methods, so a remote
+    key, the phone and the browser /ui never see a frame, and a box thread
+    driving this Mac is previewed through this Mac's own link by the
+    bridge's key. Frames are decoded off the main thread and acked only
+    after they are drawn; a frame repaints the canvas and re-renders
+    nothing. The agent's click is a ring that grows, holds and fades
+    (`CLICK_MARK`), placed by the click's own frame size; it is drawn on
+    the live picture alone. For a pinned step the box shows the picture
+    the journal kept after that step's call, else the text the model read,
+    else nothing but one line saying why ("Screen Recording was off", "The
+    window was minimized", "The window was not drawn", "This picture is no
+    longer kept"). The box is the pane's width in the picture's shape, at
+    most 240px or 45% of the section's height. One line under it says why
+    a preview ended (the window closed or is minimized, Screen Recording
+    is off, or it stopped, with Retry) and, for a step of a batch that is
+    not its last, "After all 3 steps": the journal keeps one picture a
+    call. The stream runs only while the section is shown, the window is
+    visible and no step is pinned.
+  - **The steps**, newest first, one 28px row each in `computerPhrase`'s
+    words with the step's kind as its glyph. The running call is one line
+    at the top ("Clicking Save"; a batch's planned steps under it; a held
+    step's or a waiting card's line whole). The open row says how the step
+    was done: the tier in `COMPUTER_TIER_WORDS` ("in the background", "to
+    the app", "in front", "on the screen"), what it acted on (`a button in
+    the "Save As" sheet`), how it went when that is not the plain case
+    ("nothing changed", `through the menu File › Save…`), the clock time,
+    and what the model read ("Read 46 elements", "Read 3 changes"),
+    opening onto the text with the acted element's lines marked. A failed
+    step says why in red ("The element was gone"); a stopped one and one
+    that did not finish say so; later steps of its batch read "Not run".
+    Steps of one turn of one session are a group under the turn's time; a
+    subagent's group leads with its title.
+  - **Following and pinning.** With nothing chosen the section follows:
+    the stream, the newest finished step open, the list at its top. A
+    click or an arrow key pins a step; Go live, Home or the running row
+    follows again.
+- **The cue** in the title bar beside the agents cue (`chrome/ComputerCue.tsx`),
+  while such a session is live: "Using TextEdit", "Needs you" while a card
+  waits, "Waiting for the Mac" while a step is held. A click opens the
+  panel on Computer.
+- **An Activity row**, for a live session this desktop cannot draw (the
+  browser /ui, a second Mac): the same glyph and label, the tier of the
+  last action muted after it, the age, and Stop
+  (`lib/computerSessions.ts` keeps every host's rows from
+  `computer.sessions` and the `computer` push; `lib/activity.ts` joins
+  them and leaves out the sessions the section draws). It opens only for a
+  card waiting on the Mac (Needs you) or a held step (Queued with the
+  scheduler's words). A bridged computer call is never a Mac command row.
 - **The transcript**: a computer call reads in plain words
   (`computerPhrase` in src/shared/computer/words.ts: "Clicking Save in
   TextEdit" while it runs, from the host's `running.words`, which name the
@@ -648,30 +685,43 @@ Two proofs drive the real `tc-computer` on a ticking TC Probe and need an
 unlocked, awake screen. `bun run script:e2e-computer-preview` checks the
 relay, the click record, the escape watch and the session hold, writing its
 report under /tmp/tc-preview-proof. `bun run script:e2e-computer-ui` checks
-the Computer row, the preview, the screenshot row and the banner through a
+the cue, the Computer section (its session row, its frames and click mark,
+its steps), the screenshot row and the banner through a
 real thread in an isolated instance, writing its report under
 /tmp/tc-preview-reports/ui. On 2026-11-09, at c68b770a, both read "not run:
 the Mac was locked, the person away". On 2026-11-11 its `--gate` mode passed whole on the Mac at 7e6d5588 with one fix (ScreenWatch imported the screen readers it called): 17 passed, 0 failed, 0 inconclusive in 24.7 s, the Escape leg skipped as a hand run; 20 frames in 5.00 s (4.00 fps), 511×301 JPEGs of 11 KiB at maxEdge 512, `computer-click` 158 ms after the first click and 143 ms after the second, no frame in the 1.5 s after it nor after the stop. Two runs before it each voided a check, the front app moved by another thread's iOS simulator proof; the person's own app and pointer stayed put. The whole preview proof (with
-its Escape leg) and `script:e2e-computer-ui`: not run.
+its Escape leg) and `script:e2e-computer-ui`: not run. The UI proof's
+selectors moved to the Computer section on 2026-11-11 without a run
+(docs/release-gate.md "Hand runs").
 Landing B merged on the box's typecheck and tests, `computer:test` on the
 Mac (482) and three review rounds.
 
 #### The code, by name
 
-- What the person sees (plan .temp-code/plan-uYrrhDzuBc9f.md): one Computer row per live session
-  in the right panel's Activity section (`lib/computerSessions.ts` keeps every
-  host's rows from `computer.sessions` and the `computer` push; the window in
-  its app, the tier in `COMPUTER_TIER_WORDS` from src/shared/statusWords.ts,
-  never ax/process/session, the age, Stop as `computer.stop` on the thread's
-  host). On the Mac's desktop it opens onto the live preview: `local` RPCs
+- What the person sees (plans .temp-code/plan-uYrrhDzuBc9f.md and
+  plan-Wzj6t9gg1eNE.md): the right panel's Computer section on the Mac's
+  desktop (`lib/computerSection.ts` `useComputerSection` joins the live rows
+  of `lib/computerSessions.ts` with the journal's calls in
+  `lib/computerHistory.ts`: `historyKeys`, a store that listens before it
+  reads, reads again on every reconnect and merges a call only at a newer
+  revision; `rowsOf` orders and groups; `surfaces/threads/computer/`
+  `ComputerSection` over the pure `ComputerView`, `Viewport`, `StepList`,
+  `stepMedia.ts`'s cache of 12 pictures). A session this desktop cannot draw
+  is one Activity row (the window in its app, the tier in
+  `COMPUTER_TIER_WORDS` from src/shared/statusWords.ts, never
+  ax/process/session, the age, Stop as `computer.stop` on the thread's
+  host; `surfaces/threads/ComputerLines.tsx` for its two lines). The
+  section's live picture is the preview: `local` RPCs
   `computer.preview.start/ack/stop` and the `computer-frame`,
   `computer-click`, `computer-preview` pushes to the asking socket alone,
   served by `src/main/server/computer/preview.ts` (one service stream per
   thread at 4 fps, `previewGate.ts`: one frame in flight per watcher, none
   until its start answer is out; an end during the start rides in the answer
-  as `ended`) and drawn by `surfaces/threads/ComputerPreview.tsx` (lazy
-  chunk, frames through `createImageBitmap`, acked after the draw, the click
-  ring `CLICK_MARK`). A box thread driving this Mac is previewed by the
+  as `ended`) and drawn by `surfaces/threads/computer/Viewport.tsx` (the
+  `computer` lazy chunk, frames through `createImageBitmap`, acked after
+  the draw, the click ring `CLICK_MARK`; `lib/computerPreview.ts` writes
+  the frame and mark counts to the box's `data-frames` and `data-marks` by
+  hand, which the Mac proof reads). A box thread driving this Mac is previewed by the
   bridge's `macComputerKey`. Calls read in plain words (`computerPhrase` in
   src/shared/computer/words.ts: live from the host's `running.words`, which
   name the element from the thread's book, settled from the result's step
@@ -704,8 +754,9 @@ Mac (482) and three review rounds.
   off read from the trace and `CGGetEventTapList`, a hold's banner hooks;
   report under /tmp/tc-preview-proof. `bun run script:e2e-computer-ui`
   (`--skip-build` reuses out/): an isolated preview instance on port 9241
-  with `TEMP_CODE_COMPUTER_PIN`, a sonnet thread in full access, the Computer
-  row, ≥ 3 frames and a mark, the screenshot row, captures dark and light,
+  with `TEMP_CODE_COMPUTER_PIN`, a sonnet thread in full access, the cue, the
+  Computer section's session row, ≥ 3 frames and a mark, its steps, the
+  screenshot row, captures dark and light,
   then `computer.proofHold` and the banner's window (never focused, the
   front app unchanged); its cleanup ends only the instance's own process
   group. Both need an unlocked, awake screen: `ScreenWatch` reads it before
@@ -1272,7 +1323,7 @@ The session tier activates the app, moves the real pointer and types at the focu
 ### 17.6 Permission and Stop
 
 - **The card**: in `safe` and `edits` every `computer_act` and `computer_batch` with an action that sends input asks once, through `registry.requestApproval`, so one path serves every harness; reads (`computer_apps`, `computer_observe`, and an act or batch of `screenshot`, `zoom`, `cursor_position` and `wait` alone) never ask; full access asks only for a flagged act or a password field (§19.3). The permission is read inside the thread's queue, so a call that waited behind another sees a mode the person changed meanwhile. The title names the app, the window and each acting step from the book: `Click button "Save" in TextEdit, window "Untitled"`, `3 actions in Mail, window "New Message": click button "To", type "Lunch?", press super+Return`. The card's input is `{ app, window, actions }`.
-- **Stop** on the Activity row (`computer.stop`, operate) ends computer use for the thread's turn: the call in flight is cancelled (a card still waiting is denied), the service session closes, which lets go of any held key or button, and that call and every later computer call of the turn answer `stopped by the person`. The turn goes on; the next one may use the computer again.
+- **Stop** on the Computer section's session row, or on the Activity row where Activity lists the session (`computer.stop`, operate), ends computer use for the thread's turn: the call in flight is cancelled (a card still waiting is denied), the service session closes, which lets go of any held key or button, and that call and every later computer call of the turn answer `stopped by the person`. The turn goes on; the next one may use the computer again.
 - **The composer's Stop and Pause** cancel the call in flight (`cancelled: the turn was stopped`, `cancelled: the thread was paused`); a call while paused answers `refused: the thread is paused`.
 - **A grant that is off**: `permission_missing` from a request, a step or an observation's `shotError` asks the system once per install per grant (`permissions.request`, setting `computer.prompted.<which>`) and says where the switch is; what ran stays in the result.
 
@@ -1286,7 +1337,7 @@ The session tier activates the app, moves the real pointer and types at the focu
 | `away` | denied because Away is on and the act spends money (flagged `pay` or `subscribe`; Away allows every other card) | `denied: the person is away and this act spends money; finish around it and name it in your report` |
 | `session_refused` | the gate refused the session tier | `needs the session tier (the real pointer and keyboard), which is not available now: <reason>` (the reasons are §20.2's) |
 | `clipboard_recent` | a paste waited out the person's copies for 10 s | `the person copied something just now and a paste would swap their clipboard; try again in a minute` |
-| `stopped` | Stop on the Activity row | `stopped by the person; no more computer use this turn` |
+| `stopped` | Stop on the session's row | `stopped by the person; no more computer use this turn` |
 | `paused` | the thread is paused | `refused: the thread is paused` |
 | `cancelled` | the call was given up, the turn stopped, the thread paused | `cancelled: <why>` |
 | `refused_app` | TempCode's own window, the system's password and Touch ID prompts, an app the host could not identify | `TempCode's own window is off limits to computer use`, `macOS's password and Touch ID prompts are the person's to answer`, `couldn't check which app this is, so nothing was sent; try the call again` |
@@ -1310,6 +1361,32 @@ Codex runs an MCP tool inside a code-mode cell that yields after about 30 s with
 - **The status line.** While a call answered early and nobody reads it, the thread's status no longer says its tool hold (`ComputerRpc.toolHold` filters `registry.setToolHold`, and says it again when a reader comes back); the Activity row keeps it. A pending card keeps its approval request and the thread's Needs you. When a card resolves, the registry appends `running` only while the row still reads `waiting` and no other card of the thread waits, so a card withdrawn after the turn settled leaves the thread idle.
 - **The edges.** A turn that settles (idle, done, error, stopped, watching) or pauses cancels the thread's pending calls (`ComputerRpc.onMeta`; `waiting` is not a settle); a later `computer_result` on their ids answers the unknown-id line. Stop aborts as before, and the pending call keeps the stopped answer for the next `computer_result`. A dropped Mac link answers `COMPUTER_MAC_WENT_OFFLINE`. Away allows cards at once and frees the session tier after 10 s of quiet, so most holds end inside 20 s; Away never opens the reader gate. A closed bridge socket cancels every call and pending call it made.
 - **Timings** live in `src/shared/computer/heldCalls.ts` with the lines; the proof seam `TEMP_CODE_COMPUTER_HELD_MS=<answer>,<wait>,<unread>` is honoured only with `TEMP_CODE_USER_DATA`. Tests: `computer/pending.test.ts`, `rpc.test.ts`, `run.test.ts`, `schedule.test.ts`, `heldCalls.test.ts`.
+
+### 17.9 The journal
+
+The host that runs the service keeps what each computer call did (`history.ts`, `ComputerHistory`), for its own threads and for a box thread's session alike, under the key its session has (`macComputerKey(box, thread)` for a bridged one). So a box thread's history is on the Mac it drove, and nothing more crosses the bridge. `ComputerSessions` takes the journal as an option and keeps none without it, so every script and test that builds sessions itself is as it was.
+
+- **Where.** `<dataDir>/computer/history/<serviceSessionId(key)>/log.jsonl`, with `steps/<n>.jpg` and `steps/<n>.txt`. `fsMedia` (`setMediaDenied`) and the remote path fence refuse every path under the history root, whatever roots a workspace adds, so the one way to a picture is the `local` read below.
+- **Records**, append-only, one JSON line each (`v: 1`, the kind in `r`):
+  - `start { n, turn, token?, at, app, window, steps: [{ kind, verb, object, inApp, target? }], plan? }` before the call's checks, so a call refused early (computer use off, stopped, paused) has its record too: its steps as planned, present tense, and for a batch its planned steps in the card's words. A call whose arguments fail the schema has no record.
+  - `end { n, at, app, window, steps: [{ kind, verb, object, inApp, state, tier?, target?, facts?, reason?, element? }], read?, text? }` when it answers: one step per action, past tense, `state` one of `ok`, `failed`, `not-run`, `stopped`. A call refused, failed whole or stopped marks its first step without an answer.
+  - `picture { n, at, width, height }`, or `picture { n, none }` with `none` one of `permission`, `minimized`, `not-drawn`, `off`, `no-read`, `failed`.
+- **Counters.** `n` counts per key. `turn` goes up at the first call after `beginTurn` for this host's threads, and when the box's turn token changes for a bridged one (the token is in the record, so an idle close inside one turn does not split it). After a restart both go on from the highest value in the log; the first call of a process starts a new turn. `born` is the first record's time: a renderer drops what it holds for a key whose history was removed and begun again.
+- **A call** as a reader gets it (`ComputerHistoryCallSchema`): the fold of its records, `state` `running`, `done` or `unfinished` (a start with no end that is not the call in flight), and `rev`, which goes up with every record and when a kept file goes, so a later read or push replaces an older one and never the reverse.
+- **No secret in a record.** Typed, pasted and set text is written only when the step names its field by index, the thread's element book says the field is no password field, and no input came before it in the call (`mayQuoteText` in `src/shared/computer/historyWords.ts`); anything else is a length ("20 characters"). A bare printable key is "a key". One function serves the start, the end and the plan, so a later refusal has nothing to take back. The read text is the service's own, which never prints a password field's value, cut at 12,000 bytes on a line with the count of lines left out.
+- **Words** are made once, on the host, by pure functions in `historyWords.ts` (`plannedSteps`, `settledSteps`, `stepTargetWords`, `resultFacts`, `readSummary`, `failureWords`, `refusalWords`) over `computerPhrase`, `actionWords` and `parseObservation`; the tables (`COMPUTER_ROUTE_WORDS`, `COMPUTER_EFFECT_FACTS`, `COMPUTER_FAILURE_WORDS`, `COMPUTER_REFUSAL_WORDS`, `COMPUTER_ABORT_WORDS`) are in `src/shared/statusWords.ts`. `ElementBook.path(index)` gives an element's ancestors for "a button in the "Save As" sheet".
+- **The journal changes no answer.** Every write is best effort: a failed append is logged once and dropped. Each key has one write chain; removal and the switch run on it, so nothing lands after them.
+- **The picture.** One `capture.screenshot` per call that ended with an observation: `{ session, app: { pid }, window: { id }, region: [0, 0, space.width, space.height], maxEdge: 960, format: 'jpeg' }`, with the pid, the window id, the space and the epoch as the call's closing observation gave them. It names a region so the shot is the whole window in one known shape whatever the model last asked for, and the window by its id, never a title, so no tab is ever selected for a picture and the bound window stays as the call left it. It runs on the thread's own queue after the call's answer has been handed back: the model never waits for it; the thread's next call does, if it comes inside it, so the picture is the window as that call left it. It is bounded at 2 s, then cancelled. Stop, the thread's end and the idle close already wait for the queue.
+- **Never a picture** when Screen Recording is off (read from the service's state; the journal never prompts), when the switch is off, when the thread was stopped or ended, when the service's epoch has moved or the service is not up (the journal never opens a session or starts a service), or when the call had no closing read (`no-read`). A minimized window, a blank shot, a refusal or an error is a `none` record and nothing else.
+- **The switch.** `computer.history.pictures` (Settings → Computer use, "Keep pictures of the window", on by default; `ComputerSettings.keepPictures`). Off stops new pictures and deletes the kept ones; the lines stay.
+- **The seam.** No picture under `TEMP_CODE_COMPUTER_HISTORY=0`, nor in an instance started with `TEMP_CODE_E2E_STATUS=1` unless `TEMP_CODE_COMPUTER_HISTORY=1`, so the gate's Mac rows send the service no new request. `scripts/lib/computerRig.ts` sets `=0` before it starts the real server.
+- **Limits.** The newest 400 calls of a key keep their picture and text; the lines stay. A history whose log has not been written for 30 days goes at boot and once a day. A Mac thread's history goes when the thread is removed (`registry.onRemoved`); an idle close keeps it. A box thread's history on the Mac goes by the 30 days alone. At 960px a picture of an ordinary window is about 30 to 80 KB.
+- **The wire** (`contract-computer.ts`, `historyRpc.ts`), all `local`, so this desktop's own socket alone:
+  - `computer.history.read { keys (1 to 64), before? }` answers `{ sessions: [{ key, born, calls, more }] }`: each key's newest 200 calls, or with one key and `before` the 200 under that `n`. The socket then hears those keys until it closes.
+  - `computer.history.step { key, n }` answers `{ picture?: { data, mimeType, width, height, at }, text? }`.
+  - The push `computer-history { key, call }` on every record that changes a call, and `{ key, gone: true }` when the history is removed, to the sockets that read the key. It is not in the phone's subset.
+  - `ComputerSessionRow.asking` is now also set by a host for its own thread's card, so the section and the cue can say "Needs you" with the card's question.
+- **Tests**: `history.test.ts`, `historyRpc.test.ts`, `historyWords.test.ts`, the journal cases in `run.test.ts` and `macComputer.test.ts`, `media.test.ts`, `fence.test.ts`, `settingsRpc.test.ts`. The picture on the real service is a hand run (docs/release-gate.md "Hand runs").
 
 ## 18. The bridge
 
@@ -1834,7 +1911,7 @@ The plan is `.temp-code/plan-CAMMKRiJRhhu.md`; the field test that called for it
 
 26.4 **The restore.** At the end of every hold: `AXFrontmost` on the app that was in front when the hold began, polled every 10 ms for at most `FRONT.restoreMaxMs` (400 ms); `AXRaise` and `AXMain` on that app's recorded focused window if focus moved within it. The pointer is not touched (nothing moved it; a moved pointer is the person's). The person activating a third app during the hold ends the restore and keeps their choice. `step.front` (`FrontHoldSchema`) = `{ heldMs, activateMs, restoreMs, restored: 'restored' | 'person-moved' | 'app-gone' | 'failed', person?, armedAt?, idleAtArmMs?, lastInputAt? }`; the span is §14.5's, so the host's PersonIdle takes the hold's own posted events out of the person's idle time (schedule.ts `afterCall`), and a failed step inside a hold carries it on its error as `error.front`.
 
-26.5 **The person.** As a hold is about to start, the service waits until the person's last key down is `FRONT.quietMs` (800 ms) old and no key or modifier is held, at most `FRONT.quietMaxMs` (5 s). The facts come from a listen-only key monitor (`KeyMonitor`: an NSEvent global monitor of `keyDown`, `keyUp` and `flagsChanged`) that runs while any computer session is open (`InputPerforming.watchKeys`, from `session.open` and the last `session.close`), its held set seeded from `CGEventSource.keyState` and `flagsState` when it starts, kept by the pure `KeyQuietState`, which skips every event carrying `TC_EVENT_MARK`, so the service's own posts never count and a person's key right after one always does. With no session open (a hold has none to wait for then) the session's event state answers instead (`SessionKeyboardState`). A hold arms the person guard (§14.9) on a tap of its own (`InputEngine`'s `frontTap`, a second `LivePersonTap`, enabled only for the hold): the person's keys, clicks and wheel are dropped and do not stop it, and their Escape, which the tap reports through `PersonTapping.enableReportingEscape`, stops it (`interrupted`) and restores at once. Nothing a hold dropped is replayed. When the system refuses the tap, `HoldWatch` (a listen-only monitor of key downs, button downs and the wheel) stops the step at the first key, click or wheel the same way; pointer moves never stop it. No banner: "TempCode is using your Mac" (§8) belongs to the session tier; the window coming over the person's for under a second, and the Activity row's tier word "in front", say what happened.
+26.5 **The person.** As a hold is about to start, the service waits until the person's last key down is `FRONT.quietMs` (800 ms) old and no key or modifier is held, at most `FRONT.quietMaxMs` (5 s). The facts come from a listen-only key monitor (`KeyMonitor`: an NSEvent global monitor of `keyDown`, `keyUp` and `flagsChanged`) that runs while any computer session is open (`InputPerforming.watchKeys`, from `session.open` and the last `session.close`), its held set seeded from `CGEventSource.keyState` and `flagsState` when it starts, kept by the pure `KeyQuietState`, which skips every event carrying `TC_EVENT_MARK`, so the service's own posts never count and a person's key right after one always does. With no session open (a hold has none to wait for then) the session's event state answers instead (`SessionKeyboardState`). A hold arms the person guard (§14.9) on a tap of its own (`InputEngine`'s `frontTap`, a second `LivePersonTap`, enabled only for the hold): the person's keys, clicks and wheel are dropped and do not stop it, and their Escape, which the tap reports through `PersonTapping.enableReportingEscape`, stops it (`interrupted`) and restores at once. Nothing a hold dropped is replayed. When the system refuses the tap, `HoldWatch` (a listen-only monitor of key downs, button downs and the wheel) stops the step at the first key, click or wheel the same way; pointer moves never stop it. No banner: "TempCode is using your Mac" (§8) belongs to the session tier; the window coming over the person's for under a second, and the step's tier word "in front" in the Computer section, say what happened.
 
 26.6 **When the host allows it.** The setting `computer.activeApp` (`ACTIVE_APP_SETTING`; `activeApp(raw)`, anything but `away` reads `brief`): `brief`, the default, admits `front` whenever the screen is unlocked and the Mac awake (the keyboard-quiet wait of 26.5 runs as a hold starts); `away` admits it only when §20.1 would admit `session`. With the Away switch on it is admitted at once. The rule is `frontFreedom` in scheduleRules.ts; `SessionTierGate.frontAdmitted` reads it before each call (schedule.ts), and `request({ needed: 'front' })` admits at once under `brief` or waits as the session tier does under `away`, its card "Bring TextEdit forward for a moment to press super+s, window "Total.txt"". With no scheduler (`REFUSE_SESSION_TIER`) neither tier runs. The call's own card in `safe` and `edits` ends `, bringing TextEdit forward for a moment` when a step's class verdict is `front` or a key or paste meets an app whose background windows were seen not key; Allow covers the hold. Settings → Computer use sets it ("When a step needs the app in front": Bring it forward for a moment, or Wait until I'm away; `computer.settings.set { activeApp }`).
 

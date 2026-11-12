@@ -28,7 +28,7 @@ component builds each surface, and how**. Nothing here is built yet.
 ├────────────┬───────────────────────────────────────────────────┬─────────────────────┤
 │ sidebar    │  thread view (per type)                           │ right panel         │
 │            │                                                   │ Agents · Activity · │
-│ workspaces │                                                   │ Changes · Notes …   │
+│ workspaces │                                                   │ Computer · Changes… │
 │  projects  │                                                   │ (the sections the   │
 │            │  composer                                         │  thread's state has)│
 │ ── foot ── │  model · context · permission row                 │                     │
@@ -127,7 +127,15 @@ thread menu, then the panel toggle (`aria-pressed` while the right panel
 is open, "Panel ⌘⇧R"; disabled with "No room for the panel" while the
 thread's row is too narrow for it), last because it is nearest the panel
 it opens. The end group is right-aligned, so ⋯ and Panel keep their places
-while the cue comes and goes. The agents cue (chrome/AgentsCue.tsx) is a
+while the cues come and go. After the agents cue sits the computer cue
+(chrome/ComputerCue.tsx, the same `ROW_CONTROL`), while a computer session
+this desktop can draw is live in the shown thread's tree
+(`useComputerCue` in lib/computerSection.ts, which reads the live rows
+alone, so it needs no panel mounted): the state's glyph, then "Using
+TextEdit", "Needs you" in amber while a card waits, or "Waiting for the
+Mac" while a step is held. A click opens the panel on Computer and,
+pressed, closes it; it is `aria-disabled` with "No room for the panel"
+while the row is too narrow, and its hover warms the section's chunk. The agents cue (chrome/AgentsCue.tsx) is a
 quiet 24px control, the composer row's (`ROW_CONTROL`: 8px padding, 12px
 muted text, the `foreground/5` hover fill), counting every subagent of the
 thread's tree (by `parentId`, any depth; a master's batch threads are its
@@ -301,7 +309,10 @@ of its own on a narrow page), then Take the screen after, a `CommitField` in
 whole minutes, 1 to 60, committed as `computer.sessionIdleMs`, then When a
 step needs the app in front, a `ChoiceSelect` of Bring it forward for a moment
 (`brief`) and Wait until I'm away (`away`), saved as `computer.activeApp`
-(docs/computer-protocol.md §26.6). Permissions:
+(docs/computer-protocol.md §26.6), then Keep pictures of the window, a
+`SettingSwitch` with "After each action, on this Mac, for 30 days. Turning
+it off deletes them." (`keepPictures`, the setting
+`computer.history.pictures`; docs/computer-protocol.md §17.9). Permissions:
 Accessibility and Screen Recording on the `PermissionRow` Appshots shares,
 muted Granted or amber Not granted with Grant… to the System Settings pane;
 the service's own while it is up, else `computer.permissions`, asked on
@@ -506,14 +517,18 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   rows (`activityRows`: the thread's own background tasks with Stop, a
   master's batch, the dev servers its tree opened, its running Mac calls;
   never a row for subagents, which are Agents', and never on another
-  thread's dev server); Changes when its cwd is a project checkout, or when it is a
+  thread's dev server; a computer session only where this desktop cannot
+  draw it); Computer when a computer session this desktop can draw is live
+  in the thread's tree or the thread has kept steps (`useComputerSection`
+  in lib/computerSection.ts; this Mac's desktop alone); Changes when its cwd is a project checkout, or when it is a
   loose chat whose workspace's folder is a git repository (`checkout`,
   read on the workspace's path); Notes for every root; Files with Changes;
   Build for a thread of a project (never a loose chat, even in a project's
   folder; dev servers live in the bottom dock's tab),
   and Debug for one on a dev build or once "Debug this file" asked for it
   on the thread. The default is Agents when the thread has subagents (live
-  or done), else Activity, else Changes, else Notes; the section the person
+  or done), else Computer while a session is live, else Activity, else
+  Changes, else Notes; the section the person
   picks is remembered per thread, and a remembered section that no longer
   exists falls back to the default. The transcript's Watching line opens
   Agents when the thread waits on subagents, else Activity (`watchSection`).
@@ -531,28 +546,33 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   its line and the title bar's: the sections (`PanelSections`: flat 28px
   ghost icon buttons 2px apart with no track, each named by its aria-label
   and a tooltip, the selected one's `foreground/7` fill gliding between
-  them on the layout spring; seven fit on one line at 260px, so nothing
-  wraps or scrolls) from the 12px inset, and Hide (28px, its ⌘⇧R in a key
+  them on the layout spring; when the segments would not fit the header at
+  28px, `sectionsCompact(count, width)` draws them 24px wide with no gap,
+  so all eight fit on one line at 260px and nothing wraps or scrolls) from the 12px inset, and Hide (28px, its ⌘⇧R in a key
   cap) at the same inset on the right, under one tooltip provider; the section's body
-  below (`ActivitySection`, `FleetList`, `NotesBody`, `ChangesPanel`,
+  below (`ActivitySection`, `FleetList`, `ComputerSection`, `NotesBody`, `ChangesPanel`,
   `FileTree`, `BuildPanel`, `DebugPanel`), whose first row (Changes' branch,
   Build's target, Notes' state, Files' buttons) is one 36px row on the 12px
   inset in every section. A tooltip provider in a body wraps its toolbars
   alone (Changes' top row and its commit footer each have one, Notes' and
-  Build's top row and Debug's 36px controls one each, Activity none): the
+  Build's top row and Debug's 36px controls one each, Computer's session
+  rows one, Activity none): the
   lazy provider remounts what it wraps when tooltips warm, so none sits
   round a scroller, the Changes list, an open log, Notes' markdown or
   editor, Build's log or Debug's stack and console. An Activity
   shell row's log stays in its fold while the fold closes and stops asking
-  for output as the close starts. A computer session is one Activity row
-  per session of the thread's tree (`lib/computerSessions.ts` over every
-  host's `computer` push; the window in its app, the tier in
-  `COMPUTER_TIER_WORDS`, the age, Stop); on this Mac's desktop it opens in
-  place onto the window's live preview (`ComputerPreview`, its own lazy
-  chunk, warmed by the row's hover), which streams only while the fold is
-  open, the section shown and the window visible. A row that cannot
-  preview (a box thread on another Mac, the browser /ui) opens only for a
-  card waiting on the Mac or a held step. It never tweens its width: a
+  for output as the close starts. Computer use is the Computer section's
+  (`surfaces/threads/computer/`, the `computer` lazy chunk, warmed by the
+  header segment's and the cue's hover; docs/DESIGN.md "The Computer
+  section"): a 36px row per live session, the viewport, and the step list,
+  its one scroller. The body is a size container, so the viewport takes at
+  most 45% of a short panel and the list keeps the rest. The live stream
+  runs only while the section is shown, the window visible and no step
+  pinned. A session this desktop cannot draw (a box thread on another Mac,
+  the browser /ui) is one Activity row (`lib/computerSessions.ts` over
+  every host's `computer` push; the window in its app, the tier in
+  `COMPUTER_TIER_WORDS`, the age, Stop) that opens only for a card waiting
+  on the Mac or a held step (`ComputerLines`). It never tweens its width: a
   toggle in place gives the thread its new width at once (one layout; the
   transcript's anchor row holds it) and moves the pane on transform and
   opacity alone (`usePaneMotion` in ThreadView, `PANE_MOTION`): opening, it

@@ -415,8 +415,15 @@ host's legacy `activity` takes a capital (`legacyDetail`).
 
 A computer action's tier is never named on screen: `COMPUTER_TIER_WORDS`
 (src/shared/statusWords.ts) words it for a person, "in the background",
-"to the app", "in front" (the app brought forward for a moment) or "on the screen", the Activity row's detail; a held computer
-step says the scheduler's words as a Queued detail.
+"to the app", "in front" (the app brought forward for a moment) or "on the screen". It is the first fact of an open step in the Computer section, and the Activity row's detail where Activity still lists the session; a held computer
+step says the scheduler's words as a Queued detail. The same file holds
+the rest of a step's words: how a fallback went (`COMPUTER_ROUTE_WORDS`:
+"through the menu File › Save…", "by the scroll bar"), what it changed
+when that is not the plain case (`COMPUTER_EFFECT_FACTS`: "nothing
+changed", "on screen only, not on disk"), why it failed
+(`COMPUTER_FAILURE_WORDS`: "The element was gone") and why it never ran
+(`COMPUTER_REFUSAL_WORDS`: "You didn't allow it"). A step's row never
+shows the service's error kind or the model's own text.
 
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
 would only say "nothing is happening" is noise. Two places draw done's
@@ -474,27 +481,92 @@ dot, and it spins only while the thread watches or idles. It fades in on
 `--dur-fast` `--ease-out` and leaves at once, so no dead control stays
 under the pointer.
 
+While a computer session this desktop can draw is live in the thread on
+screen, the computer cue (chrome/ComputerCue.tsx) sits after the agents
+cue, the same quiet 24px row control: the state's glyph (working's still
+dot, since the thread's own turn spins; the amber mark while a card
+waits; the dashed ring while a step is held), then "Using TextEdit", or
+"Needs you" in amber, or "Waiting for the Mac". Its tooltip and name are
+the plain form ("Computer use: Clicking Save in TextEdit"). A click opens
+the panel on Computer and, pressed, closes it. It fades in as the agents
+cue does, its words morph, and it leaves at once.
+
 ## Panels, modals, menus, popovers, sheets
 
 The right side is one panel, one width (320px, resizable), one header, with
-sections that exist only when they have content (Agents, Activity, Changes,
-Notes) and a 40px header of flat icon buttons, the selected one filled, that
+sections that exist only when they have content (Agents, Activity, Computer,
+Changes, Notes) and a 40px header of flat icon buttons, the selected one filled, that
 lists only those sections, each named on hover and by its accessible name;
 its default section follows the thread's state, Agents first. An Activity row, folded, is one 28px line
 of plain words (glyph, label, age, Stop); one that opens (a shell's log, a
 dev server's pane) has its open control laid over it with Stop beside it,
 as every row with controls of its own; a shell's command shows only in
 its fold, as the first line of its output, one `CONSOLE` capped at 240px
-whose first read draws skeleton lines in the same box. A computer
-session's row says the window in the app it used last ("Untitled in
+whose first read draws skeleton lines in the same box. The panel's header
+draws its segments 24px wide with no gap when they would not fit at 28px
+(`sectionsCompact`: eight sections in a 260px panel).
+
+Computer use has a section of its own, on the Mac's desktop, while a
+session is live and after it as the thread's history ("The Computer
+section" below). Where this desktop cannot draw the session, it is one
+Activity row: the window in the app it used last ("Untitled in
 TextEdit"), then the tier of its last action 4px after it in 12px muted
-(`COMPUTER_TIER_WORDS`), and opens in place, with no height animation, onto
-the window's live preview: a box at the pane's width less the fold's 8px
-insets, in the stream's shape and at most 240px tall, on the `card` fill
-with `rounded-lg`, the picture centred in it on the `image-outline` edge, a
-`Skeleton` in its shape until the first frame, and one 12px line 4px under
-it (a card waiting on the Mac, a held step, or why the preview ended, which
-is then the line alone). The panel's other
+(`COMPUTER_TIER_WORDS`), opening in place only for a card waiting on the
+Mac or a held step (`ComputerLines`).
+
+#### The Computer section
+
+A column on the panel's 12px inset with no card, border or header bar of
+its own. The session rows and the viewport do not scroll; the step list
+under them is the section's one scroller.
+
+- **A session row** (36px, one per live session, none once the turn
+  settles): the `SquareMousePointer` glyph, the window in its app,
+  truncating, then Go live (a ghost `xs` button, drawn only while a step
+  is pinned) and Stop (the Activity row's ghost icon button).
+- **The viewport**: a box at the pane's width less 24px in the picture's
+  shape, at most `min(240px, 45cqh)` of the section, on the `card` fill
+  with `rounded-lg`, the picture centred in it on the `image-outline`
+  edge, a `Skeleton` in its shape until the first picture. It shows the
+  live stream, or a pinned step's kept picture (a click opens the
+  lightbox), or the text the model read in a `CONSOLE` of the box's
+  shape, or nothing. While a step is pinned the box keeps its height and
+  a picture of another shape sits centred inside it. One 12px muted line
+  sits 4px under the box only when it has something to say.
+- **A step row** is on the transcript's step grid (`STEP_LINE`,
+  `GLYPH_SLOT`; 28px): a 14px glyph for the step's kind (click, type,
+  key, scroll, read, look, wait, app), uncoloured, the verb muted, the
+  object in foreground. A state takes the glyph's place by `SwapIcon`:
+  working's still dot on the running row, the amber mark while a card
+  waits, the dashed ring while held, the red mark on a failed step, the
+  square on a stopped one. A step that did not run is muted whole. A row
+  names its app only when the step before it was in another app. Hover
+  and press are `ROW_PRESS`.
+- **The running row** is one line; a batch's planned steps and what a
+  held step waits for sit under it in 12px muted, and a held line or a
+  card's question wraps whole, never truncates.
+- **The open row** is the `muted` fill behind the row and what opens
+  under it (8px radius, `aria-current`), with no height animation. Under
+  the words: a 12px line saying why, for a step that did not end well
+  (red for a failed step, the one red; foreground for a stopped or
+  unfinished one; muted "Not run"); a facts line (`Facts`: the tier's
+  words, what it acted on, how it went, the clock time); and a read line
+  ("46 elements" after a read row, "Read 3 changes" after an act) whose
+  chevron trails its words and opens the text in a `CONSOLE` capped at
+  240px, the acted element's lines in foreground.
+- **Groups**: one turn of one session, 16px apart under a 12px medium
+  muted heading, the clock time of the turn's first call. The newest group has
+  no heading unless it is a subagent's, whose title says whose steps
+  they are.
+- **Following and pinning.** With nothing chosen the section follows the
+  live end. A click or a key pins a row: the viewport shows that step's
+  picture and the stream stops. The list is one tab stop: ↑ newer, ↓
+  older, Home the live end, End the oldest loaded. Rows that land above a
+  pinned row do not move it.
+- **Loading and failure**: skeleton rows in the rows' shape while the
+  first read is out; one red line, "Couldn't read the steps", with Retry.
+
+The panel's other
 logs (Build, the Debug console) keep the console's 20px lines. It yields to the thread, which never
 goes under 360px beside it. It is a docked column, not a drawer or
 a sheet, and it never animates its width: the thread takes its width at
@@ -728,8 +800,13 @@ being produced shimmers (`WorkingText`); nothing else does.
 | The slot above the composer emptying | — | the outgoing row stays, inert, and fades `--dur-fast` `--ease-out`; the 28px stays | at once |
 | Switch (a setting's `Switch`, the rail's Away row) | the thumb slides on its clip-path, `--dur-slow` `--ease-out`, and grows 5px toward the other side on the track's hover; the track's fill changes over `--dur-fast`; the row around the Away track never moves | the same | snaps |
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
-| A computer preview opening under its Activity row | in place, no height animation; the box fades in over `--dur-fast` (`FADE_IN`, `@starting-style`); a frame replaces the last with no transition | at once | the same fade |
-| The agent's click on a preview (`CLICK_MARK`, a Web Animation on the ring alone, placed at the click's share of the picture) | scale 0.6→1 at full opacity over `--dur-base` `--ease-out`, holds `FOLD_HOLD_MS`, fades over `--dur-slow`; a new click restarts it | — | appears and fades, no scale |
+| The Computer section's viewport: its first picture | the box fades in over `--dur-fast` (`FADE_IN`, `@starting-style`) | at once | the same fade |
+| A frame, or a kept picture, replacing another in the viewport | none: the old picture stays until the new one has decoded, and dims to 40% over `--dur-fast` only when that takes more than 150 ms | — | the same |
+| A step landing at the top of the Computer section while it follows; a batch settling into its steps | `.step-land` (fade and rise 4px, `--dur-base`), `--stagger-step` apart; never at mount, while a row is pinned or on a key | — | fade only |
+| A row chosen in the Computer section, its facts opening, the running row's words changing | none | none | none |
+| A step's read text opening | `Collapsible` (`--dur-slow` open, `--dur-base` close) | the same | opacity |
+| The computer cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`FADE_IN`); its words morph (`MorphText`) | at once | the fade |
+| The agent's click on the live viewport (`CLICK_MARK`, a Web Animation on the ring alone, placed at the click's share of the picture) | scale 0.6→1 at full opacity over `--dur-base` `--ease-out`, holds `FOLD_HOLD_MS`, fades over `--dur-slow`; a new click restarts it | — | appears and fades, no scale |
 | The Mac's computer-use banner ("The Mac's computer-use banner" below) | opacity, `--dur-base` `--ease-out` | opacity, `--dur-fast` `--ease-exit`, then the window hides | `--dur-fast` |
 
 Rules: animate `transform` and `opacity` (and height only through the

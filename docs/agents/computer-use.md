@@ -89,8 +89,34 @@ why and the measured headline.
   `ComputerSessions` (sessions.ts) keeps one session per thread: its calls
   one at a time, the bound window, the element book, a live row from a
   turn's first call to its settle. The tier verdicts live in
-  `computer.tiers.<bundleId>`, probed once per app. Stop on the Activity
-  row (`computer.stop`) ends computer use for the turn.
+  `computer.tiers.<bundleId>`, probed once per app. Stop on the Computer
+  section's session row (`computer.stop`; the Activity row's where Activity
+  still lists the session) ends computer use for the turn.
+- **The journal** (computer/history.ts `ComputerHistory`, §17.9). The host
+  that runs the service keeps what each call did, for its own threads and
+  for a box thread's session alike (under `macComputerKey(box, thread)`):
+  `<dataDir>/computer/history/<serviceSessionId(key)>/log.jsonl`, one JSON
+  line a record (`start`, `end`, `picture`), with `steps/<n>.jpg` and
+  `steps/<n>.txt`. `runComputerTool` writes `start` (the planned steps, an
+  early refusal's too) and `end` in its `finally`; the words are made once,
+  on the host (src/shared/computer/historyWords.ts, the tables in
+  src/shared/statusWords.ts). No secret reaches a record: typed text is
+  quoted only for a field the step names by index that is no password
+  field, with no input before it in the call (`mayQuoteText`); else its
+  length. After each call that ended with a read, the thread's queue takes
+  one picture of the window (`capturePicture`: one `capture.screenshot` by
+  window id over the whole coordinate space, 960px, JPEG, 2 s at most), so
+  the model never waits for it. No picture with Screen Recording off, the
+  switch off (`computer.history.pictures`, Settings → Computer use "Keep
+  pictures of the window"; off deletes the kept ones), a stopped or ended
+  thread, or a moved epoch. A write that fails is logged once and dropped:
+  the journal changes no answer. The newest 400 calls of a thread keep
+  their picture and text; a history not written for 30 days goes at boot
+  and daily; a Mac thread's goes when the thread is removed. `fsMedia` and
+  the path fence refuse every path under the history root, so the one way
+  to a picture is the `local` read: `computer.history.read`,
+  `computer.history.step` and the `computer-history` push to the sockets
+  that read the key (computer/historyRpc.ts).
 - **The app tools.** The four `computer_*` tools on every Mac thread,
   subagents too: deferred on Claude (computer/mcp.ts) unless the thread is
   bridged to a Mac with computer use on or has acted before
@@ -159,14 +185,27 @@ why and the measured headline.
   in the raised window; a person who was typing when the step began gets
   their plain typing back in the field they were in, never a shortcut,
   Return or Escape (docs/computer-protocol.md §14.9).
-- **What the person sees** (§8 "What the person sees"). A Computer row per
-  live session in the right panel's Activity section
-  (src/renderer/src/lib/computerSessions.ts, the tier in
-  `COMPUTER_TIER_WORDS`: in the background, to the app, in front, on the
-  screen), opening on the Mac's desktop onto the live
-  preview (computer/preview.ts at 4 fps, the `local` RPCs
-  `computer.preview.start/ack/stop`;
-  src/renderer/src/surfaces/threads/ComputerPreview.tsx); a picture the
+- **What the person sees** (§8 "What the person sees"). On the Mac's
+  desktop, the right panel's **Computer** section
+  (src/renderer/src/surfaces/threads/computer/, one lazy chunk;
+  lib/computerSection.ts, lib/computerHistory.ts): a row per live session
+  (the window in its app, Go live while a step is pinned, Stop), the
+  viewport (the window live through computer/preview.ts at 4 fps, the
+  `local` RPCs `computer.preview.start/ack/stop`, with the click ring; or
+  a past call's kept picture; or the text the model read), and the steps
+  of the thread's tree newest first, read from the journal: the running
+  call as one line, then each finished step in `computerPhrase`'s words.
+  The open step says how it was done (the tier in `COMPUTER_TIER_WORDS`:
+  in the background, to the app, in front, on the screen; what it acted
+  on; how it went; the time) and what the model read, opening onto the
+  text. With nothing chosen the section follows the live end; a click or
+  an arrow key pins a step and stops the stream. The section is there
+  while a session this desktop can draw is live or the thread has kept
+  steps, and it stays after the turn as the thread's history. A title-bar
+  cue (chrome/ComputerCue.tsx: "Using TextEdit", "Needs you", "Waiting for
+  the Mac") opens the panel on it. A session this desktop cannot draw
+  (the browser /ui, another Mac) stays one Activity row
+  (src/renderer/src/lib/computerSessions.ts). Also: a picture the
   model asked for as its own transcript row
   (src/renderer/src/surfaces/transcript/ComputerShotRow.tsx); and, while
   the session tier holds the Mac, the banner "TempCode is using your Mac"
@@ -196,7 +235,10 @@ why and the measured headline.
   thread".
 - **Seams.** `TEMP_CODE_COMPUTER=0` (off; `=1` serves a headless Mac
   instance), `TEMP_CODE_COMPUTER_BIN` (the binary),
-  `TEMP_CODE_COMPUTER_TRACE=1` (every frame and every call's timing line), `TEMP_CODE_COMPUTER_PIN`
+  `TEMP_CODE_COMPUTER_TRACE=1` (every frame and every call's timing line),
+  `TEMP_CODE_COMPUTER_HISTORY=0` (the journal takes no picture; an instance
+  started with `TEMP_CODE_E2E_STATUS=1` takes none either unless this is
+  `1`, so the gate's Mac rows send the service no new request), `TEMP_CODE_COMPUTER_PIN`
   ("TextEdit=<pid>", isolated instances only), `TEMP_CODE_SKIP_NATIVE`,
   `TEMP_CODE_REQUIRE_NATIVE`, `TC_PROOF_UNGATED=1` (a Mac proof without its
   idle wait, for a run the person sits beside or one on TC Probe alone).
