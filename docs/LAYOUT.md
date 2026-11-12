@@ -570,7 +570,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   most 45% of a short panel and the list keeps the rest. The live stream
   runs only while the section is shown, the window visible and no step
   pinned. The section is also there for a history read that failed, so
-  its Retry can be reached (`useComputerSection`'s `exists`). A session this desktop cannot draw (a box thread on another Mac,
+  its Retry can be reached (`useComputerSection`'s `exists`). It is keyed by its thread: a
+  pane that moves to another thread starts it afresh. A session this desktop cannot draw (a box thread on another Mac,
   the browser /ui) is one Activity row (`lib/computerSessions.ts` over
   every host's `computer` push; the window in its app, the tier in
   `COMPUTER_TIER_WORDS`, the age, Stop) that opens only for a card waiting
