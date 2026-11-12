@@ -678,10 +678,14 @@ function scrubCutNames(text: string, secrets: readonly string[]): string {
     const before = rest.slice(0, cut)
     let hit: { secret: string; start: number } | null = null
     for (const secret of secrets) {
-      // the longest start of the text that ends right at the cut, on a word's edge
-      for (let k = Math.min(before.length, secret.length - 1); k >= CUT_NAME_MIN && !hit; k--) {
-        const start = before.length - k
-        if (before.endsWith(secret.slice(0, k)) && (start === 0 || !WORD_CHAR.test(before[start - 1]) || !WORD_CHAR.test(secret[0]))) hit = { secret, start }
+      // as it is, and as a fact quotes it (a name in a target is `JSON.stringify`d: its quotes and backslashes escaped)
+      for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) {
+        // the longest start of the text that ends right at the cut, on a word's edge
+        for (let k = Math.min(before.length, form.length - 1); k >= CUT_NAME_MIN && !hit; k--) {
+          const start = before.length - k
+          if (before.endsWith(form.slice(0, k)) && (start === 0 || !WORD_CHAR.test(before[start - 1]) || !WORD_CHAR.test(form[0]))) hit = { secret, start }
+        }
+        if (hit) break
       }
       if (hit) break
     }

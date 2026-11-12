@@ -601,12 +601,13 @@ describe("pinning", () => {
 
   it("a list the person scrolled, with nothing pinned, holds the row they read from as steps and running lines land above it", async () => {
     h.preview.state = live();
-    // each row is 28px tall in this layout; the scroller's own offset is 0
+    // each row is 28px tall in this layout; the scroller's own offset is 0; `shift` is what stands above the rows
+    let shift = 0;
     Object.defineProperty(HTMLElement.prototype, "offsetTop", {
       configurable: true,
       get(this: HTMLElement) {
         const all = [...document.querySelectorAll('[data-slot="step"]')];
-        return Math.max(0, all.indexOf(this)) * 28;
+        return Math.max(0, all.indexOf(this)) * 28 + shift;
       },
     });
     const view = mount(data([call(1), call(2), call(3), call(4), call(5)], [entry()]));
@@ -622,6 +623,13 @@ describe("pinning", () => {
     view.again(data([call(1), call(2), call(3), call(4), call(5), call(6), call(7), call(8)], [entry()]));
     await flush();
     expect(stepList().scrollTop).toBe(124);
+    // a running line that grows (a step held for the Mac wraps to two lines and gains its plan under it) adds no row
+    // and no line: the rows move all the same, and the list moves on with them
+    shift = 40;
+    view.again(data([call(1), call(2), call(3), call(4), call(5), call(6), call(7), call(8)], [entry({ running: { tool: "computer_act", words: "Waiting for the Mac to be free, 2nd in line", startedAt: AT + 9000, held: true } })]));
+    await flush();
+    expect(stepList().scrollTop).toBe(164);
+    shift = 0;
     // back at the top it is the live end again: nothing is held
     stepList().scrollTop = 0;
     fireEvent.scroll(stepList());

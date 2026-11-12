@@ -661,6 +661,11 @@ describe('scrubWords: a held-back text out of one string of a record', () => {
     expect(scrubWords(`a button in the "${cut}" group`, [long])).toBe('a button in the "‹126 characters›" group')
     // cut shorter, as a read over its budget cuts it
     expect(scrubWords(`Click ${long.slice(0, 8)}…`, [long])).toBe('Click ‹126 characters›')
+    // as a fact quotes it: a quote, a backslash or a line break in the text is escaped there
+    const odd = `acct-"\\\n${'9'.repeat(120)}`
+    const quoted = JSON.stringify(`${odd.slice(0, 100)}…`)
+    expect(scrubWords(`a row in the ${quoted} outline`, [odd])).toBe('a row in the "‹128 characters›" outline')
+    expect(scrubWords(`Click ${odd.slice(0, 100)}…`, [odd])).toBe('Click ‹128 characters›')
     // an ellipsis of the window's own, after words that are not the text's start, is left
     expect(scrubWords('Click Save…', [long])).toBe('Click Save…')
     expect(scrubWords('through the menu File › Save…', ['Saved as draft'])).toBe('through the menu File › Save…')

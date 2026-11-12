@@ -470,6 +470,35 @@ describe("the live viewport", () => {
     expect(skeleton()).toBeNull();
   });
 
+  it("two windows of one app and one title are two windows: the host says which, and the second is drawn by its own first frame", async () => {
+    const skeleton = () => box().querySelector('[data-slot="skeleton"], .animate-pulse');
+    link.answer = async () => ({ preview: "pv_1", app: "TextEdit", window: "Untitled", target: "16800:1581", width: 960, height: 600 });
+    mount();
+    await flush();
+    await act(async () => link.push(frame(1)));
+    await flush();
+    expect(skeleton()).toBeNull();
+    // the same window at another size (the stream started again at a larger edge): the picture stays
+    await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "live", app: "TextEdit", window: "Untitled", target: "16800:1581", width: 1200, height: 750 }));
+    expect(skeleton()).toBeNull();
+    // another "Untitled": a frame of the first still decoding is dropped and acked, and the skeleton holds
+    let decoded: (b: unknown) => void = () => {};
+    globalThis.createImageBitmap = vi.fn(() => new Promise((r) => (decoded = r))) as never;
+    await act(async () => link.push(frame(2)));
+    await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "live", app: "TextEdit", window: "Untitled", target: "16800:1590", width: 960, height: 600 }));
+    expect(skeleton()).not.toBeNull();
+    await act(async () => decoded({ width: 960, height: 600, close: vi.fn() }));
+    await flush();
+    expect(drawn).toHaveLength(1);
+    expect(skeleton()).not.toBeNull();
+    expect(link.calls.filter((c) => c.method === "computer.preview.ack").map((c) => (c.params as { seq: number }).seq)).toEqual([1, 2]);
+    globalThis.createImageBitmap = vi.fn(async () => ({ width: 960, height: 600, close: vi.fn() })) as never;
+    await act(async () => link.push(frame(3)));
+    await flush();
+    expect(drawn).toHaveLength(2);
+    expect(skeleton()).toBeNull();
+  });
+
   it("asks for no frames with no session to draw, or one this desktop cannot draw", async () => {
     mount(null);
     await flush();

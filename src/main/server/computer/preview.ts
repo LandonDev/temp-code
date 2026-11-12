@@ -220,7 +220,7 @@ export class ComputerPreviews {
         s.stream = `pv_${++this.next}`
         s.edge = edge
         s.routed = true
-        s.answer = { app: target.app.name, window: target.window.title, width: 0, height: 0 }
+        s.answer = { app: target.app.name, window: target.window.title, target: `${target.app.pid}:${target.window.id}`, width: 0, height: 0 }
         const size = await this.deps.service.request('capture.stream.start', {
           session: target.serviceSession,
           app: { pid: target.app.pid },

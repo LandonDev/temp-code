@@ -271,6 +271,8 @@ export interface ComputerPreviewStart {
   preview: string
   app: string
   window: string | null
+  /** which window the stream is of, as the host tells windows apart (two of one app can share a title); a stream started again at another size keeps it */
+  target?: string
   width: number
   height: number
   /** the stream ended while this start waited (a minimized window, Screen Recording off): no frames come until it starts again */
@@ -322,6 +324,8 @@ export interface ComputerPreviewPush {
   reason?: ComputerPreviewEndReason
   app?: string
   window?: string | null
+  /** which window, as in `ComputerPreviewStart` */
+  target?: string
   width?: number
   height?: number
 }

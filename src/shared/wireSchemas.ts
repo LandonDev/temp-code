@@ -1132,6 +1132,7 @@ export const ComputerPreviewPushSchema = push('computer-preview', {
   reason: z.enum(PREVIEW_END_REASONS).optional(),
   app: z.string().optional(),
   window: z.string().nullable().optional(),
+  target: z.string().optional(),
   width: z.number().int().optional(),
   height: z.number().int().optional()
 })

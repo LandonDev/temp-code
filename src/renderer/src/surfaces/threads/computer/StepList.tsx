@@ -501,7 +501,9 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
     const top = topOf(row);
     if (anchor.current?.id === id && top !== anchor.current.top) el.scrollTop += top - anchor.current.top;
     anchor.current = { id, top };
-  }, [idsKey, openId, pinned, running.length]);
+    // after every commit: a running line that wraps into a held step's two lines, or the failed-read line coming in,
+    // moves the rows with no row and no line added (one row's offset is all this reads)
+  });
 
   /** where the list's own reveal of the open row left it: being there is still following, not the person's scroll */
   const revealed = useRef<number | null>(null);

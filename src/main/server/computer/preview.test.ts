@@ -176,6 +176,10 @@ describe('ComputerPreviews over tc-computer', () => {
     // the push that names the window is ahead of its first frame, under the watcher's own id
     const live = a.findLastIndex((f) => f.state === 'live')
     expect(a[live]).toMatchObject({ app: 'Thin', preview: first.preview })
+    // and says which window it is of, by more than its title: not the first one's
+    expect(first.target).toBe('16800:1581')
+    expect((a[live] as unknown as { target: string }).target).toMatch(/^\d+:\d+$/)
+    expect((a[live] as unknown as { target: string }).target).not.toBe(first.target)
     expect(a.findIndex((f) => f.push === 'computer-frame')).toBeGreaterThan(live)
     request.mockRestore()
   })

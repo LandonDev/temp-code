@@ -113,6 +113,8 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
     /** the stream's target: it goes up when the host moves the stream to another window, or brings it back after an end */
     let generation = 0;
     let shown: { app: string; window: string | null; width: number; height: number } | null = null;
+    /** which window the stream is of, as the host tells windows apart: two of one app can share a title */
+    let target: string | undefined;
     setState((prev) => ({ status: "starting", ...(prev.status === "live" ? { width: prev.width, height: prev.height } : {}) }));
 
     const draw = async (push: Extract<ServerPush, { push: "computer-frame" }>): Promise<void> => {
@@ -165,10 +167,12 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
         // Another window, or the stream back after it ended: what the canvas holds is not this window's picture.
         // Nothing is drawn until its own first frame (the skeleton, in the new shape), and a frame of the old
         // one still decoding is dropped.
-        if (over || (shown !== null && (next.app !== shown.app || next.window !== shown.window))) {
+        const moved = push.target !== undefined && target !== undefined ? push.target !== target : shown !== null && (next.app !== shown.app || next.window !== shown.window);
+        if (over || moved) {
           generation++;
           frames = 0;
         }
+        target = push.target ?? target;
         over = false;
         shown = next;
         setState({ status: "live", ...shown, drawn: frames > 0 });
@@ -189,6 +193,7 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
           return;
         }
         shown = { app: started.app, window: started.window, width: started.width, height: started.height };
+        target = started.target;
         setState({ status: "live", ...shown, drawn: frames > 0 });
       })
       .catch((e: unknown) => {
