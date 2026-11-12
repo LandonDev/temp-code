@@ -519,10 +519,14 @@ export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
   // what the call says of itself goes on the last step that ran
   const last = steps.findLastIndex((st) => st.state === 'ok')
   if (last >= 0) {
+    // every step answered and the call still failed (the service went during the closing read): the steps ran, and
+    // the end the model was told has no step of its own to stand on
+    const unread = end && !ended && !s.abort && (s.threw || s.error) && end.reason ? `the window was not read after it: ${end.reason.charAt(0).toLowerCase()}${end.reason.slice(1)}` : null
     const extra = [
       waitFact(s.waited),
       frontFact(s.ctx.app || 'The app', s.front, s.person),
-      s.menusLeftOpen?.length ? `left the menu ${s.menusLeftOpen.join(', ')} open` : null
+      s.menusLeftOpen?.length ? `left the menu ${s.menusLeftOpen.join(', ')} open` : null,
+      unread
     ].filter((f): f is string => f !== null)
     if (extra.length) steps[last] = { ...steps[last], facts: [...(steps[last].facts ?? []), ...extra] }
   }

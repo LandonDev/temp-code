@@ -482,6 +482,11 @@ describe('settledSteps', () => {
     // a call that threw with no service error (the service went): the host's refusal ends the step with no answer
     const gone = settledSteps({ ...base, results: held.slice(0, 2), refused: { kind: 'service_restarted', line: 'x' }, threw: true })
     expect(gone.map((x) => [x.state, x.reason])).toEqual([['ok', undefined], ['failed', 'The computer service restarted'], ['not-run', undefined]])
+    // every step answered, then the call threw (the closing read): the steps ran, and the last one says the call's end
+    const read = settledSteps({ ...base, results: [ok('left_click'), ok('key'), ok('key')], refused: { kind: 'service_restarted', line: 'x' }, threw: true })
+    expect(read.map((x) => x.state)).toEqual(['ok', 'ok', 'ok'])
+    expect(read[2].facts).toEqual(['the window was not read after it: the computer service restarted'])
+    expect(read[0].facts).toBeUndefined()
     // without the throw a refusal after steps ran is still not the call's end
     expect(settledSteps({ ...base, results: held.slice(0, 2), refused: { kind: 'service_restarted', line: 'x' } }).map((x) => x.state)).toEqual(['ok', 'not-run', 'not-run'])
   })
