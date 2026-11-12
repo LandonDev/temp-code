@@ -22,10 +22,26 @@ import { serviceSessionId } from './sessionId'
  * Three records fold into one call: `start` before it runs,
  * `end` when it answers, `picture` once the window was captured (or why it
  * was not). Nothing here can change a call's answer: every write is best
- * effort, a failure logged once and dropped. Each key has one write chain;
- * removal and the pictures switch run on it, so nothing lands after them.
- * The words are made before they get here (shared/computer/historyWords.ts),
- * under its secret rule.
+ * effort, a failure logged once and dropped. The words are made before
+ * they get here (shared/computer/historyWords.ts), under its secret rule.
+ *
+ * ONE ORDER PER HISTORY FOLDER. Every write and every job that takes
+ * something away (the daily prune, the pictures switch, a thread's removal,
+ * eviction past the newest 400, a log written again at its bound) runs in
+ * its folder's one order and looks at the history there, never at what it
+ * saw before it got its place:
+ *   - a loaded history's jobs run on its state's `chain`, one after another;
+ *   - a job for a folder with no state loaded runs under that folder's mark
+ *     (`sweeps`): a later job there goes after it, and a first load waits
+ *     for it (`stateOf`);
+ *   - a state whose folder is to go leaves the map before the folder does
+ *     (`retire`, `remove`), under that mark, so a call that begins meanwhile
+ *     is the next history's and loads once the folder is gone;
+ *   - a call's start is reserved (`starting`) the moment it begins, so a job
+ *     queued ahead of it that decides by age sees a history in use.
+ * history.order.test.ts interleaves each such job with a call's begin, end
+ * and picture, both ways round; history.sweeps.test.ts holds two orders at
+ * the file system's own calls.
  */
 
 /** The newest calls of a thread that keep their picture and text. */
@@ -417,20 +433,24 @@ export class ComputerHistory {
     return out
   }
 
-  /** A thread was removed: its history goes at once, and nothing queued for it lands. */
+  /**
+   * A thread was removed: its history goes, and nothing queued for it after this lands. The state leaves the map
+   * here, at once, and the folder's mark stands until the folder is gone: a call that begins from now on is the
+   * next history's, loaded after the removal, never written into a folder on its way out.
+   */
   async remove(key: string): Promise<void> {
     const state = this.states.get(key)
     const dir = this.dirOf(key)
     if (state) {
-      state.chain = state.chain
+      this.states.delete(key)
+      const removal = (state.chain = state.chain
         .then(async () => {
           state.dead = true
-          if (this.states.get(key) === state) this.states.delete(key)
           await rm(dir, { recursive: true, force: true })
         })
-        .catch((e) => void this.failed(e))
-      await state.chain
-    } else await rm(dir, { recursive: true, force: true }).catch((e) => void this.failed(e))
+        .catch((e) => void this.failed(e)))
+      await this.swept(dir, () => removal)
+    } else await this.swept(dir, () => rm(dir, { recursive: true, force: true }))
     this.emit({ key, gone: true })
   }
 
@@ -478,11 +498,10 @@ export class ComputerHistory {
       let gone = false
       await this.run(state, async () => {
         if (state.open.size || state.starting || !(await old(dir))) return
-        // a call begun while the disk was read is queued behind this job: its start is reserved, and it stays
-        if (state.starting) return
-        state.dead = true
-        if (this.states.get(state.key) === state) this.states.delete(state.key)
-        await rm(dir, { recursive: true, force: true })
+        // a call begun while the disk was read is queued behind this job: its start is reserved, and it stays;
+        // a thread removed meanwhile has its own removal queued behind this job, under the folder's mark
+        if (state.starting || this.states.get(state.key) !== state) return
+        await this.retire(state)
         gone = true
       })
       if (gone) this.emit({ key: state.key, gone: true })
@@ -538,6 +557,17 @@ export class ComputerHistory {
     state.chain = (this.sweeps.get(state.dir) ?? Promise.resolve()).then(() => this.ready(loading))
     this.states.set(key, state)
     return state
+  }
+
+  /**
+   * The state's folder goes, from the state's own place in its order. The state leaves the map first and the
+   * folder's mark stands while the folder is removed, with no wait between: a call that begins meanwhile is the
+   * next history's, and its load waits for the mark.
+   */
+  private retire(state: KeyState): Promise<void> {
+    state.dead = true
+    if (this.states.get(state.key) === state) this.states.delete(state.key)
+    return this.swept(state.dir, () => rm(state.dir, { recursive: true, force: true }))
   }
 
   /** The loaded state whose folder this is, looked up when it is needed: one loaded a moment ago counts. */
