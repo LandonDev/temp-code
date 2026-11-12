@@ -106,6 +106,9 @@ export function mergeRead(held: KeyHistory | undefined, read: { born: number; ca
 
 /** the keys someone on screen reads, by how many */
 const wanted = new Map<string, number>();
+/** how many times each key's history was said gone: an answer asked for before one is of a history that no longer is */
+const gones = new Map<string, number>();
+const goneCount = (key: string): number => gones.get(key) ?? 0;
 let local: EnvLink | null = null;
 let started = false;
 
@@ -125,9 +128,15 @@ async function read(keys: string[]): Promise<void> {
   const link = local;
   if (!link?.connected || !keys.length) return;
   for (const part of keyChunks(keys)) {
+    const asked = new Map(part.map((key) => [key, goneCount(key)]));
     try {
       const answer = await link.request<ComputerHistoryReadAnswer>("computer.history.read", { keys: part });
-      for (const session of answer.sessions) if (wanted.has(session.key)) setKey(session.key, (held) => mergeRead(held, session));
+      for (const session of answer.sessions) {
+        if (!wanted.has(session.key)) continue;
+        // removed while the read was out: the answer is of what went, and the key is read again as it now stands
+        if (goneCount(session.key) !== asked.get(session.key)) void read([session.key]);
+        else setKey(session.key, (held) => mergeRead(held, session));
+      }
     } catch {
       // a socket that dropped reads again when it opens; any other failure the keys say, and Retry asks again
       if (!link.connected) continue;
@@ -144,7 +153,9 @@ export function startComputerHistory(): void {
     if (link.environmentId !== LOCAL_ENVIRONMENT_ID) return;
     local = link;
     link.onPush((push) => {
-      if (push.push !== "computer-history" || !wanted.has(push.key)) return;
+      if (push.push !== "computer-history") return;
+      if (push.gone) gones.set(push.key, goneCount(push.key) + 1);
+      if (!wanted.has(push.key)) return;
       if (push.gone) setKey(push.key, () => ({ ...EMPTY }));
       else if (push.call) {
         const call = push.call;
@@ -185,7 +196,12 @@ export function watchHistory(keys: readonly string[]): () => void {
       if (n > 0) wanted.set(key, n);
       else {
         wanted.delete(key);
-        setKey(key, () => undefined);
+        // A key list that changes in one commit (a subagent joins the tree) runs every reader's cleanup before any
+        // reader's new effect, so the count passes through 0 for keys that stay on screen. The key is dropped only
+        // if nobody took it up again by the end of that flush: what is held, and each call's object, stays.
+        queueMicrotask(() => {
+          if (!wanted.has(key)) setKey(key, () => undefined);
+        });
       }
     }
   };
@@ -203,9 +219,10 @@ export async function loadOlderHistory(key: string): Promise<void> {
   const held = store.getState().byKey[key];
   const link = local;
   if (!held?.more || !held.calls.length || !link?.connected) return;
+  const asked = goneCount(key);
   const answer = await link.request<ComputerHistoryReadAnswer>("computer.history.read", { keys: [key], before: held.calls[0].n });
   const page = answer.sessions[0];
-  if (page && wanted.has(key)) setKey(key, (now) => mergeRead(now, page, true));
+  if (page && wanted.has(key) && goneCount(key) === asked) setKey(key, (now) => mergeRead(now, page, true));
 }
 
 /** One call's kept picture and read text, from this Mac. */
@@ -227,6 +244,7 @@ export function markPictureGone(key: string, n: number): void {
 /** Test seam: forget everything. */
 export function resetComputerHistory(): void {
   wanted.clear();
+  gones.clear();
   store.setState({ byKey: {} });
 }
 

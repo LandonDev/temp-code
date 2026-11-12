@@ -20,7 +20,11 @@ vi.mock("../../../lib/computerSessions", () => ({ stopComputer: h.stopComputer, 
 vi.mock("../../../lib/tcserver/commands", () => ({ stopTask: vi.fn(), taskLog: vi.fn(), killBackground: vi.fn() }));
 vi.mock("../../../lib/devServers", () => ({ stopLiveServer: vi.fn(), useLiveDevServers: () => [] }));
 vi.mock("../../../lib/macBridge", () => ({ stopMacBridgeAll: vi.fn(), useMacBridgeRunning: () => [] }));
-vi.mock("../../../lib/tcserver/store", () => ({ useSessionMeta: () => null, useSessionMetas: () => [{ id: "sub1", title: "Fill in the form" }] }));
+vi.mock("../../../lib/tcserver/store", () => ({
+  useSessionMeta: () => null,
+  useSessionMetas: () => [{ id: "sub1", title: "Fill in the form" }],
+  useSessionTitles: (ids: readonly string[]) => ids.map((id) => (id === "sub1" ? "Fill in the form" : "")).join("\u0000"),
+}));
 vi.mock("../../../lib/computerSection", () => ({ useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: false, live: false }) }));
 vi.mock("../../../chrome/lightboxStore", () => ({ openLightbox: h.openLightbox }));
 vi.mock("sonner", () => ({ toast: { error: h.toastError } }));
@@ -257,7 +261,8 @@ describe("following", () => {
 
   it("held for the person: the dashed ring, the scheduler's line whole, and under it what waits", async () => {
     h.preview.state = live();
-    mount(data([running(1)], [entry({ running: { tool: "computer_act", words: "Waiting for the Mac to be free, 2nd in line", startedAt: AT, held: true }, tier: "session" })]));
+    const waiting = running(1, { steps: [step("Clicking", "Save", { state: undefined, tier: undefined, asked: { verb: "Click", object: "Save", inApp: "Save in TextEdit" } })] });
+    mount(data([waiting], [entry({ running: { tool: "computer_act", words: "Waiting for the Mac to be free, 2nd in line", startedAt: AT, held: true }, tier: "session" })]));
     await flush();
     const line = runningRows()[0];
     expect(line.getAttribute("data-state")).toBe("queued");
@@ -267,7 +272,8 @@ describe("following", () => {
     // said whole: it wraps in a narrow pane, it is never cut
     expect(said.className).not.toContain("truncate");
     expect(line.querySelector('[data-slot="step-line"]')!.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-7", "items-start"]));
-    expect(line.querySelector('[data-slot="step-plan"]')!.textContent).toBe("Clicking Save");
+    // it has not begun: what waits reads as what is asked
+    expect(line.querySelector('[data-slot="step-plan"]')!.textContent).toBe("Click Save");
     // the panel never answers the card: no Run now, no Skip
     expect(screen.queryByRole("button", { name: /Run now|Skip|Allow/ })).toBeNull();
   });
@@ -312,7 +318,29 @@ describe("following", () => {
     expect(runningLines([], rowsOf([{ key: "t1", threadId: "t1", calls: [running(1)] }]))).toEqual([{ id: "running:t1", state: "working", verb: "Clicking", object: "Save in TextEdit" }]);
   });
 
-  it("two live sessions: the one that acted last first and followed, each with its own Stop and its own line", async () => {
+  it("a call the journal already ended is not drawn as running again from the live row's words, which come a moment later", () => {
+    const row = entry({ running: { tool: "computer_act", words: "Clicking Save in TextEdit", startedAt: AT + 1100 } });
+    // the journal's call began before the row's call was marked running and has ended: the row's push is on its way
+    const ended = rowsOf([{ key: "t1", threadId: "t1", calls: [call(1)] }]);
+    expect(runningLines([row], ended)).toEqual([]);
+    // a call that began after the journal's newest ended is another call: the row's words stand in for its start
+    const later = entry({ running: { tool: "computer_act", words: "Clicking Save in TextEdit", startedAt: AT + 5000 } });
+    expect(runningLines([later], ended)).toEqual([{ id: "running:local:t1", state: "working", verb: "", object: "Clicking Save in TextEdit" }]);
+  });
+
+  it("a held step that has not begun reads as what is asked under its line, never as under way", () => {
+    const held = entry({ running: { tool: "computer_act", words: "Waiting for the Mac to be free, 2nd in line", startedAt: AT, held: true } });
+    const start = running(2, { steps: [step("Pressing", "⌘S", { state: undefined, tier: undefined, kind: "key", asked: { verb: "Press", object: "⌘S", inApp: "⌘S in TextEdit" } })] });
+    expect(runningLines([held], rowsOf([{ key: "t1", threadId: "t1", calls: [call(1), start] }]))).toEqual([
+      { id: "running:local:t1", state: "queued", verb: "", object: "Waiting for the Mac to be free, 2nd in line", waits: "Press ⌘S" },
+    ]);
+    // a batch that waits is its planned steps, which are what is asked already
+    const batch = running(2, { app: "Mail", plan: ["Click To", "Type into Subject"], steps: [step("Clicking", "To", { state: undefined }), step("Typing", "into Subject", { state: undefined })] });
+    expect(runningLines([held], rowsOf([{ key: "t1", threadId: "t1", calls: [batch] }]))[0]).toMatchObject({ state: "queued", plan: ["Click To", "Type into Subject"] });
+    expect(runningLines([held], rowsOf([{ key: "t1", threadId: "t1", calls: [batch] }]))[0].waits).toBeUndefined();
+  });
+
+  it("two live sessions: the followed one's row sits last, next to the box; each has its own Stop, by name, and its own line", async () => {
     h.preview.state = live();
     const lead = entry({ threadId: "sub1", apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }], running: { tool: "computer_act", words: "Clicking Send in Mail", startedAt: AT } });
     const other = entry({ running: { tool: "computer_observe", words: "Reading TextEdit", startedAt: AT } });
@@ -331,15 +359,24 @@ describe("following", () => {
     };
     mount(d);
     await flush();
-    expect([...document.querySelectorAll('[data-slot="computer-session"]')].map((s) => s.textContent)).toEqual(["Inbox in Mail", "Untitled in TextEdit"]);
-    expect(screen.getAllByRole("button", { name: "Stop" })).toHaveLength(2);
-    // the viewport follows the first
+    // the session the viewport follows is the row right above the box, so the picture is never read as another's
+    const sessionRows = [...document.querySelectorAll<HTMLElement>('[data-slot="computer-session"]')];
+    expect(sessionRows.map((s) => s.textContent)).toEqual(["Untitled in TextEdit", "Inbox in Mail"]);
+    expect(sessionRows[1].nextElementSibling).toBe(document.querySelector('[data-slot="computer-viewport"]'));
     expect(h.preview.entries.at(-1)).toBe(lead);
     expect(box()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
+    // each Stop says whose it is
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop Inbox in Mail" })).toBeTruthy();
     // with several, each running line names its app
     expect(runningRows().map((r) => r.textContent)).toEqual(["ClickingSend in Mail", "ReadingTextEdit"]);
-    fireEvent.click(screen.getAllByRole("button", { name: "Stop" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Stop Untitled in TextEdit" }));
     expect(h.stopComputer).toHaveBeenCalledWith(other);
+    // Go live belongs to the followed session's row
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(document.querySelectorAll('[data-slot="computer-session"]')[1].querySelector('[data-slot="go-live"]')).toBeTruthy();
+    expect(document.querySelectorAll('[data-slot="computer-session"]')[0].querySelector('[data-slot="go-live"]')).toBeNull();
   });
 });
 
@@ -544,6 +581,50 @@ describe("pinning", () => {
     expect(document.querySelector('[data-slot="computer-viewport"]')).toBe(wrapper);
   });
 
+  it("a picture read that fails says so, with Retry: it is never No picture was kept, and Retry reads again", async () => {
+    h.preview.state = live();
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ height: 185, width: 296, top: 0, left: 0, right: 296, bottom: 185, x: 0, y: 0, toJSON: () => ({}) });
+    let fail = true;
+    h.readStep.mockImplementation(async (_k: string, n: number) => {
+      if (fail) throw new Error("the socket dropped");
+      return picture(n);
+    });
+    mount(data([call(1), call(2)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    // the box keeps its place, and says what went wrong
+    expect(box()!.getAttribute("data-face")).toBe("none");
+    expect(box()!.textContent).toBe("Couldn't read the pictureRetry");
+    expect(box()!.textContent).not.toContain("No picture was kept");
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(box()!.tagName).toBe("BUTTON");
+    expect(box()!.querySelector("img")).toBeTruthy();
+    // the pin held through the failure and the retry
+    expect(openRow()!.getAttribute("data-step")).toBe("t1:1:0");
+    rect.mockRestore();
+  });
+
+  it("while a pinned picture is on its way, the picture still shown keeps its own name", async () => {
+    const reads = deferredReads();
+    mount(data([call(1, { window: "First" }), call(2, { window: "Second" })]));
+    await flush();
+    await reads.answer(2);
+    const second = `Second in TextEdit at ${clockTime(AT + 2450)}`;
+    expect(box()!.getAttribute("aria-label")).toBe(second);
+    const shown = box()!.querySelector("img")!.getAttribute("src");
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    // call 1's picture has not answered: what is on screen is still call 2's, and it says so
+    expect(box()!.querySelector("img")!.getAttribute("src")).toBe(shown);
+    expect(box()!.getAttribute("aria-label")).toBe(second);
+    await reads.answer(1);
+    expect(box()!.querySelector("img")!.getAttribute("src")).not.toBe(shown);
+    expect(box()!.getAttribute("aria-label")).toBe(`First in TextEdit at ${clockTime(AT + 1450)}`);
+  });
+
   it("a kept picture opens the lightbox from the box, and the live box does not", async () => {
     h.preview.state = live();
     mount(data([call(1), call(2)], [entry()]));
@@ -711,6 +792,51 @@ describe("the row states", () => {
     expect(openRow()!.querySelector('[data-slot="step-why"]')!.className).toContain("text-muted-foreground");
   });
 
+  it("following a batch that failed part way opens the step that failed, not the tail that never ran; the closing read is the failed step's", async () => {
+    const scrolled: string[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.getAttribute("data-step") ?? "");
+    };
+    const batch = call(2, {
+      read: "Read 3 changes",
+      steps: [
+        step("Clicked", "To"),
+        step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }),
+        step("Press", "⌘Return", { kind: "key", state: "not-run", tier: undefined }),
+        step("Press", "Tab", { kind: "key", state: "not-run", tier: undefined }),
+      ],
+    });
+    mount(data([call(1), batch]));
+    await flush();
+    // nothing was chosen by hand: the section follows, and what it opens is the failure
+    expect(document.querySelector('[data-slot="computer-section"]')!.hasAttribute("data-following")).toBe(true);
+    expect(openRow()!.getAttribute("data-step")).toBe("t1:2:1");
+    expect(openRow()!.querySelector('[data-slot="step-why"]')!.textContent).toBe("The element was gone");
+    // it is brought into view under the rows that never ran
+    expect(scrolled).toEqual(["t1:2:1"]);
+    // the read came after the step that was tried last, never after one that did not run
+    expect(openRow()!.querySelector('[data-slot="step-read"]')!.textContent).toBe("Read 3 changes");
+    fireEvent.click(rowButton("t1:2:3"));
+    await flush();
+    expect(openRow()!.querySelector('[data-slot="step-read"]')).toBeNull();
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it("a row's name says how its step ended, since its mark is drawn and not said", async () => {
+    const batch = call(1, {
+      steps: [step("Clicked", "To"), step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), step("Press", "⌘Return", { kind: "key", state: "not-run", tier: undefined })],
+    });
+    mount(data([batch, call(2, { steps: [step("Click", "Save", { state: "stopped", tier: undefined, reason: "Stopped" })] }), call(3, { state: "unfinished", endedAt: undefined, picture: undefined, rev: 1, steps: [step("Press", "⌘S", { state: undefined })] })]));
+    await flush();
+    const names = (id: string): string | null => rowButton(id).getAttribute("aria-label");
+    expect(names("t1:3:0")).toBe("Press ⌘S, didn't finish");
+    expect(names("t1:2:0")).toBe("Click Save, stopped");
+    expect(names("t1:1:2")).toBe("Press ⌘Return, not run");
+    expect(names("t1:1:1")).toBe("Type into Subject, failed");
+    // a step that ran is its words alone
+    expect(names("t1:1:0")).toBeNull();
+  });
+
   it("stopped by the person's touch, and stopped by Stop: the square and the reason, said plainly", async () => {
     const touch = await openOn(call(1, { steps: [step("Clicked", "Save", { state: "stopped", tier: undefined, reason: "Stopped when you used the mouse or keyboard" })] }));
     expect(touch.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("stopped");
@@ -870,6 +996,39 @@ describe("the read line", () => {
     expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read, again");
   });
 
+  it("a read text that cannot be read says so in the console's place, with Retry", async () => {
+    let fail = false;
+    h.readStep.mockImplementation(async (_k: string, n: number) => {
+      if (fail) throw new Error("the socket dropped");
+      return { ...picture(n), text: "the read" };
+    });
+    const view = mount(data([call(1, { text: true, read: "Read 3 changes", rev: 3 })]));
+    await flush();
+    await act(async () => fireEvent.click(openRow()!.querySelector<HTMLButtonElement>('[data-slot="step-read"]')!));
+    await flush();
+    expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read");
+    // a later record of the call is read again, and that read fails: the text held stays up
+    fail = true;
+    view.again(data([call(1, { text: true, read: "Read 3 changes", rev: 4 })]));
+    await flush();
+    expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read");
+    cleanup();
+    // nothing held: the failure is said where the text would be
+    mount(data([call(1, { text: true, read: "Read 3 changes", rev: 3 })]));
+    await flush();
+    // the viewport's own read failed too
+    expect(lineUnder()).toBe("Couldn't read the pictureRetry");
+    await act(async () => fireEvent.click(openRow()!.querySelector<HTMLButtonElement>('[data-slot="step-read"]')!));
+    await flush();
+    const failed = document.querySelector('[data-slot="step-read-failed"]')!;
+    expect(failed.textContent).toBe("Couldn't read the textRetry");
+    expect(document.querySelector('[data-slot="step-read-text"]')).toBeNull();
+    fail = false;
+    fireEvent.click(failed.querySelector("button")!);
+    await flush();
+    expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read");
+  });
+
   it("where the viewport already shows the read text, the row's read line says what was read and opens nothing", async () => {
     h.readStep.mockImplementation(async () => ({ text: 'app "TextEdit"\n[1] window "Untitled"' }));
     mount(data([call(1, { picture: { none: "permission" }, text: true, read: "Read 1 element" })]));
@@ -940,6 +1099,35 @@ describe("once the turn settled", () => {
     mount(data([stopped]));
     await flush();
     expect(box()).toBeNull();
+  });
+
+  it("the stand-in is the open step's own session's picture first; another window's says whose it is", async () => {
+    const d: ComputerSectionData = {
+      entries: [],
+      keys: [
+        { key: "t1", threadId: "t1" },
+        { key: "sub1", threadId: "sub1" },
+      ],
+      histories: {
+        // the thread's own newest step kept nothing; its older one did
+        t1: { born: 1, calls: [call(1), call(3, { picture: { none: "no-read" }, steps: [step("Click", "Save", { state: "stopped", tier: undefined, reason: "Stopped" })] })], more: false, status: "ready" },
+        // a subagent's step is newer than the thread's kept picture
+        sub1: { born: 2, calls: [call(2, { app: "Mail", window: "Inbox" })], more: false, status: "ready" },
+      },
+      exists: true,
+      live: false,
+    };
+    const view = mount(d);
+    await flush();
+    expect(words(openRow())).toContain("ClickSave");
+    expect(box()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
+    expect(lineUnder()).toBe(`As it was at ${clockTime(AT + 1450)}`);
+    expect(h.readStep).toHaveBeenCalledWith("t1", 1);
+    // with nothing kept in its own session, another window's picture stands in and is named
+    view.again({ ...d, histories: { ...d.histories, t1: { born: 1, calls: [call(3, { picture: { none: "no-read" }, steps: [step("Click", "Save", { state: "stopped", tier: undefined, reason: "Stopped" })] })], more: false, status: "ready" } } });
+    await flush();
+    expect(box()!.getAttribute("aria-label")).toMatch(/^Inbox in Mail at /);
+    expect(lineUnder()).toBe(`Inbox in Mail, as it was at ${clockTime(AT + 2450)}`);
   });
 
   it("a run with no pictures: the read text in the viewport, and why", async () => {

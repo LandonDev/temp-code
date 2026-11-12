@@ -1,7 +1,7 @@
 import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ComputerHistoryCall, ComputerHistoryPicture, ComputerHistoryStep, HistoryPictureNone } from '@shared/contract-computer'
-import { cutReadText, type StepWords } from '@shared/computer/historyWords'
+import { cutReadText } from '@shared/computer/historyWords'
 import type { Shot } from '@shared/computer/protocol'
 import { ComputerRpcError } from './connection'
 import type { Clock, ComputerService } from './service'
@@ -30,8 +30,10 @@ import { serviceSessionId } from './sessionId'
 
 /** The newest calls of a thread that keep their picture and text. */
 export const HISTORY_KEEP_CALLS = 400
-/** The newest calls whose lines a log keeps: one found longer when it is loaded is written again without the rest. */
+/** The newest calls whose lines a log keeps: one found longer is written again without the rest. */
 export const HISTORY_KEEP_LINES = 2_000
+/** How far past the bound a log may run inside one host run before it is written again. */
+export const HISTORY_COMPACT_SLACK = 200
 /** A history whose log was last written this long ago is removed. */
 export const HISTORY_KEEP_MS = 30 * 24 * 60 * 60 * 1000
 export const HISTORY_PRUNE_EVERY_MS = 24 * 60 * 60 * 1000
@@ -60,8 +62,8 @@ export function historyPicturesFromEnv(env: NodeJS.ProcessEnv = process.env): bo
 
 type PictureNone = Exclude<HistoryPictureNone, 'gone'>
 
-/** A step as a start record holds it: with the words it takes if the call never finishes ("Click Save"). */
-type StartStep = ComputerHistoryStep & { asked?: StepWords }
+/** A step as a start record holds it: `asked` is the words it takes if the call never finishes ("Click Save"). */
+type StartStep = ComputerHistoryStep
 
 interface StartRecord {
   v: 1
@@ -244,6 +246,8 @@ export class ComputerHistory {
       this.changed(state, n)
       await this.append(state, record)
       await this.evict(state, n - HISTORY_KEEP_CALLS)
+      // a thread that drives the Mac for days in one host run keeps its bound too
+      if (state.calls.size > HISTORY_KEEP_LINES + HISTORY_COMPACT_SLACK) await this.compact(state, await this.records(state), true)
     })
     return {
       n: () => started.then(() => n),
@@ -304,7 +308,13 @@ export class ComputerHistory {
         continue
       }
       await state.chain
-      const all = [...state.calls.values()].filter((c) => before === undefined || c.n < before).sort((a, b) => a.n - b.n)
+      // removed while this read waited: what the state still holds is no history
+      if (state.dead) {
+        out.push({ key, born: 0, calls: [], more: false })
+        continue
+      }
+      // the folds stand in the order their starts were written, which is the order of their numbers
+      const all = [...state.calls.values()].filter((c) => before === undefined || c.n < before)
       const page = all.slice(-HISTORY_PAGE)
       out.push({ key, born: state.born, calls: page.map((c) => this.callOf(state, c)), more: all.length > page.length })
     }
@@ -316,7 +326,7 @@ export class ComputerHistory {
     const state = await this.kept(key)
     if (!state) return {}
     await state.chain
-    const fold = state.calls.get(n)
+    const fold = state.dead ? undefined : state.calls.get(n)
     if (!fold) return {}
     const out: HistoryStep = {}
     const picture = fold.picture
@@ -439,20 +449,26 @@ export class ComputerHistory {
     return this.stateOf(key)
   }
 
-  /** The log as it stands: a torn or foreign line is skipped, the counters are the highest it holds. */
-  private async load(state: KeyState): Promise<void> {
+  /** The log's records as they stand on disk: a torn or foreign line is skipped. */
+  private async records(state: KeyState): Promise<HistoryRecord[]> {
     const text = await readFile(join(state.dir, 'log.jsonl'), 'utf8').catch(() => '')
     const records: HistoryRecord[] = []
     for (const line of text.split('\n')) {
       if (!line) continue
-      let record: unknown
       try {
-        record = JSON.parse(line)
+        const record: unknown = JSON.parse(line)
+        if (isRecord(record)) records.push(record)
       } catch {
-        continue
+        // a torn line
       }
-      if (!isRecord(record)) continue
-      records.push(record)
+    }
+    return records
+  }
+
+  /** The log as it stands: the counters are the highest it holds. */
+  private async load(state: KeyState): Promise<void> {
+    const records = await this.records(state)
+    for (const record of records) {
       if (!state.born && record.r === 'start') state.born = record.at
       this.fold(state, record)
       state.n = Math.max(state.n, record.n)
@@ -462,17 +478,19 @@ export class ComputerHistory {
       }
     }
     for (const name of await readdir(join(state.dir, 'steps')).catch(() => [] as string[])) state.files.add(name)
-    state.made = text !== ''
-    if (state.calls.size > HISTORY_KEEP_LINES) await this.compact(state, records)
+    state.made = records.length > 0
+    if (state.calls.size > HISTORY_KEEP_LINES) await this.compact(state, records, false)
   }
 
   /**
    * A log past its bound keeps its newest calls: it is written again beside
    * itself and swapped in, so a thread that uses the computer for months
-   * never loads, folds or sorts more than that. `born` moves with it, which
-   * tells a reader to drop the calls that went.
+   * never loads or folds more than that. At load `born` moves with it,
+   * which tells a reader to drop the calls that went; inside a host run
+   * (`live`) it stays, so a reader that holds older rows keeps them and
+   * hears every new call as before.
    */
-  private async compact(state: KeyState, records: readonly HistoryRecord[]): Promise<void> {
+  private async compact(state: KeyState, records: readonly HistoryRecord[], live: boolean): Promise<void> {
     const floor = [...state.calls.keys()].sort((a, b) => b - a)[HISTORY_KEEP_LINES - 1]
     const keep = records.filter((r) => r.n >= floor)
     const log = join(state.dir, 'log.jsonl')
@@ -484,7 +502,7 @@ export class ComputerHistory {
       return
     }
     for (const n of [...state.calls.keys()]) if (n < floor) state.calls.delete(n)
-    state.born = keep.find((r): r is StartRecord => r.r === 'start')?.at ?? state.born
+    if (!live) state.born = keep.find((r): r is StartRecord => r.r === 'start')?.at ?? state.born
   }
 
   private fold(state: KeyState, r: HistoryRecord): void {
@@ -525,13 +543,14 @@ export class ComputerHistory {
       state: c.endedAt !== undefined ? 'done' : unfinished ? 'unfinished' : 'running',
       app: c.app,
       window: c.window,
-      // a call that never finished reads as what was asked of it
-      steps: c.steps.map(({ asked, ...step }) => (unfinished && asked ? { ...step, ...asked } : step)),
+      // a call that never finished reads as what was asked of it; one that runs keeps both, for a step that waits
+      steps: c.endedAt !== undefined ? c.steps : c.steps.map(({ asked, ...step }) => (unfinished ? (asked ? { ...step, ...asked } : step) : { ...step, ...(asked ? { asked } : {}) })),
       ...(c.plan ? { plan: c.plan } : {}),
       ...(c.read ? { read: c.read } : {}),
       text,
       ...(picture ? { picture } : {}),
-      rev: c.records + (pictureGone ? 1 : 0) + (c.text && !text ? 1 : 0)
+      // every change a reader must take counts: a record, a kept file that went, and a running call found unfinished
+      rev: c.records + (pictureGone ? 1 : 0) + (c.text && !text ? 1 : 0) + (unfinished ? 1 : 0)
     }
   }
 
@@ -643,9 +662,10 @@ export interface PictureTarget {
 export async function capturePicture(
   service: Pick<ComputerService, 'state' | 'permissions' | 'request'>,
   target: PictureTarget | null,
-  opts: { clock?: Pick<Clock, 'setTimeout' | 'clearTimeout'>; timeoutMs?: number } = {}
+  opts: { clock?: Pick<Clock, 'setTimeout' | 'clearTimeout'>; timeoutMs?: number; /** a Stop or the thread's end: the capture is given up at once */ signal?: AbortSignal } = {}
 ): Promise<HistoryPicture> {
   if (!target) return { none: 'no-read' }
+  if (opts.signal?.aborted) return { none: 'failed' }
   if (service.permissions()?.screenRecording === false) return { none: 'permission' }
   const state = service.state()
   if (state.state !== 'up' || state.epoch !== target.epoch) return { none: 'failed' }
@@ -673,9 +693,18 @@ export async function capturePicture(
       resolve({ none: 'failed' })
     }, opts.timeoutMs ?? PICTURE_TIMEOUT_MS)
   })
+  let cut = (): void => undefined
+  const stopped = new Promise<HistoryPicture>((resolve) => {
+    cut = (): void => {
+      abort.abort()
+      resolve({ none: 'failed' })
+    }
+    opts.signal?.addEventListener('abort', cut, { once: true })
+  })
   try {
-    return await Promise.race([asked, late])
+    return await Promise.race([asked, late, stopped])
   } finally {
     clock.clearTimeout(timer)
+    opts.signal?.removeEventListener('abort', cut)
   }
 }

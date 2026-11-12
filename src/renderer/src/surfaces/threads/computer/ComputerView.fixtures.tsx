@@ -186,7 +186,7 @@ const fixtures: ComputerFixture[] = [
     name: "1. Live, acting: the ring mid-play, the last finished step open with its facts",
     props: base({
       sessions: [live],
-      viewport: liveBox("textedit", "save-sheet", TEXTEDIT, { face: { kind: "live", picture: frame("textedit", "save-sheet"), drawn: true, mark: <ClickMark at={[0.62, 0.71]} frozen /> }, marks: 1 }),
+      viewport: liveBox("textedit", "save-sheet", TEXTEDIT, { face: { kind: "live", picture: frame("textedit", "save-sheet"), drawn: true, mark: <ClickMark at={[0.745, 0.71]} frozen /> }, marks: 1 }),
       running: [working("Clicking", "Save")],
       ...listOf(own(run)),
     }),

@@ -6,7 +6,7 @@
  */
 import type { PermissionPolicy } from '../events'
 import { COMPUTER_RESULT_TOOL } from './heldCalls'
-import { parseElementLine } from './observation'
+import { parseElementLine, parseKeyCombo, type Modifier } from './observation'
 import { confirmInput, confirmTitle, type Confirm, type ConfirmNeed, type HostConfirmKind } from './policy'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS, type ComputerAction, type ComputerActionName, type ElementBrief } from './protocol'
 import { menuPathSegments, parseStepLine, type ComputerToolName, type TierVerdict } from './tools'
@@ -108,7 +108,8 @@ export interface TitleContext {
   maskText?: boolean
 }
 
-const quoteShort = (text: string, max = 60): string => {
+/** A text as a step quotes it: whole in quotes, or its first `max` characters and an ellipsis. */
+export const quoteShort = (text: string, max = 60): string => {
   const s = [...text]
   return JSON.stringify(s.length > max ? s.slice(0, max).join('') + '…' : text)
 }
@@ -146,11 +147,10 @@ const CLICK_VERBS: Partial<Record<ComputerActionName, string>> = {
   triple_click: 'triple-click'
 }
 
-const isPassword = (index: number | undefined, ctx: TitleContext): boolean => {
-  if (index === undefined) return false
-  const line = ctx.element(index)?.line
-  return line === 'password' || !!line?.startsWith('password ')
-}
+/** Whether an element's book line is a password field's. */
+export const isPasswordLine = (line: string | undefined): boolean => line === 'password' || !!line?.startsWith('password ')
+
+const isPassword = (index: number | undefined, ctx: TitleContext): boolean => index !== undefined && isPasswordLine(ctx.element(index)?.line)
 
 /** The text a step puts in, quoted, or only its length when it goes into a password field. */
 function textWords(text: string, action: ComputerAction, ctx: TitleContext): string {
@@ -358,6 +358,37 @@ const CLICK_FORMS: Partial<Record<ComputerActionName, Forms>> = {
 const titleWords = (s: string): string => s.replace(/\b[a-z]/g, (c) => c.toUpperCase())
 const keyWords = (s: unknown): string | null => (typeof s === 'string' && s.trim() && s.length <= 40 ? s.trim() : null)
 
+/** The Mac's own marks for the modifiers, in the order its menus write them. */
+const MODIFIER_CAPS: readonly (readonly [Modifier, string])[] = [
+  ['ctrl', '⌃'],
+  ['alt', '⌥'],
+  ['shift', '⇧'],
+  ['super', '⌘']
+]
+
+/**
+ * A key combo as a person at a Mac reads it: `super+s` is "⌘S",
+ * `super+shift+Return` "⇧⌘Return". The model writes the service's grammar;
+ * a row is read by the person, so it says the keys the keyboard shows. A
+ * text off the grammar reads as it is.
+ */
+export function keyCaps(text: string): string {
+  try {
+    const { modifiers, key } = parseKeyCombo(text)
+    if (!modifiers.length) return text
+    const caps = MODIFIER_CAPS.filter(([m]) => modifiers.includes(m)).map(([, cap]) => cap)
+    return `${caps.join('')}${[...key].length === 1 ? key.toUpperCase() : key}`
+  } catch {
+    return text
+  }
+}
+
+/** A step's key as its row says it, or null when the call names none it may show. */
+const keyCapWords = (s: unknown): string | null => {
+  const words = keyWords(s)
+  return words === null ? null : keyCaps(words)
+}
+
 type StepInput = { action?: unknown; element?: unknown; text?: unknown; scroll_direction?: unknown; name?: unknown; named?: unknown; menu?: unknown }
 
 /** A step's target by its name (§27.9) or the last item of its menu path (§27.10), before any line names the element. */
@@ -386,9 +417,9 @@ function stepPhrase(a: StepInput, element: Named, appName: string | null, tense:
     case 'paste':
       return { verb: f(['Pasting', 'Pasted', 'Paste']), object: on(who && `into ${who}`) }
     case 'key':
-      return { verb: f(['Pressing', 'Pressed', 'Press']), object: on(keyWords(a.text) ?? 'a key') }
+      return { verb: f(['Pressing', 'Pressed', 'Press']), object: on(keyCapWords(a.text) ?? 'a key') }
     case 'hold_key':
-      return { verb: f(['Holding', 'Held', 'Hold']), object: on(keyWords(a.text) ?? 'a key') }
+      return { verb: f(['Holding', 'Held', 'Hold']), object: on(keyCapWords(a.text) ?? 'a key') }
     case 'scroll':
       return { verb: f(['Scrolling', 'Scrolled', 'Scroll']), object: on(typeof a.scroll_direction === 'string' ? a.scroll_direction : null) }
     case 'left_click_drag':

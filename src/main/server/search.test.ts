@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { searchProject } from './search'
+import { searchProject, setSearchDenied } from './search'
 
 let root: string
 beforeEach(async () => {
@@ -97,5 +97,33 @@ it('caps git and fallback results at 500 rows', async () => {
     expect(result.matches).toHaveLength(500)
     expect(result.truncated).toBe(true)
     if (i === 0) await rm(join(root, '.git'), { recursive: true })
+  }
+})
+
+it('reports nothing from a denied directory, in a repository or out of one, and everything else as before', async () => {
+  const history = join(root, 'data', 'computer', 'history')
+  await mkdir(join(history, 't1', 'steps'), { recursive: true })
+  await writeFile(join(history, 't1', 'steps', '1.txt'), 'alpha on the window\n')
+  await writeFile(join(root, 'data', 'computer', 'beside.txt'), 'alpha beside\n')
+  setSearchDenied(() => [history])
+  try {
+    const relatives = async (cwd: string): Promise<string[]> => (await searchProject({ cwd, query: 'alpha' })).matches.map((m) => m.relative).sort()
+    const inRepo = await relatives(root)
+    expect(inRepo).toContain('data/computer/beside.txt')
+    expect(inRepo.some((r) => r.includes('history'))).toBe(false)
+    // the same from inside the data directory, and from a folder that is no repository
+    expect(await relatives(join(root, 'data'))).toEqual(['computer/beside.txt'])
+    const plain = await mkdtemp(join(tmpdir(), 'tc-search-plain-'))
+    await mkdir(join(plain, 'history'), { recursive: true })
+    await writeFile(join(plain, 'history', 'log.txt'), 'alpha\n')
+    await writeFile(join(plain, 'kept.txt'), 'alpha\n')
+    setSearchDenied(() => [join(plain, 'history')])
+    expect(await relatives(plain)).toEqual(['kept.txt'])
+    await rm(plain, { recursive: true, force: true })
+    // with nothing denied the history is a folder like any other
+    setSearchDenied(() => [])
+    expect((await relatives(root)).some((r) => r.includes('history'))).toBe(true)
+  } finally {
+    setSearchDenied(() => [])
   }
 })

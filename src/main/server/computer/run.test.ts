@@ -1528,7 +1528,7 @@ describe('the journal (history.ts): one start and one end per call', () => {
     expect(got.map((c) => [c.state, c.app, c.window, c.steps.map((s) => `${s.verb} ${s.object}`.trim())])).toEqual([
       ['done', '', null, ['Listed apps']],
       ['done', 'TextEdit', 'Untitled', ['Read']],
-      ['done', 'TextEdit', 'Untitled', ['Clicked bold', 'Pressed super+s']],
+      ['done', 'TextEdit', 'Untitled', ['Clicked bold', 'Pressed ⌘S']],
       ['done', 'TextEdit', 'Untitled', ['Clicked a text area']]
     ])
     // the read's summary and text are kept
@@ -1538,7 +1538,7 @@ describe('the journal (history.ts): one start and one end per call', () => {
     expect(got[2].steps[0]).toMatchObject({ kind: 'click', state: 'ok', tier: 'ax', target: 'a checkbox in the "Formatting" group', element: 21, inApp: 'bold in TextEdit' })
     // while it ran, the batch's start held its plan in the card's words
     const starts = (await records(h)).filter((r) => r.r === 'start')
-    expect(starts[2].plan).toEqual(['click checkbox "bold"', 'press super+s'])
+    expect(starts[2].plan).toEqual(['Click bold', 'Press ⌘S'])
     expect(starts[0].plan).toBeUndefined()
     expect(starts[3].plan).toBeUndefined()
     // no picture is asked with the switch off, and each call says so

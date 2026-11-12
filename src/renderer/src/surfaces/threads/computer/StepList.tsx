@@ -69,12 +69,20 @@ export interface ReadFold {
   text: string | null;
   /** the viewport above already shows this text: the line says what was read and opens nothing */
   above?: boolean;
+  /** the text's read failed: said in the console's place, with Retry */
+  failed?: boolean;
+  onRetry?: () => void;
 }
 
-/** A row's words: its own without the app, or with it where the row names its app or has nothing else to say. */
-export function rowWords(row: Pick<StepRow, "step" | "namesApp" | "whole" | "call">, live = false): { verb: string; object: string } {
+/**
+ * A row's words: its own without the app, or with it where the row names its
+ * app or has nothing else to say. `live` is a call that runs; `waits` one
+ * that is held before it began, which reads as what is asked ("Press ⌘S").
+ */
+export function rowWords(row: Pick<StepRow, "step" | "namesApp" | "whole" | "call">, live = false, waits = false): { verb: string; object: string } {
   // a batch that runs, or never finished, is its call as one row: "Working in Mail", or what was asked, "Work in Mail"
-  const step: ComputerHistoryStep = row.whole && row.call.steps.length > 1 ? workingStep(row.call.app, live ? "live" : "asked") : row.step;
+  const whole = row.whole && row.call.steps.length > 1;
+  const step: ComputerHistoryStep = whole ? workingStep(row.call.app, live && !waits ? "live" : "asked") : waits && row.step.asked ? { ...row.step, ...row.step.asked } : row.step;
   return { verb: step.verb, object: row.namesApp || !step.object ? step.inApp : step.object };
 }
 
@@ -181,9 +189,10 @@ function StepDetail({ row, read, onToggleRead }: { row: StepRow; read: ReadFold;
   const facts: ReactNode[] = unfinished
     ? [clockTime(call.at)]
     : [step.tier ? COMPUTER_TIER_WORDS[step.tier] : null, step.target, ...(step.facts ?? []), clockTime(call.endedAt ?? call.at)];
-  // the call's read belongs to its last step: the closing read came after them all. A read's own row already says
-  // Read, so its line is what it took in alone: "41 elements", "No changes".
-  const took = !unfinished && row.index === call.steps.length - 1 ? call.read : undefined;
+  // the call's read belongs to the last step that was tried: the closing read came after it, never after a step
+  // that did not run. A read's own row already says Read, so its line is what it took in alone: "41 elements".
+  const tried = call.steps.findLastIndex((s) => s.state !== "not-run");
+  const took = !unfinished && row.index === (tried < 0 ? call.steps.length - 1 : tried) ? call.read : undefined;
   const reads = took && step.kind === "read" ? took.replace(/^Read (.)/, (_, first: string) => (/\d/.test(first) ? first : first.toUpperCase())) : took;
   return (
     <div className={cn(WORDS_COLUMN, "flex flex-col gap-1 pb-2 text-xs leading-4")} data-slot="step-detail">
@@ -209,7 +218,14 @@ function StepDetail({ row, read, onToggleRead }: { row: StepRow; read: ReadFold;
               <ChevronRight className={cn("ms-1 size-3 shrink-0", DISCLOSURE_CHEVRON, read.open && "rotate-90")} />
             </button>
             <CollapsibleContent>
-              {read.text === null ? (
+              {read.failed ? (
+                <p role="alert" data-slot="step-read-failed" className="m-0 mt-1 flex flex-wrap items-baseline gap-x-2 text-muted-foreground">
+                  <span>Couldn't read the text</span>
+                  <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={read.onRetry}>
+                    Retry
+                  </Button>
+                </p>
+              ) : read.text === null ? (
                 <div role="status" aria-busy aria-label="Loading what was read" className={cn(CONSOLE, "mt-1 flex flex-col gap-2")}>
                   <Skeleton className="h-3 w-3/4" />
                   <Skeleton className="h-3 w-1/2" />
@@ -247,6 +263,9 @@ const StepRowView = memo(
     const words = rowWords(row);
     const mark = markOf(row);
     const quiet = row.step.state === "not-run";
+    // The mark is drawn, not said: the row's name carries how the step ended, so it is heard as it is seen.
+    const said = [words.verb, words.object].filter(Boolean).join(" ");
+    const outcome = row.call.state === "unfinished" ? "didn't finish" : mark === "not-run" ? "not run" : mark;
     return (
       <div
         data-slot="step"
@@ -259,6 +278,7 @@ const StepRowView = memo(
           type="button"
           data-row={row.id}
           aria-current={open ? "true" : undefined}
+          aria-label={outcome ? `${said}, ${outcome}` : undefined}
           tabIndex={tabbable ? 0 : -1}
           onClick={() => onSelect(row.id)}
           className={cn(STEP_LINE, ROW_INSET, "w-full rounded-lg text-start", open ? "" : ROW_PRESS)}
@@ -266,7 +286,7 @@ const StepRowView = memo(
           <RowGlyph kind={row.whole && row.call.steps.length > 1 ? "click" : row.step.kind} mark={mark} />
           {open ? (
             // the open row says its words whole on hover when they are cut
-            <TruncateTip text={[words.verb, words.object].filter(Boolean).join(" ")}>
+            <TruncateTip text={said}>
               <span className="flex min-w-0 items-center gap-1">
                 <Words {...words} quiet={quiet} />
               </span>
@@ -289,6 +309,8 @@ const StepRowView = memo(
     a.read?.open === b.read?.open &&
     a.read?.text === b.read?.text &&
     a.read?.above === b.read?.above &&
+    a.read?.failed === b.read?.failed &&
+    a.read?.onRetry === b.read?.onRetry &&
     a.onSelect === b.onSelect &&
     a.onToggleRead === b.onToggleRead,
 );
@@ -435,6 +457,16 @@ export function StepList({ running, groups, openId, pinned, read, status, more, 
     }
     wasPinned.current = pinned;
   }, [idsKey, pinned]);
+
+  // Following, the open row is in view: after a batch that failed with a long tail of steps that never ran, the
+  // step that failed is what the person came to see. The newest row is the top, where the list already is.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || pinned || !openId || openId === ids[0] || !atTop.current) return;
+    const row = el.querySelector<HTMLElement>(`[data-step="${quoted(openId)}"]`);
+    row?.scrollIntoView?.({ block: "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, pinned]);
 
   const onKeyDown = useStepKeys({ ids, openId, scroller, onSelect, onFollow });
 

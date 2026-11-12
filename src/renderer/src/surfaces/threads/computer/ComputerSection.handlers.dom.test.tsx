@@ -20,7 +20,10 @@ vi.mock("./ComputerView", () => ({
   },
 }));
 vi.mock("../../../lib/computerSessions", () => ({ stopComputer: vi.fn(), useComputerEntries: () => [] }));
-vi.mock("../../../lib/tcserver/store", () => ({ useSessionMeta: () => null, useSessionMetas: () => h.metas }));
+vi.mock("../../../lib/tcserver/store", () => ({
+  useSessionMeta: () => null,
+  useSessionTitles: (ids: readonly string[]) => ids.map((id) => h.metas.find((m) => m.id === id)?.title ?? "").join("\u0000"),
+}));
 vi.mock("../../../lib/computerSection", () => ({ useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: false, live: false }) }));
 vi.mock("../../../chrome/lightboxStore", () => ({ openLightbox: vi.fn() }));
 vi.mock("../../../lib/computerPreview", () => ({ useComputerPreview: () => ({ state: { status: "starting" }, retry: vi.fn() }) }));

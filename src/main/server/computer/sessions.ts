@@ -82,6 +82,8 @@ export class ComputerSessions {
   private readonly targetKeys = new Map<string, string>()
   /** threads whose used marker is written, so a call reads the settings table at most once */
   private readonly marked = new Set<string>()
+  /** the journal's picture being taken for a thread: a Stop or the thread's end cuts it short */
+  private readonly capturing = new Map<ThreadComputer, AbortController>()
   private readonly rowListeners = new Set<(rows: ComputerSessionRow[]) => void>()
   private readonly clock: Clock
   private readonly host: RunHost
@@ -159,6 +161,8 @@ export class ComputerSessions {
   private async picture(t: ThreadComputer, entry: HistoryEntry, target: PictureTarget | null): Promise<void> {
     const history = this.opts.history
     if (!history) return
+    const cut = new AbortController()
+    this.capturing.set(t, cut)
     try {
       const picture: HistoryPicture = !target
         ? { none: 'no-read' }
@@ -166,10 +170,12 @@ export class ComputerSessions {
           ? { none: 'off' }
           : t.stopped || t.ended
             ? { none: 'failed' }
-            : await capturePicture(this.opts.service, target, { clock: this.clock })
+            : await capturePicture(this.opts.service, target, { clock: this.clock, signal: cut.signal })
       await entry.picture(picture)
     } catch (e) {
       this.host.log(`computer history: a picture was not kept: ${(e as Error).message}`)
+    } finally {
+      if (this.capturing.get(t) === cut) this.capturing.delete(t)
     }
   }
 
@@ -308,6 +314,8 @@ export class ComputerSessions {
     const wasLive = t.live !== null
     t.stopped = true
     t.inflight?.abort('stopped')
+    // a picture being taken is given up, so the session closes, and lets go of a held key, without waiting for it
+    this.capturing.get(t)?.abort()
     await t.queue
     await this.closeSession(t)
     await this.host.gate().settle?.(threadId, 'stopped')
@@ -347,6 +355,7 @@ export class ComputerSessions {
       this.threads.delete(id)
       t.ended = true
       t.inflight?.abort('ended')
+      this.capturing.get(t)?.abort()
       await t.queue
       if (t.idleTimer !== null) this.clock.clearTimeout(t.idleTimer)
       await this.closeSession(t)

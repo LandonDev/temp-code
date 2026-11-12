@@ -204,6 +204,7 @@ describe("the store", () => {
     await settle();
     expect(requests.map((r) => r.params.keys)).toEqual([["t1"], ["t1"]]);
     off();
+    await settle();
     // nobody reads it any more: dropped, and its pushes ignored
     expect(held("t1")).toBeUndefined();
     link.push!({ push: "computer-history", key: "t1", call: call(4) });
@@ -220,7 +221,54 @@ describe("the store", () => {
     a();
     expect(held("t1").calls).toHaveLength(1);
     b();
+    await settle();
     expect(held("t1")).toBeUndefined();
+  });
+
+  it("a key list that changes in one commit keeps what is held: every reader's cleanup runs before any reader's new effect", async () => {
+    H.startComputerHistory();
+    const { requests } = localLink({ t1: { born: 10, calls: [call(1), call(2)] }, sub1: { born: 20, calls: [call(1)] } });
+    // two readers of the thread's keys, as the panel's facts and the section are
+    let a = H.watchHistory(["t1"]);
+    let b = H.watchHistory(["t1"]);
+    await settle();
+    const before = held("t1");
+    expect(before.calls).toHaveLength(2);
+    // a subagent joins the tree: React runs both cleanups, then both new effects, in one flush
+    a();
+    b();
+    a = H.watchHistory(["t1", "sub1"]);
+    b = H.watchHistory(["t1", "sub1"]);
+    // never empty, never loading again, and each call the same object
+    expect(held("t1")).toBe(before);
+    await settle();
+    expect(held("t1").status).toBe("ready");
+    expect(held("t1").calls[0]).toBe(before.calls[0]);
+    expect(held("t1").calls[1]).toBe(before.calls[1]);
+    expect(held("sub1").calls).toHaveLength(1);
+    // the keys were read again (a subscription is the socket's, and a merge costs nothing), the new one too
+    expect(requests.map((r) => r.params.keys)).toEqual([["t1"], ["t1", "sub1"]]);
+    a();
+    b();
+    await settle();
+    expect(held("t1")).toBeUndefined();
+    expect(held("sub1")).toBeUndefined();
+  });
+
+  it("an answer asked for before a history went is not put back: the key is read again as it now stands", async () => {
+    H.startComputerHistory();
+    const journal: Record<string, { born: number; calls: ComputerHistoryCall[] }> = { t1: { born: 10, calls: [call(1), call(2)] } };
+    const { link, requests } = localLink(journal);
+    const off = H.watchHistory(["t1"]);
+    // the history is removed, and begun again, while the first read is out
+    journal.t1 = { born: 30, calls: [call(1, { at: 30 })] };
+    link.push!({ push: "computer-history", key: "t1", gone: true });
+    await settle();
+    await settle();
+    expect(held("t1")).toMatchObject({ born: 30, status: "ready" });
+    expect(held("t1").calls.map((c) => c.at)).toEqual([30]);
+    expect(requests).toHaveLength(2);
+    off();
   });
 
   it("gone empties the key, and a history begun again fills it", async () => {

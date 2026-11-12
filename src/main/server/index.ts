@@ -121,7 +121,7 @@ import { isHeadless } from '../headless'
 import type { SelfUpdateOutcome } from '../updateTrigger'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
-import { fenceRequest } from './remote/fence'
+import { fenceDenied, fenceRequest, requestBases } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
 import { Notifier } from './remote/notifier'
 import { MacPresenceWatcher, type PresenceSource } from '../presence'
@@ -142,6 +142,7 @@ import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { workRoot } from './workRoot'
 import { readMediaRange, serverMediaRoots, setMediaDenied, setMediaHost, setMediaRoots } from './media'
+import { setSearchDenied } from './search'
 import { CheckpointStore, inHeadMany, listTracked } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { CheckpointTurns } from './checkpointTurns'
@@ -535,6 +536,7 @@ export async function startServer(
   // remote request names them, whatever root a workspace adds; this desktop reads them by `computer.history.step`.
   const computerHistoryRoot = historyRoot(join(options.dataDir ?? dirname(dbPath), 'computer'))
   setMediaDenied(() => [computerHistoryRoot])
+  setSearchDenied(() => [computerHistoryRoot])
   /** What a remote key may name by path (remote/fence.ts): the media
    *  roots plus the work root new workspaces go under — unless that is the
    *  bare home directory, which no key gets to browse. */
@@ -2068,7 +2070,11 @@ export async function startServer(
         // A remote key names paths only inside the app-managed roots; the
         // refusal is one typed error that never carries the path. Ahead of
         // the lane gate: a bulk request never joins one it may not make.
-        if (principal.kind !== 'local') fenceRequest(req, managedRoots(), [ATTACH_DIR], [computerHistoryRoot])
+        if (principal.kind !== 'local') {
+          fenceRequest(req, managedRoots(), [ATTACH_DIR], [computerHistoryRoot])
+          // the same deny for a file named through a project id or inside a cwd, and for a copy that would carry it out
+          fenceDenied(req, requestBases(req, (id) => registry.getProject(id)?.cwd), [computerHistoryRoot])
+        }
         // The lane gate (lane.ts): interactive and normal run now; bulk waits
         // its turn and a duplicate shares the answer of the one before it.
         const lane = laneOf(req, focus)

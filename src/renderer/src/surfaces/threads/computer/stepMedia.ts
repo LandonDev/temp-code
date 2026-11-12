@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ComputerHistoryCall, ComputerHistoryStepAnswer } from "@server/shared/contract-computer";
 
 /**
@@ -157,26 +157,45 @@ export interface MediaWant {
   call: ComputerHistoryCall;
 }
 
+/** What a step's media read came to, for the section. */
+export interface StepMediaState {
+  /** the last step whose media answered while it was the one wanted, with the call it is of */
+  landed: { id: string; media: StepMedia; call: ComputerHistoryCall } | null;
+  pending: boolean;
+  /** the wanted step has been on its way for more than 150 ms */
+  late: boolean;
+  /** the wanted step's read failed: nothing is known of what it kept, and `retry` asks again */
+  failed: boolean;
+  retry: () => void;
+}
+
+const NO_RETRY = (): void => undefined;
+
 /**
  * The media of the step the section shows now. `landed` is the last step
  * whose media answered while it was still the one wanted: an answer for a
  * step the selection has moved on from is dropped. While the wanted step is
  * on its way `landed` is still the one before it, and `late` turns true once
- * that has taken more than 150 ms, which dims the old picture.
+ * that has taken more than 150 ms, which dims the old picture. A read that
+ * fails is `failed`, never "nothing was kept": the step's records say what
+ * it kept, and Retry reads again.
  */
-export function useStepMedia(cache: StepMediaCache, want: MediaWant | null): { landed: { id: string; media: StepMedia } | null; pending: boolean; late: boolean } {
-  const [landed, setLanded] = useState<{ id: string; media: StepMedia } | null>(null);
+export function useStepMedia(cache: StepMediaCache, want: MediaWant | null): StepMediaState {
+  const [landed, setLanded] = useState<StepMediaState["landed"]>(null);
   const [late, setLate] = useState(false);
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const id = want?.id ?? null;
   const rev = want?.call.rev ?? 0;
   const needs = want ? keepsMedia(want.call) : false;
 
   useEffect(() => {
     setLate(false);
+    setFailedFor(null);
     if (!want || !needs) return;
     const held = cache.peek(want.key, want.call);
     if (held) {
-      setLanded({ id: want.id, media: held });
+      setLanded({ id: want.id, media: held, call: want.call });
       return;
     }
     let alive = true;
@@ -185,12 +204,11 @@ export function useStepMedia(cache: StepMediaCache, want: MediaWant | null): { l
       .load(want.key, want.call)
       .then((media) => {
         if (!alive) return;
-        setLanded({ id: want.id, media });
+        setLanded({ id: want.id, media, call: want.call });
         setLate(false);
       })
       .catch(() => {
-        // the read failed: the step shows what its records say, with no picture
-        if (alive) setLanded({ id: want.id, media: { rev: want.call.rev } });
+        if (alive) setFailedFor(`${want.id}:${want.call.rev}`);
       })
       .finally(() => clearTimeout(timer));
     return () => {
@@ -199,11 +217,13 @@ export function useStepMedia(cache: StepMediaCache, want: MediaWant | null): { l
     };
     // the call object changes with every revision; its id and revision are what matter
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cache, id, rev, needs]);
+  }, [cache, id, rev, needs, attempt]);
 
-  if (!want) return { landed: null, pending: false, late: false };
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  if (!want) return { landed: null, pending: false, late: false, failed: false, retry: NO_RETRY };
   // a step that kept nothing needs no read
-  if (!needs) return { landed: { id: want.id, media: { rev } }, pending: false, late: false };
+  if (!needs) return { landed: { id: want.id, media: { rev }, call: want.call }, pending: false, late: false, failed: false, retry: NO_RETRY };
   const here = landed?.id === want.id && landed.media.rev === rev;
-  return { landed, pending: !here, late: !here && late };
+  const failed = !here && failedFor === `${want.id}:${rev}`;
+  return { landed, pending: !here && !failed, late: !here && !failed && late, failed, retry };
 }

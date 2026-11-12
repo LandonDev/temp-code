@@ -105,7 +105,8 @@ export type ComputerStepState = (typeof COMPUTER_STEP_STATES)[number]
 
 /**
  * One step of a call, in words the host made once (shared/computer/historyWords.ts):
- * present tense while planned, past once settled. No typed text a password
+ * present tense while it runs, past once it ran, and as what was asked
+ * ("Click Save") when it failed, was stopped or never ran. No typed text a password
  * field could hold ever enters a step.
  */
 export const ComputerHistoryStepSchema = z.object({
@@ -126,7 +127,9 @@ export const ComputerHistoryStepSchema = z.object({
   /** a failed, stopped or refused step: why, in a person's words */
   reason: z.string().optional(),
   /** the element it acted on, by its index in the read's text */
-  element: z.number().int().positive().optional()
+  element: z.number().int().positive().optional(),
+  /** on a call that still runs alone: the step as what was asked of it ("Click Save"), which is how a step that waits to run reads */
+  asked: z.object({ verb: z.string(), object: z.string(), inApp: z.string() }).optional()
 })
 export type ComputerHistoryStep = z.infer<typeof ComputerHistoryStepSchema>
 

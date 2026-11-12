@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
-import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceRequest, fencedPaths, insideRoots } from './fence'
+import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceDenied, fenceRequest, fencedPaths, insideRoots, requestBases } from './fence'
 
 /** R2 H1/H2: the real-path fence every remote request passes before a handler runs. */
 let dir: string
@@ -220,6 +220,49 @@ describe('fenceRequest', () => {
     // a history that does not exist yet denies nothing else
     expect(() => fenceRequest(req('fs.readText', { path: join(root, 'src', 'a.ts') }), roots, [], [join(dir, 'no-such', 'history')])).not.toThrow()
   })
+  it('fenceDenied: a file named through a project id or inside a cwd, and a copy that would carry the history out, are refused', () => {
+    const data = join(root, 'deny-data')
+    const history = join(data, 'computer', 'history')
+    mkdirSync(join(history, 't1', 'steps'), { recursive: true })
+    writeFileSync(join(history, 't1', 'steps', '1.txt'), 'what was read')
+    writeFileSync(join(data, 'computer', 'beside.txt'), 'x')
+    const denied = [history]
+    const project = (id: string): string | undefined => (id === 'p-data' ? data : id === 'p-root' ? root : undefined)
+    const check = (method: string, params: unknown): void => {
+      const r = req(method, params)
+      fenceDenied(r, requestBases(r, project), denied)
+    }
+    // project-scoped: the path is relative to the project's checkout, which the path table never sees
+    expect(() => check('fs.read', { projectId: 'p-data', path: 'computer/history/t1/steps/1.txt' })).toThrow(FenceError)
+    expect(() => check('fs.read', { projectId: 'p-root', path: 'deny-data/computer/history/t1/log.jsonl' })).toThrow(FenceError)
+    expect(() => check('fs.list', { projectId: 'p-data', dir: 'computer/history' })).toThrow(FenceError)
+    expect(() => check('fs.list', { projectId: 'p-data', dir: 'computer/history/t1/steps' })).toThrow(FenceError)
+    expect(() => check('fs.write', { projectId: 'p-data', path: 'computer/history/t1/steps/1.txt', content: 'x' })).toThrow(FenceError)
+    expect(() => check('project.blame', { projectId: 'p-data', path: 'computer/history/t1/log.jsonl' })).toThrow(FenceError)
+    // a dotted way round is the same place
+    expect(() => check('fs.read', { projectId: 'p-data', path: 'computer/../computer/history/t1/steps/1.txt' })).toThrow(FenceError)
+    // a file named inside a cwd
+    expect(() => check('git.fileDiff', { cwd: data, path: 'computer/history/t1/steps/1.txt' })).toThrow(FenceError)
+    expect(() => check('search.project', { options: { cwd: data, query: 'x', include: 'computer/history/t1' } })).toThrow(FenceError)
+    // a copy or a move whose source holds the history would carry it to where nothing denies it
+    expect(() => check('fs.copyPath', { from: join(data, 'computer'), destParent: join(root, 'src') })).toThrow(FenceError)
+    expect(() => check('fs.copyPath', { from: data, destParent: join(root, 'src') })).toThrow(FenceError)
+    expect(() => check('fs.movePath', { from: join(data, 'computer'), destParent: join(root, 'src') })).toThrow(FenceError)
+    // what sits beside it, and every other project, is as it was
+    expect(() => check('fs.read', { projectId: 'p-data', path: 'computer/beside.txt' })).not.toThrow()
+    expect(() => check('fs.list', { projectId: 'p-data', dir: 'computer' })).not.toThrow()
+    expect(() => check('fs.read', { projectId: 'p-root', path: 'src/a.ts' })).not.toThrow()
+    expect(() => check('fs.copyPath', { from: join(root, 'src'), destParent: join(root, 'out') })).not.toThrow()
+    expect(() => check('git.fileDiff', { cwd: root, path: 'src/a.ts' })).not.toThrow()
+    // a file's content and a search's words are not paths, and a method that names no file is never read as one
+    expect(() => check('fs.write', { projectId: 'p-root', path: 'src/a.ts', content: join(history, 't1') })).not.toThrow()
+    expect(() => check('search.project', { options: { cwd: data, query: 'computer/history' } })).not.toThrow()
+    expect(() => check('session.send', { sessionId: 's1', text: join(history, 't1', 'steps', '1.txt') })).not.toThrow()
+    // nothing denied, nothing refused
+    const open = req('fs.read', { projectId: 'p-data', path: 'computer/history/t1/steps/1.txt' })
+    expect(() => fenceDenied(open, requestBases(open, project), [])).not.toThrow()
+  })
+
   it('passes a request inside the roots and ignores methods without paths', () => {
     expect(() => fenceRequest(req('fs.readText', { path: join(root, 'src', 'a.ts') }), [root])).not.toThrow()
     expect(() => fenceRequest(req('session.list', {}), [])).not.toThrow()

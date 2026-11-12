@@ -129,10 +129,11 @@ describe('the secret rule', () => {
       expect(plannedSteps('computer_act', args, ctx)[0], text).toMatchObject({ verb: 'Pressing', object: 'a key', inApp: 'a key in TextEdit' })
       expect(settledSteps({ tool: 'computer_act', args, ctx, results: [ok('key')] })[0], text).toMatchObject({ verb: 'Pressed', object: 'a key' })
     }
-    for (const text of ['super+s', 'Return', 'ctrl+a', 'alt+x', 'Tab'])
-      expect(plannedSteps('computer_act', { app: 'TextEdit', action: 'key', text }, ctx)[0].object, text).toBe(text)
-    const plan = planWords('computer_batch', { app: 'TextEdit', actions: [{ action: 'key', text: 'h' }, { action: 'key', text: 'super+Return' }] }, ctx)
-    expect(plan).toEqual(['press a key', 'press super+Return'])
+    // a combo is said in the Mac's own marks, a named key by its name
+    for (const [text, said] of [['super+s', '⌘S'], ['Return', 'Return'], ['ctrl+a', '⌃A'], ['alt+x', '⌥X'], ['Tab', 'Tab'], ['super+shift+Return', '⇧⌘Return']])
+      expect(plannedSteps('computer_act', { app: 'TextEdit', action: 'key', text }, ctx)[0].object, text).toBe(said)
+    const keys = { app: 'TextEdit', actions: [{ action: 'key', text: 'h' }, { action: 'key', text: 'super+Return' }] }
+    expect(planWords('computer_batch', plannedSteps('computer_batch', keys, ctx))).toEqual(['Press a key', 'Press ⌘Return'])
   })
 
   it('nothing a call holds reaches its steps or its plan unless the rule allows it', () => {
@@ -150,7 +151,8 @@ describe('the secret rule', () => {
       ]
     }
     const results = args.actions.map((a, index) => ({ ...ok(a.action as ComputerAction['action']), index }))
-    const written = JSON.stringify([plannedSteps('computer_batch', args, ctx), planWords('computer_batch', args, ctx), settledSteps({ tool: 'computer_batch', args, ctx, results })])
+    const planned = plannedSteps('computer_batch', args, ctx)
+    const written = JSON.stringify([planned, planWords('computer_batch', planned), settledSteps({ tool: 'computer_batch', args, ctx, results })])
     expect(written).not.toContain(secret)
     expect(written).not.toContain('horse')
     expect(written).toContain('21 characters')
@@ -161,10 +163,10 @@ describe('the secret rule', () => {
   it('a selected text follows the rule: quoted for a known field with no input before it, else its length', () => {
     const select = { action: 'select_text', text: 'Hello', element: 3 } as ComputerAction
     expect(stepTargetWords([select], 0, book)).toBe('"Hello"')
-    expect(planWords('computer_batch', { app: 'TextEdit', actions: [select, { action: 'key', text: 'super+c' }] }, ctx)).toEqual(['select "Hello" in text area', 'press super+c'])
     const after = [{ action: 'left_click', element: 44 } as ComputerAction, select]
     expect(stepTargetWords(after, 1, book)).toBe('5 characters')
-    expect(planWords('computer_batch', { app: 'TextEdit', actions: after }, ctx)).toEqual(['click button "Save"', 'select 5 characters in text area'])
+    // a plan line is a row's words, which hold no text at all
+    expect(planWords('computer_batch', plannedSteps('computer_batch', { app: 'TextEdit', actions: after }, ctx))).toEqual(['Click Save', 'Select text'])
     expect(maskedTexts('computer_batch', { app: 'TextEdit', actions: after }, ctx)).toEqual(['Hello'])
     expect(maskedTexts('computer_act', { app: 'TextEdit', ...select }, ctx)).toEqual([])
   })
@@ -176,7 +178,7 @@ describe('plannedSteps and planWords', () => {
     expect(steps.map(({ asked: _asked, done: _done, ...step }) => step)).toEqual([
       { kind: 'click', verb: 'Clicking', object: 'Save', inApp: 'Save in TextEdit', target: 'a button in the "Save As" sheet', element: 44 },
       { kind: 'type', verb: 'Typing', object: 'into Subject', inApp: 'into Subject in TextEdit', target: '5 characters', element: 33 },
-      { kind: 'key', verb: 'Pressing', object: 'super+s', inApp: 'super+s in TextEdit' }
+      { kind: 'key', verb: 'Pressing', object: '⌘S', inApp: '⌘S in TextEdit' }
     ])
     // the same rows as asked and as done, made now, from the book the model acted on
     expect(steps.map((step) => [step.asked.verb, step.done.verb])).toEqual([['Click', 'Clicked'], ['Type', 'Typed'], ['Press', 'Pressed']])
@@ -194,15 +196,18 @@ describe('plannedSteps and planWords', () => {
     expect(plannedSteps('computer_apps', { launch: 'TextEdit' }, { app: '' })[0]).toMatchObject({ verb: 'Listing', asked: { verb: 'Launch', object: 'TextEdit' } })
   })
 
-  it("every action has a kind, and a batch's plan is the card's words", () => {
+  it("every action has a kind, and a batch's plan is its rows as asked", () => {
     expect(plannedSteps('computer_act', { app: 'TextEdit', action: 'scroll', scroll_direction: 'down', scroll_amount: 3 }, ctx)[0]).toMatchObject({ kind: 'scroll', target: 'down 3' })
     expect(plannedSteps('computer_act', { app: 'TextEdit', action: 'wait', duration: 2 }, ctx)[0].kind).toBe('wait')
     expect(plannedSteps('computer_act', { app: 'TextEdit', action: 'save_as', path: '~/a.txt' }, ctx)[0]).toMatchObject({ kind: 'type', target: '~/a.txt' })
     const batch = { app: 'Mail', actions: [{ action: 'left_click', element: 44 }, { action: 'type', text: 'Lunch?', element: 33 }, { action: 'key', text: 'super+Return' }] }
-    expect(planWords('computer_batch', batch, ctx)).toEqual(['click button "Save"', 'type 6 characters into input "Subject"', 'press super+Return'])
+    // the plan is the rows the batch settles into, as what is asked: the list never says one step two ways
+    const planned = plannedSteps('computer_batch', batch, ctx)
+    expect(planWords('computer_batch', planned)).toEqual(['Click Save', 'Type into Subject', 'Press ⌘Return'])
+    expect(planWords('computer_batch', planned)).toEqual(planned.map((step) => `${step.asked.verb} ${step.asked.object}`))
     // a single act and a batch of one have no plan line
-    expect(planWords('computer_act', { app: 'Mail', action: 'left_click', element: 44 }, ctx)).toBeUndefined()
-    expect(planWords('computer_batch', { app: 'Mail', actions: [{ action: 'left_click', element: 44 }] }, ctx)).toBeUndefined()
+    expect(planWords('computer_act', plannedSteps('computer_act', { app: 'Mail', action: 'left_click', element: 44 }, ctx))).toBeUndefined()
+    expect(planWords('computer_batch', plannedSteps('computer_batch', { app: 'Mail', actions: [{ action: 'left_click', element: 44 }] }, ctx))).toBeUndefined()
   })
 
   it('a batch as one row reads Working in its app', () => {
@@ -327,8 +332,8 @@ describe('settledSteps', () => {
       {
         kind: 'key',
         verb: 'Pressed',
-        object: 'super+s',
-        inApp: 'super+s in TextEdit',
+        object: '⌘S',
+        inApp: '⌘S in TextEdit',
         state: 'ok',
         tier: 'front',
         facts: ['saved ~/run/Total.txt', 'through the menu File › Save…', 'still changing after 1.5 s', 'TextEdit came to the front and Safari was put back']

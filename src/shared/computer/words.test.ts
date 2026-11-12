@@ -9,6 +9,7 @@ import {
   computerApprovalInput,
   computerApprovalTitle,
   computerPhrase,
+  keyCaps,
   computerSessionAskTitle,
   computerToolOf,
   isComputerResult,
@@ -212,7 +213,7 @@ describe('computerPhrase', () => {
     expect(asked('computer_act', { app: 'TextEdit', action: 'double_click', element: 14 })).toBe('Double-click Save in TextEdit')
     expect(asked('computer_act', { app: 'TextEdit', action: 'type', text: 'hi', element: 33 })).toBe('Type into Subject in TextEdit')
     expect(asked('computer_act', { app: 'TextEdit', action: 'paste', text: 'hi', element: 33 })).toBe('Paste into Subject in TextEdit')
-    expect(asked('computer_act', { app: 'TextEdit', action: 'key', text: 'super+s' })).toBe('Press super+s in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'key', text: 'super+s' })).toBe('Press ⌘S in TextEdit')
     expect(asked('computer_act', { app: 'TextEdit', action: 'hold_key', text: 'shift', duration: 1 })).toBe('Hold shift in TextEdit')
     expect(asked('computer_act', { app: 'TextEdit', action: 'scroll', scroll_direction: 'down', scroll_amount: 3 })).toBe('Scroll down in TextEdit')
     expect(asked('computer_act', { app: 'TextEdit', action: 'set_value', value: 'x', element: 33 })).toBe('Set Subject in TextEdit')
@@ -241,6 +242,18 @@ describe('computerPhrase', () => {
     ])
   })
 
+  it('keyCaps: a combo reads in the Mac\'s own marks, in its menus\' order; a key alone, or a text off the grammar, as it is', () => {
+    expect(keyCaps('super+s')).toBe('⌘S')
+    expect(keyCaps('super+shift+t')).toBe('⇧⌘T')
+    expect(keyCaps('shift+super+alt+ctrl+k')).toBe('⌃⌥⇧⌘K')
+    expect(keyCaps('ctrl+Tab')).toBe('⌃Tab')
+    expect(keyCaps('alt+Left')).toBe('⌥Left')
+    expect(keyCaps('super++')).toBe('⌘+')
+    expect(keyCaps('Return')).toBe('Return')
+    expect(keyCaps('a key')).toBe('a key')
+    expect(keyCaps('super+')).toBe('super+')
+  })
+
   it('app: false leaves the app out of the object, empty when the app is all there is', () => {
     const bare = (tool: string, input: object, liveNow = false) => {
       const p = computerPhrase(tool, input, { live: liveNow, brief, app: false })
@@ -251,7 +264,7 @@ describe('computerPhrase', () => {
     expect(bare('computer_act', { app: 'TextEdit', action: 'type', text: 'hi', element: 33 })).toEqual(['Typed', 'into Subject'])
     expect(bare('computer_act', { app: 'TextEdit', action: 'type', text: 'hi' })).toEqual(['Typed', ''])
     expect(bare('computer_act', { app: 'TextEdit', action: 'paste', text: 'hi', element: 33 })).toEqual(['Pasted', 'into Subject'])
-    expect(bare('computer_act', { app: 'TextEdit', action: 'key', text: 'super+s' })).toEqual(['Pressed', 'super+s'])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'key', text: 'super+s' })).toEqual(['Pressed', '⌘S'])
     expect(bare('computer_act', { app: 'TextEdit', action: 'scroll', scroll_direction: 'down', scroll_amount: 3 })).toEqual(['Scrolled', 'down'])
     expect(bare('computer_act', { app: 'TextEdit', action: 'left_click_drag', start_coordinate: [1, 2], coordinate: [3, 4] })).toEqual(['Dragged', ''])
     expect(bare('computer_act', { app: 'TextEdit', action: 'screenshot' })).toEqual(['Looked at', ''])
@@ -293,7 +306,7 @@ describe('computerPhrase', () => {
       [{ action: 'type', text: 'secret words', element: 33 }, ok('type', { element: { index: 33, line: 'input "Subject"' }, input: { via: 'ax-insert' } }), 'Typing into Subject in Mail', 'Typed into Subject in Mail'],
       [{ action: 'type', text: 'secret words' }, ok('type'), 'Typing in Mail', 'Typed in Mail'],
       [{ action: 'paste', text: 'https://example.com', element: 33 }, ok('paste', { element: { index: 33, line: 'input "Subject"' } }), 'Pasting into Subject in Mail', 'Pasted into Subject in Mail'],
-      [{ action: 'key', text: 'super+Return' }, ok('key'), 'Pressing super+Return in Mail', 'Pressed super+Return in Mail'],
+      [{ action: 'key', text: 'super+Return' }, ok('key'), 'Pressing ⌘Return in Mail', 'Pressed ⌘Return in Mail'],
       [{ action: 'hold_key', text: 'shift', duration: 1 }, ok('hold_key'), 'Holding shift in Mail', 'Held shift in Mail'],
       [{ action: 'scroll', scroll_direction: 'down', scroll_amount: 3 }, ok('scroll'), 'Scrolling down in Mail', 'Scrolled down in Mail'],
       [{ action: 'left_click_drag', start_element: 14, coordinate: [1, 2] }, ok('left_click_drag'), 'Dragging in Mail', 'Dragged in Mail'],

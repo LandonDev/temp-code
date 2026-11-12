@@ -60,7 +60,7 @@ describe("the Computer section's fixtures", () => {
     const { container } = render(<ComputerStates from={fixtures.indexOf(named("11."))} to={fixtures.indexOf(named("11.")) + 1} />);
     const pane = container.querySelector('[data-slot="computer-section"]')!;
     const rows = [...pane.querySelectorAll('[data-slot="step"]')].slice(0, 3);
-    expect(rows.map((r) => r.querySelector("button")!.textContent)).toEqual(["Presssuper+Return", "Typeinto Subject", "ClickedTo in Mail"]);
+    expect(rows.map((r) => r.querySelector("button")!.textContent)).toEqual(["Press⌘Return", "Typeinto Subject", "ClickedTo in Mail"]);
     expect(rows.map((r) => r.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark"))).toEqual(["not-run", "failed", null]);
     const open = pane.querySelector('[data-slot="step"][data-open]')!;
     expect(open.querySelector('[data-slot="step-why"]')!.textContent).toBe("The element was gone");

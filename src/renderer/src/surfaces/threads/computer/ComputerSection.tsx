@@ -21,7 +21,7 @@ import { useComputerSection, type ComputerSectionData } from "../../../lib/compu
 import { stopComputer, type ComputerEntry } from "../../../lib/computerSessions";
 import { LOCAL_ENVIRONMENT_ID } from "../../../lib/connection/registry";
 import { clockTime } from "../../../lib/duration";
-import { useSessionMetas } from "../../../lib/tcserver/store";
+import { useSessionTitles } from "../../../lib/tcserver/store";
 import { ComputerView, type LiveSession } from "./ComputerView";
 import { rowWords, type RunningLine } from "./StepList";
 import { StepMediaCache, keepsMedia, useStepMedia, type MediaWant } from "./stepMedia";
@@ -48,12 +48,19 @@ import { ENDED_WORDS, NO_PICTURE_WORDS, RETRY_ENDS, ViewportLine, liveFace, stre
 
 const sessionId = (entry: ComputerEntry): string => `${entry.host}:${entry.row.threadId}`;
 const windowIn = (call: Pick<ComputerHistoryCall, "app" | "window">): string => (call.window ? `${call.window} in ${call.app}` : call.app || "the Mac");
+/** When a call's kept picture was taken (after its answer), else when the call ended. */
+const shownAt = (call: ComputerHistoryCall): number => (call.picture && !("none" in call.picture) ? call.picture.at : (call.endedAt ?? call.at));
+/** What a kept face is, as its accessible name: "Untitled in TextEdit at 2:04 PM". */
+const keptLabel = (call: ComputerHistoryCall): string => `${windowIn(call)} at ${clockTime(shownAt(call))}`;
 const wantOf = (row: StepRow | null): MediaWant | null => (row ? { id: `${row.key}:${row.call.n}`, key: row.key, call: row.call } : null);
 
 /** The running calls as lines: each live session's card, hold or call, worded from the journal's start where it has one. */
 export function runningLines(entries: readonly ComputerEntry[], list: Steps): RunningLine[] {
   const starts = new Map(list.running.map((r) => [r.key, r]));
   const several = entries.length > 1;
+  // each session's newest finished call: the rows stand newest first
+  const newest = new Map<string, ComputerHistoryCall>();
+  for (const group of list.groups) for (const row of group.rows) if (!newest.has(row.key)) newest.set(row.key, row.call);
   const lines: RunningLine[] = [];
   for (const entry of entries) {
     const key = historyKeyOf(entry);
@@ -65,9 +72,22 @@ export function runningLines(entries: readonly ComputerEntry[], list: Steps): Ru
     // with one session its row above says the app; with several each line says its own
     const words = start ? rowWords({ ...start, namesApp: several }, true) : null;
     if (state === "waiting") lines.push({ id, state, verb: "", object: entry.row.asking?.line ?? "" });
-    else if (state === "queued") lines.push({ id, state, verb: "", object: entry.row.running?.words ?? "", ...(words ? { waits: [words.verb, words.object].filter(Boolean).join(" ") } : {}) });
-    else if (words) lines.push({ id, state: "working", ...words, ...(start?.call.plan?.length ? { plan: start.call.plan } : {}) });
-    else lines.push({ id, state: "working", verb: "", object: entry.row.running?.words ?? "" });
+    else if (state === "queued") {
+      // a held step has not begun: what waits reads as what is asked ("Press ⌘S"), never as under way
+      // (a batch that waits is its planned steps, which are worded that way already)
+      const waits = start ? rowWords({ ...start, namesApp: several }, true, true) : null;
+      const under = start?.call.plan?.length ? { plan: start.call.plan } : waits ? { waits: [waits.verb, waits.object].filter(Boolean).join(" ") } : {};
+      lines.push({ id, state, verb: "", object: entry.row.running?.words ?? "", ...under });
+    } else if (words) lines.push({ id, state: "working", ...words, ...(start?.call.plan?.length ? { plan: start.call.plan } : {}) });
+    else {
+      // The journal's end is told at once and the live row a moment later: a call the journal already ended (it
+      // began before the row's call was marked running, and ended after) is not drawn as running again from the
+      // row's own words.
+      const last = key ? newest.get(key) : undefined;
+      const running = entry.row.running;
+      if (running && last?.endedAt !== undefined && last.at <= running.startedAt && last.endedAt >= running.startedAt) continue;
+      lines.push({ id, state: "working", verb: "", object: running?.words ?? "" });
+    }
   }
   // a call the journal says runs whose live row has not come yet
   for (const start of starts.values()) lines.push({ id: `running:${start.key}`, state: "working", ...rowWords({ ...start, namesApp: true }, true), ...(start.call.plan?.length ? { plan: start.call.plan } : {}) });
@@ -86,6 +106,8 @@ export function viewportOf(v: {
   keptHeight: number | null;
   /** what is shown is neither the window now nor the open row's own picture: the line under it says when it was */
   asOf?: boolean;
+  /** the stand-in is of another window than the open row's step: the line names it */
+  another?: boolean;
   onOpen: (label: string, url: string, from: DOMRect) => void;
 }): ViewportProps | null {
   const { live, pinned, shown, media, keptHeight } = v;
@@ -105,20 +127,28 @@ export function viewportOf(v: {
   const { call } = shown;
   const kept = call.picture && !("none" in call.picture) ? call.picture : null;
   // the picture's own time: it is taken after the call's answer
-  const at = kept?.at ?? call.endedAt ?? call.at;
-  const label = `${windowIn(call)} at ${clockTime(at)}`;
+  const at = shownAt(call);
+  const label = keptLabel(call);
   const size = kept ? { width: kept.width, height: kept.height } : null;
   const here = media.landed?.id === `${shown.key}:${call.n}` ? media.landed.media : null;
   const base = { label, size, height: pinned ? keptHeight : null };
-  // a pinned row's own facts carry its time; an older step standing in for the newest says when it was
-  const asIt = v.asOf ? <ViewportLine words={pinned ? "As it was after this step" : `As it was at ${clockTime(at)}`} /> : null;
+  // a pinned row's own facts carry its time; an older step standing in for the newest says when it was, and whose
+  // window it is where that is not the newest step's
+  const asIt = v.asOf ? (
+    <ViewportLine words={pinned ? "As it was after this step" : v.another ? `${windowIn(call)}, as it was at ${clockTime(at)}` : `As it was at ${clockTime(at)}`} />
+  ) : null;
   // Nothing to put in a box. A pinned step keeps the box's place, so stepping through rows moves nothing; else the line alone.
   const nothing = (line: ReactNode): ViewportProps | null =>
     pinned && keptHeight ? { ...base, size: null, face: { kind: "none" }, line: line ?? <ViewportLine words="No picture was kept" /> } : line ? { face: null, label, line } : null;
   if (!here) {
-    // on its way: the picture before it stays, dimmed once that has taken a moment; a first picture is a skeleton
+    // The read failed: that is not "nothing was kept". The line says so, with Retry, in the box's place.
+    if (media.failed) return nothing(ended ?? <ViewportLine words={kept ? "Couldn't read the picture" : "Couldn't read the text"} onRetry={media.retry} />);
+    // on its way: the picture before it stays, under its own name, dimmed once that has taken a moment; a first
+    // picture is a skeleton
     const before = media.landed?.media.picture;
-    if (before) return { ...base, face: { kind: "picture", src: before.url, dim: media.late }, line: ended };
+    if (before && media.landed) {
+      return { ...base, label: keptLabel(media.landed.call), face: { kind: "picture", src: before.url, dim: media.late }, line: ended };
+    }
     return keepsMedia(call) ? { ...base, face: { kind: "skeleton" }, line: ended } : nothing(ended);
   }
   if (here.picture) {
@@ -144,21 +174,22 @@ export function ComputerSection({ threadId }: { threadId: string }) {
 
 /** The section over what its hook read (ComputerSection; tests give it the data). */
 export function ComputerSectionBody({ threadId, data }: { threadId: string; data: ComputerSectionData }) {
-  const metas = useSessionMetas();
   const paneShown = usePaneVisible();
   const docShown = useDocumentVisible();
   const root = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
 
   // ── the list ──
-  // The subagents' titles as one string: a push that changes none of them leaves the rows as they are.
-  const titles = data.keys.map(({ threadId: id }) => (id === threadId ? "" : metas.find((m) => m.id === id)?.title || "Subagent")).join("\u0000");
+  // The subagents' titles as one string: another thread's push renders nothing here, and one that changes no title
+  // leaves the rows as they are.
+  const threadIds = useMemo(() => data.keys.map((k) => k.threadId), [data.keys]);
+  const titles = useSessionTitles(threadIds);
   const sessions = useMemo<HistorySession[]>(() => {
     const names = titles.split("\u0000");
     return data.keys.map(({ key, threadId: id }, i) => ({
       key,
       threadId: id,
-      ...(id !== threadId ? { title: names[i] } : {}),
+      ...(id !== threadId ? { title: names[i] || "Subagent" } : {}),
       calls: data.histories[key]?.calls ?? [],
     }));
   }, [data.histories, data.keys, titles, threadId]);
@@ -174,7 +205,9 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     setSelected(null);
     setKeptHeight(null);
   }
-  const openRow = pinnedRow ?? rows[0] ?? null;
+  // Following, the open row is the newest step with an outcome: after a batch that failed part way that is the
+  // step that failed, not the last of the steps that never ran.
+  const openRow = pinnedRow ?? rows.find((r) => r.step.state !== "not-run") ?? rows[0] ?? null;
   const lead = data.entries[0] ?? null;
   const stream = useLiveStream(lead, !pinnedRow && paneShown && docShown, box, root);
   const over = stream.state.status === "ended" || stream.state.status === "failed";
@@ -203,10 +236,13 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
       const read = rows.find((r) => r.call.text && r.key === leadKey) ?? rows.find((r) => r.call.text);
       if (read) return read;
     }
-    return openRow && !keepsMedia(openRow.call) ? (rows.find((r) => keepsMedia(r.call)) ?? openRow) : openRow;
+    if (!openRow || keepsMedia(openRow.call)) return openRow;
+    // the open step's own session first: its window is the one the step was in
+    return rows.find((r) => r.key === openRow.key && keepsMedia(r.call)) ?? rows.find((r) => keepsMedia(r.call)) ?? openRow;
   };
   const shownRow = pinnedRow ?? (!lead || over ? standIn() : null);
   const asOf = pinnedRow ? lead !== null : shownRow !== null && shownRow.call !== openRow?.call;
+  const another = !pinnedRow && shownRow !== null && openRow !== null && (shownRow.key !== openRow.key || shownRow.call.app !== openRow.call.app || shownRow.call.window !== openRow.call.window);
   const media = useStepMedia(cache, wantOf(shownRow));
 
   // The open row's read: closed whenever the open row changes.
@@ -290,6 +326,7 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     media,
     keptHeight,
     asOf,
+    another,
     // a kept picture opens the lightbox from the box; the live box does not
     onOpen: (label, url, from) => openLightbox([{ environmentId: LOCAL_ENVIRONMENT_ID, name: label, src: url }], 0, from),
   });
@@ -304,7 +341,12 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
       running={running}
       groups={list.groups}
       openId={openRow?.id ?? null}
-      read={{ open: readOpen, text: readText, above: viewport?.face?.kind === "text" && shownRow?.call === openRow?.call }}
+      read={{
+        open: readOpen,
+        text: readText,
+        above: viewport?.face?.kind === "text" && shownRow?.call === openRow?.call,
+        ...(readOpen && readText === null && readMedia.failed ? { failed: true, onRetry: readMedia.retry } : {}),
+      }}
       status={status}
       more={histories.some((h) => h?.more)}
       loadingMore={loadingMore}

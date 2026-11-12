@@ -1,7 +1,7 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
-import { lstat, readFile, stat } from 'node:fs/promises'
+import { lstat, readFile, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { glob } from 'tinyglobby'
 import type { ProjectSearchOptions, ProjectSearchResult } from '@shared/contract-m3a'
 
@@ -171,12 +171,39 @@ async function scanFiles(
   return result
 }
 
+let deniedDirs: () => string[] = () => []
+
+/**
+ * Directories no search reports from, whatever root holds them: the
+ * computer history (computer/history.ts), whose read texts say what was on
+ * the person's windows and are read only by this desktop's own
+ * `computer.history.step`.
+ */
+export function setSearchDenied(provider: () => string[]): void {
+  deniedDirs = provider
+}
+
+/** The matches that sit under no denied directory, by the real spelling of the root and of each directory. */
+async function withoutDenied(root: string, result: ProjectSearchResult): Promise<ProjectSearchResult> {
+  const dirs = deniedDirs()
+  if (!dirs.length || !result.matches.length) return result
+  const real = (p: string): Promise<string> => realpath(p).catch(() => resolve(p))
+  const [realRoot, ...denied] = await Promise.all([real(root), ...dirs.map(real)])
+  // a search whose root holds no denied directory, and sits in none, has nothing to leave out
+  if (!denied.some((d) => d.startsWith(realRoot + sep) || d === realRoot || realRoot.startsWith(d + sep))) return result
+  const under = (path: string): boolean => {
+    const spelled = path.startsWith(root) ? realRoot + path.slice(root.length) : path
+    return denied.some((d) => spelled === d || spelled.startsWith(d + sep))
+  }
+  return { ...result, matches: result.matches.filter((m) => !under(m.path)) }
+}
+
 export async function searchProject(options: ProjectSearchOptions): Promise<ProjectSearchResult> {
   const query = options.query.trim()
   if (!query) return { matches: [], truncated: false }
   const root = resolve(expandHome(options.cwd))
   if (!(await stat(root)).isDirectory()) throw new Error(`${root}: Not a directory`)
-  const result = (await gitGrep(root, query, options)) ?? (await scanFiles(root, query, options))
+  const result = await withoutDenied(root, (await gitGrep(root, query, options)) ?? (await scanFiles(root, query, options)))
   return withMtimes(result)
 }
 

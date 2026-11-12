@@ -2575,6 +2575,15 @@ export function useSessionMetas(): SessionMeta[] {
   return useSyncExternalStore(subscribeMetas, readMetas);
 }
 
+/**
+ * The titles of these sessions as one string (NUL-joined, empty for an id
+ * the store does not hold): a component that needs titles alone renders
+ * again only when one of them changes, never on another thread's push.
+ */
+export function useSessionTitles(ids: readonly string[]): string {
+  return useSyncExternalStore(subscribeMetas, () => ids.map((id) => sessionStore.metaOf(id)?.title ?? "").join("\u0000"));
+}
+
 const NO_METAS: SessionMeta[] = [];
 
 /** Every meta while `enabled`, else a constant empty list that never re-renders. */

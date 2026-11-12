@@ -307,7 +307,7 @@ export async function runComputerTool(
     try {
       planned = plannedSteps(tool, args, words)
       masked = maskedTexts(tool, args, words)
-      const plan = planWords(tool, args, words)
+      const plan = planWords(tool, planned)
       entry = host.history.begin(t.threadId, {
         app: words.app,
         window: args.window ?? known?.window?.title ?? null,
@@ -352,7 +352,9 @@ export async function runComputerTool(
         ...(read?.more ? { text: scrubReadText(obs!.text, masked) } : {})
       })
     } catch (e) {
-      host.log(`computer history: the end of a call was not written: ${(e as Error).message}`)
+      host.log(`computer history: the end of a call was not worded: ${(e as Error).message}`)
+      // the call did end: its entry ends too, as what was asked, so no reader goes on showing it as running
+      void entry.end({ app: words.app, window: args.window ?? null, steps: planned.map(({ asked, done: _done, ...step }) => ({ ...step, ...asked })) })
     }
     journaled?.(entry, obs ? { session: t.serviceSession, pid: obs.app.pid, windowId: obs.window.id, width: obs.space.width, height: obs.space.height, epoch: obs.epoch } : null)
   }

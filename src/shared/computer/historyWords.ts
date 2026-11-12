@@ -40,7 +40,7 @@ import {
   type WaitReport
 } from './protocol'
 import { diskWords, menuPathSegments, type ComputerToolName } from './tools'
-import { actionWords, computerPhrase, type AppsOutcome, type ComputerPhrase } from './words'
+import { computerPhrase, isPasswordLine, quoteShort as quoted, type AppsOutcome, type ComputerPhrase } from './words'
 
 /** What the words need of the thread's element book (computer/elements.ts). */
 export interface WordsBook {
@@ -55,7 +55,6 @@ export const READ_TEXT_MAX_BYTES = 12_000
 export const TEXT_FACT_MAX = 60
 
 const sendsInput = (a: Pick<ComputerAction, 'action'>): boolean => !NO_INPUT_ACTIONS.includes(a.action)
-const isPasswordLine = (line: string): boolean => line === 'password' || line.startsWith('password ')
 
 const KINDS: Readonly<Record<ComputerActionName, ComputerStepKind>> = {
   screenshot: 'look',
@@ -121,10 +120,7 @@ function safeAction(a: ComputerAction): ComputerAction {
   return (a.action === 'key' || a.action === 'hold_key') && barePrintable(a.text) ? { ...a, text: 'a key' } : a
 }
 
-const quoteShort = (text: string): string => {
-  const s = [...text]
-  return JSON.stringify(s.length > TEXT_FACT_MAX ? s.slice(0, TEXT_FACT_MAX).join('') + '…' : text)
-}
+const quoteShort = (text: string): string => quoted(text, TEXT_FACT_MAX)
 
 /** The text a step put in, as a fact: quoted and cut when the rule allows it, else its length. */
 function textFact(text: string, quote: boolean): string {
@@ -302,19 +298,18 @@ export function maskedTexts(tool: ComputerToolName, args: Record<string, unknown
   })
 }
 
-/** A batch's planned steps in the card's words, each through the secret rule; undefined for any other call. */
-export function planWords(tool: ComputerToolName, args: Record<string, unknown>, ctx: WordsContext): string[] | undefined {
-  if (tool !== 'computer_batch') return undefined
-  const actions = callActions(tool, args)
-  if (actions.length < 2) return undefined
-  return actions.map((a, k) =>
-    actionWords(safeAction(a), {
-      appName: ctx.app,
-      window: null,
-      element: (i) => ctx.book?.brief(i) ?? null,
-      maskText: !mayQuoteText(actions, k, ctx.book)
-    })
-  )
+/** A step's row as one string, the app left out: "Click Save". */
+export const wordsLine = (words: StepWords): string => [words.verb, words.object].filter(Boolean).join(' ')
+
+/**
+ * A batch's planned steps, one line each, as what is asked: "Click To",
+ * "Type into Subject", "Press ⌘Return". They are the rows the batch settles
+ * into, in the same words, so the list never says one step two ways; a
+ * typed text is never in them (a row's words hold none). Undefined for any
+ * other call.
+ */
+export function planWords(tool: ComputerToolName, planned: readonly PlannedStep[]): string[] | undefined {
+  return tool === 'computer_batch' && planned.length > 1 ? planned.map((step) => wordsLine(step.asked)) : undefined
 }
 
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1).replace(/\.0$/, '')} s`

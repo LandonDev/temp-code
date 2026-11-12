@@ -28,7 +28,7 @@ export interface LiveSession {
 }
 
 export interface ComputerViewProps {
-  /** the live sessions, the one that acted last (the one the viewport follows) first; none once the turn settled */
+  /** the live sessions, the one that acted last (the one the viewport follows) first; it is drawn last, next to the box. None once the turn settled */
   sessions: readonly LiveSession[];
   /** a row was chosen by hand: Go live shows, and the viewport is that call's picture */
   pinned: boolean;
@@ -51,7 +51,7 @@ export interface ComputerViewProps {
   boxRef?: Ref<HTMLElement>;
 }
 
-function SessionRow({ session, first, pinned, onFollow, onStop }: { session: LiveSession; first: boolean; pinned: boolean; onFollow: () => void; onStop: () => void }) {
+function SessionRow({ session, first, several, pinned, onFollow, onStop }: { session: LiveSession; first: boolean; several: boolean; pinned: boolean; onFollow: () => void; onStop: () => void }) {
   return (
     <div data-slot="computer-session" className="flex h-9 min-w-0 items-center gap-2">
       <SquareMousePointer className="size-3.5 shrink-0 text-muted-foreground" />
@@ -70,7 +70,8 @@ function SessionRow({ session, first, pinned, onFollow, onStop }: { session: Liv
         <Tooltip>
           <TooltipTrigger
             // hung 8px out, so its 10px square ends on the viewport's edge under it
-            render={<Button variant="ghost" size="icon-xs" className="-me-2 shrink-0 text-muted-foreground hover:text-foreground" aria-label="Stop" disabled={session.stopping} onClick={onStop} />}
+            // with several sessions each Stop says whose it is
+            render={<Button variant="ghost" size="icon-xs" className="-me-2 shrink-0 text-muted-foreground hover:text-foreground" aria-label={several ? `Stop ${session.label}` : "Stop"} disabled={session.stopping} onClick={onStop} />}
           >
             <Square className="size-2.5 fill-current" />
           </TooltipTrigger>
@@ -89,8 +90,10 @@ export const ComputerView = forwardRef(function ComputerView(props: ComputerView
     <div ref={ref} data-slot="computer-section" data-following={!pinned || undefined} className="flex min-h-0 flex-1 flex-col [container-type:size]">
       {head ? (
         <div className={sessions.length ? "shrink-0 px-3 pt-1.5 pb-2" : "shrink-0 px-3 pt-3 pb-2"}>
-          {sessions.map((session, i) => (
-            <SessionRow key={session.id} session={session} first={i === 0} pinned={pinned} onFollow={props.onFollow} onStop={() => props.onStop(session.id)} />
+          {/* The session the viewport follows is drawn last, right above the box, so the picture is never read as
+              another session's; the others stand above it. */}
+          {[...sessions].reverse().map((session) => (
+            <SessionRow key={session.id} session={session} first={session === sessions[0]} several={sessions.length > 1} pinned={pinned} onFollow={props.onFollow} onStop={() => props.onStop(session.id)} />
           ))}
           {viewport ? <Viewport ref={boxRef} {...viewport} /> : null}
         </div>

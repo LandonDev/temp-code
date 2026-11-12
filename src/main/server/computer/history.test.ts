@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ComputerHistoryStep } from '@shared/contract-computer'
-import { ComputerHistory, HISTORY_KEEP_CALLS, HISTORY_KEEP_LINES, HISTORY_KEEP_MS, HISTORY_PAGE, PICTURE_TIMEOUT_MS, capturePicture, historyPicturesFromEnv, type HistoryChange } from './history'
+import { ComputerHistory, HISTORY_COMPACT_SLACK, HISTORY_KEEP_CALLS, HISTORY_KEEP_LINES, HISTORY_KEEP_MS, HISTORY_PAGE, PICTURE_TIMEOUT_MS, capturePicture, historyPicturesFromEnv, type HistoryChange } from './history'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { serviceSessionId } from './sessionId'
 import { FAKE_APPS, ManualClock } from './testFake'
@@ -166,7 +166,8 @@ describe('n, turn and born', () => {
     expect((await j.calls('t1')).calls[0].state).toBe('running')
     await j.history.close()
     const again = journal({ root: j.root })
-    expect((await again.calls('t1')).calls[0]).toMatchObject({ state: 'unfinished', rev: 1 })
+    // the flip is a revision: a reader that held it running takes the unfinished call
+    expect((await again.calls('t1')).calls[0]).toMatchObject({ state: 'unfinished', rev: 2 })
   })
 
   it('a call that never finished reads as what was asked of it; while it runs, and once it ends, it reads as it was written', async () => {
@@ -177,12 +178,50 @@ describe('n, turn and born', () => {
     await done.end(end())
     const live = (await j.calls('t1')).calls
     expect(live.map((c) => [c.state, c.steps[0].verb])).toEqual([['running', 'Clicking'], ['done', 'Clicked']])
-    // the words a reader gets never carry the journal's own field
-    for (const c of live) expect(c.steps[0]).not.toHaveProperty('asked')
-    for (const c of j.changes) if ('call' in c) expect(c.call.steps[0]).not.toHaveProperty('asked')
+    // a call that runs keeps what was asked beside its words (a step held before it began reads by it); an ended one has none
+    expect(live[0].steps[0].asked).toEqual(asked)
+    expect(live[1].steps[0]).not.toHaveProperty('asked')
     await j.history.close()
     const again = journal({ root: j.root })
-    expect((await again.calls('t1')).calls.map((c) => [c.state, c.steps[0].verb])).toEqual([['unfinished', 'Click'], ['done', 'Clicked']])
+    const reloaded = (await again.calls('t1')).calls
+    expect(reloaded.map((c) => [c.state, c.steps[0].verb])).toEqual([['unfinished', 'Click'], ['done', 'Clicked']])
+    expect(reloaded[0].steps[0]).not.toHaveProperty('asked')
+    expect(reloaded[0].rev).toBeGreaterThan(live[0].rev)
+  })
+
+  it('a read that waited out a removal answers nothing of what went', async () => {
+    const j = journal()
+    await j.history.begin('t1', start()).end(end())
+    await j.calls('t1')
+    // the read is asked, then the history removed before the read's turn comes
+    const reading = j.history.read(['t1'])
+    const removing = j.history.remove('t1')
+    expect((await reading)[0]).toEqual({ key: 't1', born: 0, calls: [], more: false })
+    await removing
+    expect(await j.history.step('t1', 1)).toEqual({})
+  })
+
+  it('a log that passes its bound inside one host run is written again too, and its reader keeps its born', async () => {
+    const j = journal()
+    const dir = j.dir('t1')
+    mkdirSync(join(dir, 'steps'), { recursive: true })
+    const total = HISTORY_KEEP_LINES + HISTORY_COMPACT_SLACK
+    const records: string[] = []
+    for (let n = 1; n <= total; n++) {
+      records.push(JSON.stringify({ v: 1, r: 'start', n, turn: 1, at: n * 10, ...start() }))
+      records.push(JSON.stringify({ v: 1, r: 'end', n, at: n * 10 + 1, ...end() }))
+    }
+    // a log just under the bound it is loaded at... which is itself over the kept lines: loading compacts once
+    writeFileSync(join(dir, 'log.jsonl'), records.slice(0, HISTORY_KEEP_LINES * 2).join('\n') + '\n')
+    const born = (await j.calls('t1')).born
+    // the run goes on past the slack
+    for (let i = 0; i < HISTORY_COMPACT_SLACK + 1; i++) await j.history.begin('t1', start()).end(end())
+    const lines = j.lines('t1')
+    expect(new Set(lines.map((l) => l.n)).size).toBe(HISTORY_KEEP_LINES)
+    expect(lines.at(-1)).toMatchObject({ r: 'end', n: HISTORY_KEEP_LINES + HISTORY_COMPACT_SLACK + 1 })
+    const read = await j.calls('t1')
+    expect(read.born).toBe(born)
+    expect(read.calls.at(-1)!.n).toBe(HISTORY_KEEP_LINES + HISTORY_COMPACT_SLACK + 1)
   })
 
   it('a key with nothing on disk is not loaded for a reader, and still takes its first call', async () => {
@@ -504,6 +543,34 @@ describe('the kept picture', () => {
     await waitFor(() => shots(h).length === 2, 'the second picture request')
     await clock.advance(PICTURE_TIMEOUT_MS + 1)
     expect((await callsOf(h)).map((c) => c.picture)).toEqual([{ none: 'failed' }, { none: 'failed' }])
+  })
+
+  it('a Stop gives up a picture being taken: the session closes without waiting out the two seconds', async () => {
+    const clock = new ManualClock()
+    const h = host({ clock, env: { FAKE_SHOT_MS: '60000' } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await waitFor(() => shots(h).length === 1, 'the picture request')
+    // no clock moves: the stop alone ends the capture
+    await h.sessions.stop('t1')
+    await waitFor(() => h.requests().some((r) => r.method === '$/cancel'), 'the cancel')
+    expect((await callsOf(h))[0].picture).toEqual({ none: 'failed' })
+    expect(h.requests().some((r) => r.method === 'session.close')).toBe(true)
+  })
+
+  it('a signal already fired, or fired while the capture is out, answers at once', async () => {
+    const h = host({ env: { FAKE_SHOT_MS: '60000' } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const up = h.service.state()
+    const fired = new AbortController()
+    fired.abort()
+    const before = shots(h).length
+    const target = { session: 't1', pid: FAKE_APPS.TextEdit.pid, windowId: 1, width: 1280, height: 1072, epoch: up.epoch! }
+    expect(await capturePicture(h.service, target, { signal: fired.signal })).toEqual({ none: 'failed' })
+    expect(shots(h).length).toBe(before)
+    const cut = new AbortController()
+    const taking = capturePicture(h.service, target, { signal: cut.signal })
+    cut.abort()
+    expect(await taking).toEqual({ none: 'failed' })
   })
 
   it('sends no request with Screen Recording off, and says why', async () => {

@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
 
 /**
@@ -178,4 +178,62 @@ export function fenceRequest(req: ClientRequest, roots: readonly string[], attac
   if (!files?.length) return
   const all = [...roots, ...attachmentRoots]
   for (const p of files) if (!admits(p, all)) throw new FenceError(req.method)
+}
+
+// ── the denied directories, through every file method ───────────────────
+
+/** The methods whose params may name a file: only their strings are read as paths. */
+const FILE_METHOD = /^(fs|git|github|project|search|attachment|lsp|fim|build|projectLogo)\./
+/** A string longer than this, or of several lines, is content, not a path. */
+const PATH_MAX = 4096
+const STRINGS_MAX = 4096
+
+/** Methods that carry a whole directory along: their source may not hold a denied one. */
+const CARRIED: Record<string, (params: Record<string, unknown>) => unknown[]> = {
+  'fs.copyPath': (p) => [p.from],
+  'fs.movePath': (p) => [p.from]
+}
+
+/** Params that hold what a file says or a person wrote, never where a file is. */
+const CONTENT_KEYS: ReadonlySet<string> = new Set(['content', 'query', 'text', 'message', 'body', 'title', 'prefix', 'suffix'])
+
+function pathStrings(value: unknown, out: string[], depth = 0): void {
+  if (out.length >= STRINGS_MAX || depth > 6) return
+  if (typeof value === 'string') {
+    if (value && value.length <= PATH_MAX && !value.includes('\n')) out.push(value)
+  } else if (Array.isArray(value)) for (const v of value) pathStrings(v, out, depth + 1)
+  else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) if (!CONTENT_KEYS.has(k)) pathStrings(v, out, depth + 1)
+}
+
+/**
+ * No remote file request reaches a denied directory (the computer history,
+ * whose pictures are the person's windows) by any of its params: a path
+ * given whole, or one relative to a directory the request works in
+ * (`bases`: its project's checkout, its `cwd`). `fenceRequest` covers the
+ * methods that name a path outright; this covers the ones scoped by a
+ * project id (`fs.read`, `fs.list`, `project.blame`, …) and a file named
+ * inside a `cwd`, which that table leaves to their own handlers. A copy or
+ * a move whose source holds a denied directory is refused too: it would
+ * carry the directory out to where nothing denies it. Throws the fence's
+ * one typed error.
+ */
+export function fenceDenied(req: ClientRequest, bases: readonly string[], denied: readonly string[]): void {
+  if (!denied.length || !FILE_METHOD.test(req.method)) return
+  const params = (req as { params?: unknown }).params
+  const strings: string[] = []
+  pathStrings(params, strings)
+  for (const s of strings) {
+    const whole = s.startsWith('~') || isAbsolute(s)
+    const candidates = whole ? [s] : bases.map((base) => join(expandPath(base), s))
+    if (candidates.some((c) => insideRoots(c, denied))) throw new FenceError(req.method)
+  }
+  const carried = CARRIED[req.method]?.((params ?? {}) as Record<string, unknown>) ?? []
+  for (const from of carried) if (typeof from === 'string' && denied.some((d) => insideRoots(d, [from]))) throw new FenceError(req.method)
+}
+
+/** The directories a request works in, for `fenceDenied`: its `cwd` (or its search's), and its project's checkout. */
+export function requestBases(req: ClientRequest, projectCwd: (projectId: string) => string | undefined): string[] {
+  const p = ((req as { params?: unknown }).params ?? {}) as { cwd?: unknown; options?: { cwd?: unknown }; projectId?: unknown }
+  const bases = [p.cwd, p.options?.cwd, typeof p.projectId === 'string' ? projectCwd(p.projectId) : undefined]
+  return bases.filter((b): b is string => typeof b === 'string' && b !== '')
 }
