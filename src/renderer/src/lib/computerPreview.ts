@@ -164,9 +164,23 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
         if (alive) setState({ status: "failed", message: e instanceof Error ? e.message : String(e) });
       });
 
+    // The stream is the socket's: when it drops the host forgets this viewer, so the picture on screen is no longer
+    // live. It says so (the skeleton, in the picture's shape) and a new stream is asked for when the socket opens.
+    const offClose = link.onClose(() => {
+      if (!alive) return;
+      over = true;
+      preview = null;
+      setState((prev) => ({ status: "starting", ...(prev.status === "live" ? { width: prev.width, height: prev.height } : {}) }));
+    });
+    const offOpen = link.onOpen(() => {
+      if (alive) setAttempt((n) => n + 1);
+    });
+
     return () => {
       alive = false;
       off();
+      offClose();
+      offOpen();
       if (preview) void link.request("computer.preview.stop", { preview }).catch(() => undefined);
     };
   }, [attempt, box, canvas, edge, host, key, run]);

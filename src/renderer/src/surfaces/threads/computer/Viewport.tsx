@@ -23,7 +23,7 @@ import type { ComputerEntry } from "../../../lib/computerSessions";
  */
 
 /** The box's tallest, in pixels; the section's height caps it sooner (`VIEWPORT_MAX`). */
-export const VIEWPORT_MAX_HEIGHT = 240;
+export const VIEWPORT_MAX_HEIGHT = 400;
 /** The cap as CSS: the section's body is a size container, so a short panel keeps its list. */
 export const VIEWPORT_MAX = `min(${VIEWPORT_MAX_HEIGHT}px, 45cqh)`;
 /** The section's 12px insets either side of the box. */

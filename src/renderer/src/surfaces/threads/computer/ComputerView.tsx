@@ -28,8 +28,10 @@ export interface LiveSession {
 }
 
 export interface ComputerViewProps {
-  /** the live sessions, the one that acted last (the one the viewport follows) first; it is drawn last, next to the box. None once the turn settled */
+  /** the live sessions, top to bottom: in the order they began, the one the viewport follows last, next to the box. None once the turn settled */
   sessions: readonly LiveSession[];
+  /** the session the viewport follows: Go live is its row's (the last row when unset) */
+  followedId?: string | null;
   /** a row was chosen by hand: Go live shows, and the viewport is that call's picture */
   pinned: boolean;
   /** null: nothing to show in a box and nothing to say under one */
@@ -92,10 +94,18 @@ export const ComputerView = forwardRef(function ComputerView(props: ComputerView
     <div ref={ref} data-slot="computer-section" data-following={!pinned || undefined} className="flex min-h-0 flex-1 flex-col [container-type:size]">
       {head ? (
         <div className={sessions.length ? "shrink-0 px-3 pt-1.5 pb-2" : "shrink-0 px-3 pt-3 pb-2"}>
-          {/* The session the viewport follows is drawn last, right above the box, so the picture is never read as
+          {/* The session the viewport follows is the last row, right above the box, so the picture is never read as
               another session's; the others stand above it. */}
-          {[...sessions].reverse().map((session) => (
-            <SessionRow key={session.id} session={session} first={session === sessions[0]} several={sessions.length > 1} pinned={pinned} onFollow={props.onFollow} onStop={() => props.onStop(session.id)} />
+          {sessions.map((session, i) => (
+            <SessionRow
+              key={session.id}
+              session={session}
+              first={props.followedId ? session.id === props.followedId : i === sessions.length - 1}
+              several={sessions.length > 1}
+              pinned={pinned}
+              onFollow={props.onFollow}
+              onStop={() => props.onStop(session.id)}
+            />
           ))}
           {viewport ? <Viewport ref={boxRef} {...viewport} /> : null}
         </div>

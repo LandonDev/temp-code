@@ -28,7 +28,8 @@ describe('a call whose end cannot be worded', () => {
     const calls = (await h.history!.read(['t1']))[0].calls
     expect(calls.map((c) => c.state)).toEqual(['done', 'done'])
     expect(calls[0].steps.map((s) => s.verb)).toEqual(['Read'])
-    expect(calls[1].steps.map((s) => [s.verb, s.object])).toEqual([['Click', 'bold'], ['Press', '⌘S']])
+    // how it went is not known: the first step says so, the rest read as not run
+    expect(calls[1].steps.map((s) => [s.verb, s.object, s.state, s.reason])).toEqual([['Click', 'bold', 'failed', 'It failed'], ['Press', '⌘S', 'not-run', undefined]])
     for (const step of calls[1].steps) expect(step).not.toHaveProperty('asked')
   })
 })

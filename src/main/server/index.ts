@@ -1339,7 +1339,8 @@ export async function startServer(
     const computerData = join(options.dataDir ?? dirname(dbPath), 'computer')
     const picturesFromEnv = historyPicturesFromEnv()
     const history = new ComputerHistory({
-      root: historyRoot(computerData),
+      // the one root the media, search and fence denials name: never spelled a second time
+      root: computerHistoryRoot,
       log: (line) => console.log(`[computer] ${line}`),
       // the seam first (a proof's instance takes none), then Settings → Computer use's switch, on by default
       pictures: () => picturesFromEnv && store.getSetting(KEEP_PICTURES_SETTING) !== '0'

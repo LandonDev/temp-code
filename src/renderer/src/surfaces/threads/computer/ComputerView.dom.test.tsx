@@ -46,7 +46,7 @@ vi.mock("../../../lib/computerHistory", async (original) => ({
 
 import { COMPUTER_TIER_WORDS } from "@server/shared/statusWords";
 import { clockTime } from "../../../lib/duration";
-import { ComputerSectionBody, runningLines } from "./ComputerSection";
+import { ComputerSectionBody, FOLLOW_HOLD_MS, followedSession, runningLines } from "./ComputerSection";
 import { PICTURE_DIM_MS, STEP_MEDIA_LIMIT, StepMediaCache } from "./stepMedia";
 import { rowsOf } from "../../../lib/computerHistory";
 
@@ -338,6 +338,59 @@ describe("following", () => {
     const batch = running(2, { app: "Mail", plan: ["Click To", "Type into Subject"], steps: [step("Clicking", "To", { state: undefined }), step("Typing", "into Subject", { state: undefined })] });
     expect(runningLines([held], rowsOf([{ key: "t1", threadId: "t1", calls: [batch] }]))[0]).toMatchObject({ state: "queued", plan: ["Click To", "Type into Subject"] });
     expect(runningLines([held], rowsOf([{ key: "t1", threadId: "t1", calls: [batch] }]))[0].waits).toBeUndefined();
+  });
+
+  it("followedSession: it stays with the session it has while that one works and for a moment after, then goes to where something happens", () => {
+    const at = (threadId: string, lastCallAt: number, startedAt?: number): ComputerEntry =>
+      entry({ threadId, lastCallAt, since: 1, running: startedAt === undefined ? null : { tool: "computer_act", words: "Clicking", startedAt } });
+    const id = (e: ComputerEntry | null): string | null => e?.row.threadId ?? null;
+    // one session, or none held: the one at work, else the one that acted last
+    expect(followedSession([], null, 0)).toBeNull();
+    expect(id(followedSession([at("a", 100)], null, 200))).toBe("a");
+    expect(id(followedSession([at("a", 100), at("b", 300)], null, 400))).toBe("b");
+    expect(id(followedSession([at("a", 500), at("b", 300, 350)], null, 600))).toBe("b");
+    // the one held keeps the viewport through the other's calls: while it works, and for the hold after its last call
+    expect(id(followedSession([at("a", 100, 900), at("b", 950)], "local:a", 10_000))).toBe("a");
+    expect(id(followedSession([at("a", 1000), at("b", 1500)], "local:a", 1000 + FOLLOW_HOLD_MS))).toBe("a");
+    expect(id(followedSession([at("a", 1000), at("b", 900, 1200)], "local:a", 1000 + FOLLOW_HOLD_MS - 1))).toBe("a");
+    // idle past the hold while another is at work, or has acted since: the live look goes there
+    expect(id(followedSession([at("a", 1000), at("b", 900, 1200)], "local:a", 1000 + FOLLOW_HOLD_MS + 1))).toBe("b");
+    expect(id(followedSession([at("a", 1000), at("b", 1500)], "local:a", 1000 + FOLLOW_HOLD_MS + 1))).toBe("b");
+    // idle, and nothing else has happened: it stays
+    expect(id(followedSession([at("a", 1000), at("b", 400)], "local:a", 99_999))).toBe("a");
+    // the one held is gone
+    expect(id(followedSession([at("b", 400)], "local:a", 500))).toBe("b");
+  });
+
+  it("two sessions taking turns do not swap the rows or the picture after every call", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(AT + 10_000);
+    h.preview.state = live();
+    const mail = (over: Partial<ComputerSessionRow> = {}): ComputerEntry => entry({ threadId: "sub1", since: AT + 5, apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }], ...over });
+    const text = (over: Partial<ComputerSessionRow> = {}): ComputerEntry => entry({ since: AT, ...over });
+    const d = (entries: ComputerEntry[]): ComputerSectionData => ({
+      entries,
+      keys: [{ key: "t1", threadId: "t1" }, { key: "sub1", threadId: "sub1" }],
+      histories: { t1: { born: 1, calls: [call(1)], more: false, status: "ready" }, sub1: { born: 2, calls: [], more: false, status: "ready" } },
+      exists: true,
+      live: true,
+    });
+    const order = (): (string | null)[] => [...document.querySelectorAll('[data-slot="computer-session"]')].map((s) => s.textContent);
+    const running = { tool: "computer_act", words: "Clicking", startedAt: AT + 9_000 };
+    // TextEdit is at work: it is followed, its row right above the box
+    const view = mount(d([text({ running, lastCallAt: AT + 8_000 }), mail({ lastCallAt: AT + 7_000 })]));
+    await act(async () => {});
+    expect(order()).toEqual(["Inbox in Mail", "Untitled in TextEdit"]);
+    expect(box()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
+    // its call ends and Mail's begins, a moment later: nothing moves
+    view.again(d([mail({ running: { ...running, startedAt: AT + 10_000 }, lastCallAt: AT + 7_000 }), text({ lastCallAt: AT + 9_900 })]));
+    await act(async () => {});
+    expect(order()).toEqual(["Inbox in Mail", "Untitled in TextEdit"]);
+    expect(box()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
+    // TextEdit stays idle while Mail works: once the hold runs out the live look goes to Mail
+    await act(async () => vi.advanceTimersByTime(FOLLOW_HOLD_MS + 100));
+    expect(box()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
+    expect(order()).toEqual(["Untitled in TextEdit", "Inbox in Mail"]);
   });
 
   it("two live sessions: the followed one's row sits last, next to the box; each has its own Stop, by name, and its own line", async () => {
@@ -861,8 +914,8 @@ describe("the row states", () => {
     const lost = call(1, { state: "unfinished", endedAt: undefined, picture: undefined, rev: 1, steps: [step("Click", "To", { state: undefined }), step("Type", "into Subject", { state: undefined })] });
     const el = await openOn(lost);
     expect(rows()).toHaveLength(1);
-    // what was asked, never "Worked": it did not finish
-    expect(words(el)).toBe("Workin TextEdit");
+    // how much was asked, never "Worked": it did not finish
+    expect(words(el)).toBe("2 stepsin TextEdit");
     expect(el.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("stopped");
     expect(el.querySelector('[data-slot="step-why"]')!.textContent).toBe("Didn't finish");
     expect(runningRows()).toHaveLength(0);
@@ -1179,6 +1232,35 @@ describe("when the preview ends", () => {
     }
   });
 
+  it("the end's line keeps whose window an older stand-in is, and when: another window is never left unnamed under the session's row", async () => {
+    h.preview.state = { status: "ended", reason: "window-closed" };
+    const mailEntry = entry({ threadId: "sub1", apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }] });
+    const d: ComputerSectionData = {
+      entries: [mailEntry],
+      keys: [{ key: "t1", threadId: "t1" }, { key: "sub1", threadId: "sub1" }],
+      histories: {
+        // Mail's own newest step kept nothing; only the thread's TextEdit has a picture
+        sub1: { born: 2, calls: [call(5, { app: "Mail", window: "Inbox", picture: { none: "no-read" } })], more: false, status: "ready" },
+        t1: { born: 1, calls: [call(1)], more: false, status: "ready" },
+      },
+      exists: true,
+      live: true,
+    };
+    mount(d);
+    await flush();
+    expect(box()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
+    expect(lineUnder()).toBe(`The window closed. Untitled in TextEdit, as it was at ${clockTime(AT + 1450)}`);
+    cleanup();
+    // its own older picture needs only its time; its newest step's own picture needs nothing more
+    mount(data([call(1), call(2, { picture: { none: "no-read" } })], [entry()]));
+    await flush();
+    expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 1450)}`);
+    cleanup();
+    mount(data([call(1), call(2)], [entry()]));
+    await flush();
+    expect(lineUnder()).toBe("The window closed");
+  });
+
   it("with no step kept it is the line alone", async () => {
     h.preview.state = { status: "ended", reason: "window-closed" };
     mount(data([], [entry()]));
@@ -1292,6 +1374,19 @@ describe("loading, failing and older steps", () => {
     expect(document.querySelector('[data-slot="computer-section"]')!.hasAttribute("data-following")).toBe(true);
   });
 
+  it("a page of earlier steps that cannot be read says so; the rows and the button stay, and the button asks again", async () => {
+    h.loadOlder.mockRejectedValueOnce(new Error("the socket dropped"));
+    mount(data([call(201), call(202)], [], { more: true }));
+    await flush();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Show earlier steps" })));
+    await vi.waitFor(() => expect(h.toastError).toHaveBeenCalledWith("Couldn't read the earlier steps"));
+    expect(rows()).toHaveLength(2);
+    const again = screen.getByRole("button", { name: "Show earlier steps" }) as HTMLButtonElement;
+    await vi.waitFor(() => expect(again.disabled).toBe(false));
+    await act(async () => fireEvent.click(again));
+    expect(h.loadOlder).toHaveBeenCalledTimes(2);
+  });
+
   it("Show earlier steps loads the page under the oldest call held", async () => {
     mount(data([call(201), call(202)], [], { more: true }));
     await flush();
@@ -1371,6 +1466,37 @@ describe("the kept pictures' cache", () => {
     cache.clear();
     expect(cache.size).toBe(0);
     expect(gone).toHaveLength(3);
+  });
+
+  it("an older record's read that answers after a newer one takes nothing's place: the newer picture stays, and its URL with it", async () => {
+    const answers = new Map<number, (a: ComputerHistoryStepAnswer) => void>();
+    let asked = 0;
+    const made: string[] = [];
+    const gone: string[] = [];
+    const cache = new StepMediaCache({
+      read: () => new Promise<ComputerHistoryStepAnswer>((resolve) => answers.set(++asked, resolve)),
+      createUrl: () => (made.push(`blob:${made.length + 1}`), made.at(-1)!),
+      revokeUrl: (url) => void gone.push(url),
+    });
+    // the end record's read (text alone) is out when the picture's record asks again
+    const older = cache.load("t1", callOf(1, 2));
+    const newer = cache.load("t1", callOf(1, 3));
+    answers.get(2)!({ ...picture(1), text: "the read" });
+    expect((await newer).picture?.url).toBe("blob:1");
+    answers.get(1)!({ text: "the read" });
+    expect(await older).toEqual({ rev: 2, text: "the read" });
+    // the newer entry is still the one held, and nothing of it was revoked
+    expect(cache.peek("t1", callOf(1, 3))?.picture?.url).toBe("blob:1");
+    expect(gone).toEqual([]);
+    // an older answer that made a picture of its own gives it up
+    const first = cache.load("t1", callOf(2, 2));
+    const second = cache.load("t1", callOf(2, 3));
+    answers.get(4)!(picture(2));
+    await second;
+    answers.get(3)!(picture(2));
+    expect((await first).picture).toBeUndefined();
+    expect(gone).toEqual(["blob:3"]);
+    expect(cache.peek("t1", callOf(2, 3))?.picture?.url).toBe("blob:2");
   });
 
   it("a read still out when its key was dropped, or the cache cleared, keeps nothing: its picture is revoked as it lands", async () => {

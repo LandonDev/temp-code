@@ -354,7 +354,12 @@ export async function runComputerTool(
     } catch (e) {
       host.log(`computer history: the end of a call was not worded: ${(e as Error).message}`)
       // the call did end: its entry ends too, as what was asked, so no reader goes on showing it as running
-      void entry.end({ app: words.app, window: args.window ?? null, steps: planned.map(({ asked, done: _done, ...step }) => ({ ...step, ...asked })) })
+      // (how it went is not known here: the first step says so, the rest read as not run, as for a refused call)
+      void entry.end({
+        app: words.app,
+        window: args.window ?? null,
+        steps: planned.map(({ asked, done: _done, ...step }, k) => ({ ...step, ...asked, ...(k === 0 ? { state: 'failed' as const, reason: 'It failed' } : { state: 'not-run' as const }) }))
+      })
     }
     journaled?.(entry, obs ? { session: t.serviceSession, pid: obs.app.pid, windowId: obs.window.id, width: obs.space.width, height: obs.space.height, epoch: obs.epoch } : null)
   }

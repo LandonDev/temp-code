@@ -80,7 +80,19 @@ describe("computerCue", () => {
     const asking = entry({ threadId: "c", lastCallAt: 5, asking: { line: "Click Save in TextEdit?" } });
     expect(computerCue([working, held, asking])?.state).toBe("waiting");
     expect(computerCue([working, held])?.state).toBe("queued");
-    expect(computerCue([entry({ threadId: "d", lastCallAt: 1 }), working])).toMatchObject({ state: "working", label: "Using Mail" });
+    // two sessions at work in two apps: the cue counts them, so its words hold while they take turns
+    expect(computerCue([entry({ threadId: "d", lastCallAt: 1 }), working])).toMatchObject({ state: "working", label: "Using 2 apps" });
+    expect(computerCue([working, entry({ threadId: "d", lastCallAt: 99 })])).toMatchObject({ state: "working", label: "Using 2 apps" });
+    // in one app it is that app
+    const again = entry({ threadId: "e", lastCallAt: 1, apps: [{ name: "Mail", bundleId: null, window: "Drafts" }] });
+    expect(computerCue([again, working])).toMatchObject({ state: "working", label: "Using Mail" });
+  });
+
+  it("a hold says Waiting for the Mac only when its own line does: a clipboard wait or a wait for the thread is Waiting", () => {
+    expect(computerCue([entry({ running: running("Waiting for the Mac to be free, 2nd in line", true) })])).toMatchObject({ state: "queued", label: "Waiting for the Mac" });
+    expect(computerCue([entry({ running: running("Waiting for the Mac, load 12.3 of 8, 3rd in line", true) })])?.label).toBe("Waiting for the Mac");
+    expect(computerCue([entry({ running: running("Waiting for the clipboard", true) })])).toMatchObject({ state: "queued", label: "Waiting", line: "Computer use: Waiting for the clipboard" });
+    expect(computerCue([entry({ running: running("Ready, waiting for the thread", true) })])?.label).toBe("Waiting");
   });
 });
 

@@ -47,6 +47,31 @@ import { ENDED_WORDS, NO_PICTURE_WORDS, RETRY_ENDS, ViewportLine, liveFace, stre
  */
 
 const sessionId = (entry: ComputerEntry): string => `${entry.host}:${entry.row.threadId}`;
+
+/** How long the followed session may sit idle, while another is at work, before the viewport moves to that one. */
+export const FOLLOW_HOLD_MS = 5_000;
+
+const actedAt = (e: ComputerEntry): number => Math.max(e.row.lastCallAt, e.row.running?.startedAt ?? 0);
+/** The session at work now, else the one that acted last. */
+const busiest = (entries: readonly ComputerEntry[]): ComputerEntry | null =>
+  entries.reduce<ComputerEntry | null>((best, e) => (!best || Number(!!e.row.running) - Number(!!best.row.running) > 0 || (!!e.row.running === !!best.row.running && actedAt(e) > actedAt(best)) ? e : best), null);
+
+/**
+ * The session the viewport follows. With one live session it is that one.
+ * With several it stays with the one it has while that one is at work, and
+ * for five seconds after its last call: the sessions of a thread and its
+ * subagent take turns on the Mac, and a box that changed windows after
+ * every call could not be watched, nor a Stop pressed. It moves when the
+ * one it has is gone, or has sat idle that long while another is at work
+ * or has acted since: then the live look goes to where something happens.
+ */
+export function followedSession(entries: readonly ComputerEntry[], held: string | null, now: number): ComputerEntry | null {
+  const has = held ? entries.find((e) => sessionId(e) === held) : undefined;
+  if (!has) return busiest(entries);
+  if (has.row.running) return has;
+  const others = entries.filter((e) => e !== has && (e.row.running || actedAt(e) > has.row.lastCallAt));
+  return others.length && now - has.row.lastCallAt > FOLLOW_HOLD_MS ? busiest(others) : has;
+}
 const windowIn = (call: Pick<ComputerHistoryCall, "app" | "window">): string => (call.window ? `${call.window} in ${call.app}` : call.app || "the Mac");
 /** When a call's kept picture was taken (after its answer), else when the call ended. */
 const shownAt = (call: ComputerHistoryCall): number => (call.picture && !("none" in call.picture) ? call.picture.at : (call.endedAt ?? call.at));
@@ -116,13 +141,15 @@ export function viewportOf(v: {
   // Following a live window: the stream, a skeleton in its shape until the first frame.
   if (live && !pinned && !over) return { face: liveFace(live.stream), label: `Live view of ${computerLabel(live.entry)}`, size: streamSize(live.stream.state) };
   // The stream ended: today's line, under the newest step's kept picture when there is one.
-  const ended =
-    live && !pinned && state && over ? (
-      <ViewportLine
-        words={state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error}
-        onRetry={state.status === "failed" || (state.status === "ended" && RETRY_ENDS.has(state.reason)) ? live.stream.retry : undefined}
-      />
-    ) : null;
+  const endedWords = live && !pinned && state && over ? (state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error) : null;
+  const endedRetry = live && state && (state.status === "failed" || (state.status === "ended" && RETRY_ENDS.has(state.reason))) ? live.stream.retry : undefined;
+  /** the end's line, with what else there is to say of the picture under it: an older step's stand-in still says whose window and when */
+  // (with Screen Recording off the read text is the look there is: its line says what to turn on, and no more
+  // unless the text is another window's)
+  const noRecording = state?.status === "ended" && state.reason === "permission";
+  const endedLine = (also?: string | null): ReactNode =>
+    endedWords ? <ViewportLine words={also && (!noRecording || v.another) ? `${endedWords}. ${also}` : endedWords} onRetry={endedRetry} /> : null;
+  const ended = endedLine();
   if (!shown) return ended ? { face: null, label: "", line: ended } : null;
   const { call } = shown;
   const kept = call.picture && !("none" in call.picture) ? call.picture : null;
@@ -134,9 +161,8 @@ export function viewportOf(v: {
   const base = { label, size, height: pinned ? keptHeight : null };
   // a pinned row's own facts carry its time; an older step standing in for the newest says when it was, and whose
   // window it is where that is not the newest step's
-  const asIt = v.asOf ? (
-    <ViewportLine words={pinned ? "As it was after this step" : v.another ? `${windowIn(call)}, as it was at ${clockTime(at)}` : `As it was at ${clockTime(at)}`} />
-  ) : null;
+  const asItWords = v.asOf ? (pinned ? "As it was after this step" : v.another ? `${windowIn(call)}, as it was at ${clockTime(at)}` : `As it was at ${clockTime(at)}`) : null;
+  const asIt = asItWords ? <ViewportLine words={asItWords} /> : null;
   // Nothing to put in a box. A pinned step keeps the box's place, so stepping through rows moves nothing; else the line alone.
   const nothing = (line: ReactNode): ViewportProps | null =>
     pinned && keptHeight ? { ...base, size: null, face: { kind: "none" }, line: line ?? <ViewportLine words="No picture was kept" /> } : line ? { face: null, label, line } : null;
@@ -158,11 +184,11 @@ export function viewportOf(v: {
       pinned && call.steps.length > 1 && shown.index < call.steps.length - 1 ? (
         <ViewportLine words={call.steps.every((step) => step.state === "ok") ? `After all ${call.steps.length} steps` : "After the steps that ran"} />
       ) : null;
-    return { ...base, size: { width: here.picture.width, height: here.picture.height }, face: { kind: "picture", src: url, onOpen: (from) => v.onOpen(label, url, from) }, line: ended ?? after ?? asIt };
+    return { ...base, size: { width: here.picture.width, height: here.picture.height }, face: { kind: "picture", src: url, onOpen: (from) => v.onOpen(label, url, from) }, line: endedLine(asItWords) ?? after ?? asIt };
   }
   // no picture: what the model read stands in its place, and why there is none where that is worth a line
   const none = call.picture && "none" in call.picture ? NO_PICTURE_WORDS[call.picture.none] : undefined;
-  const why = ended ?? (none ? <ViewportLine words={none} /> : null);
+  const why = endedLine(here.text ? asItWords : null) ?? (none ? <ViewportLine words={none} /> : null);
   if (here.text) return { ...base, size: null, face: { kind: "text", text: here.text }, line: why ?? asIt };
   return nothing(why);
 }
@@ -209,7 +235,22 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   // step that failed, not the last of the steps that never ran.
   const followRow = rows.find((r) => r.step.state !== "not-run") ?? rows[0] ?? null;
   const openRow = pinnedRow ?? followRow;
-  const lead = data.entries[0] ?? null;
+  // The followed session holds through the other sessions' calls (followedSession). The one held is kept across
+  // renders; whether to move on is judged after each change of the rows, and again when the hold runs out.
+  const [heldLead, setHeldLead] = useState<string | null>(null);
+  const [holdTick, setHoldTick] = useState(0);
+  const lead = (heldLead ? data.entries.find((e) => sessionId(e) === heldLead) : undefined) ?? busiest(data.entries);
+  const leadId = lead ? sessionId(lead) : null;
+  useEffect(() => {
+    const next = followedSession(data.entries, leadId, Date.now());
+    const nextId = next ? sessionId(next) : null;
+    if (nextId !== heldLead) return setHeldLead(nextId);
+    if (!lead || lead.row.running || data.entries.length < 2) return;
+    const wait = lead.row.lastCallAt + FOLLOW_HOLD_MS - Date.now();
+    if (wait <= 0) return;
+    const timer = setTimeout(() => setHoldTick((n) => n + 1), wait + 16);
+    return () => clearTimeout(timer);
+  }, [data.entries, heldLead, holdTick, lead, leadId]);
   const stream = useLiveStream(lead, !pinnedRow && paneShown && docShown, box, root);
   const over = stream.state.status === "ended" || stream.state.status === "failed";
 
@@ -305,7 +346,15 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     },
     [data.entries, stopping],
   );
-  const live = useMemo<LiveSession[]>(() => data.entries.map((e) => ({ id: sessionId(e), label: computerLabel(e), stopping: stopping.has(sessionId(e)) })), [data.entries, stopping]);
+  // The rows stand in the order their sessions began, so a Stop never moves under the pointer; the followed one
+  // is drawn last, right above the box.
+  const live = useMemo<LiveSession[]>(
+    () =>
+      [...data.entries]
+        .sort((a, b) => Number(sessionId(a) === leadId) - Number(sessionId(b) === leadId) || a.row.since - b.row.since)
+        .map((e) => ({ id: sessionId(e), label: computerLabel(e), stopping: stopping.has(sessionId(e)) })),
+    [data.entries, leadId, stopping],
+  );
   const running = useMemo(() => runningLines(data.entries, list), [data.entries, list]);
 
   // ── the journal's own state ──
@@ -316,7 +365,10 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   const [loadingMore, setLoadingMore] = useState(false);
   const onOlder = useCallback(() => {
     setLoadingMore(true);
-    void Promise.all(keys.filter((key) => data.histories[key]?.more).map((key) => loadOlderHistory(key).catch(() => undefined))).finally(() => setLoadingMore(false));
+    // a page that cannot be read says so; the rows held and the button stay, and the button asks again
+    void Promise.all(keys.filter((key) => data.histories[key]?.more).map((key) => loadOlderHistory(key)))
+      .catch(() => loadToast().then((toast) => toast.error("Couldn't read the earlier steps")))
+      .finally(() => setLoadingMore(false));
   }, [data.histories, keys]);
   const onRetry = useCallback(() => retryHistory(keys), [keys]);
 
@@ -337,6 +389,7 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
       ref={root}
       boxRef={box}
       sessions={live}
+      followedId={leadId}
       pinned={pinnedRow !== null}
       viewport={viewport}
       running={running}

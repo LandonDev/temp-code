@@ -491,8 +491,10 @@ While a computer session this desktop can draw is live in the thread on
 screen, the computer cue (chrome/ComputerCue.tsx) sits after the agents
 cue, the same quiet 24px row control: the state's glyph (working's still
 dot, since the thread's own turn spins; the amber mark while a card
-waits; the dashed ring while a step is held), then "Using TextEdit", or
-"Needs you" in amber, or "Waiting for the Mac". Its tooltip and name are
+waits; the dashed ring while a step is held), then "Using TextEdit"
+("Using 2 apps" while sessions work in several, so the words hold as
+they take turns), or "Needs you" in amber, or "Waiting for the Mac"
+(plain "Waiting" for a hold that is not for the Mac). Its tooltip and name are
 the plain form ("Computer use: Clicking Save in TextEdit"). A click opens
 the panel on Computer and, pressed, closes it. It fades in as the agents
 cue does, its words morph, and it leaves at once.
@@ -531,10 +533,14 @@ under them is the section's one scroller.
   truncating, then Go live (a ghost `xs` button, drawn only while a step
   is pinned) and Stop (the Activity row's ghost icon button; with several
   sessions each is named for its session). The session the viewport
-  follows is the row right above the box, the others above it, so a
-  picture is never read as another session's.
+  follows is the row right above the box, the others above it in the
+  order they began, so a picture is never read as another session's. It
+  stays followed while it works and for five seconds after its last call
+  (`followedSession`): two sessions taking turns never swap the rows or
+  the picture after every call; then the look goes to the one at work.
 - **The viewport**: a box at the pane's width less 24px in the picture's
-  shape, at most `min(240px, 45cqh)` of the section, on the `card` fill
+  shape, at most `min(400px, 45cqh)` of the section (a tall pane gives
+  the window room to be read; a short one keeps its list), on the `card` fill
   with `rounded-lg`, the picture centred in it on the `image-outline`
   edge, a `Skeleton` in its shape until the first picture. It shows the
   live stream, or a pinned step's kept picture (a click opens the
@@ -550,8 +556,10 @@ under them is the section's one scroller.
   kept nothing and an older picture of its session stands in (another
   window's is named: "Inbox in Mail, as it was at 2:03 PM"); and
   "Couldn't read the picture" with Retry when the read failed, which is
-  never said as nothing kept. The box fades in once, when the viewport
-  arrives; a change of face moves nothing.
+  never said as nothing kept. A preview that ended keeps the stand-in's
+  words in its own line ("The window closed. As it was at 2:03 PM"). The
+  box fades in once, when the viewport arrives; a change of face moves
+  nothing.
 - **A step row** is on the transcript's step grid (`STEP_LINE`,
   `GLYPH_SLOT`; 28px): a 14px glyph for the step's kind (click, type,
   key, scroll, read, look, wait, app), uncoloured, the verb muted, the

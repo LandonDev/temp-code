@@ -113,6 +113,12 @@ export class StepMediaCache {
           if (media.picture) this.revokeUrl(media.picture.url);
           return { rev: call.rev };
         }
+        // a later record of the call was read meanwhile and answered first: this older answer takes nothing's place
+        const newer = this.entries.get(id);
+        if (newer && newer.rev > media.rev) {
+          if (media.picture) this.revokeUrl(media.picture.url);
+          return { rev: call.rev, ...(media.text !== undefined ? { text: media.text } : {}) };
+        }
         this.put(id, media);
         return media;
       })

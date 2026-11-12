@@ -76,10 +76,14 @@ export function computerCue(entries: readonly ComputerEntry[]): ComputerCue | nu
   const lead = live.reduce((best, e) => (loud(e) > loud(best) ? e : best));
   const state = nowState(lead.row) ?? "working";
   const app = lead.row.apps[0];
-  const using = app ? `Using ${app.name}` : "Using the Mac";
+  // several sessions at work in different apps: the cue counts them, so its words do not change with every call
+  const apps = new Set(live.map((e) => e.row.apps[0]?.name).filter(Boolean));
+  const using = apps.size > 1 ? `Using ${apps.size} apps` : app ? `Using ${app.name}` : "Using the Mac";
   // what it does now in the host's words; between calls, the window it is in
   const doing = lead.row.asking?.line ?? lead.row.running?.words ?? (app ? (app.window ? `${app.window} in ${app.name}` : app.name) : "Starting");
-  return { state, label: state === "waiting" ? "Needs you" : state === "queued" ? "Waiting for the Mac" : using, line: `Computer use: ${doing}` };
+  // a hold is for the Mac only when its own line says so (a clipboard wait, a wait for the thread, are not)
+  const held = lead.row.running?.words.startsWith("Waiting for the Mac") ? "Waiting for the Mac" : "Waiting";
+  return { state, label: state === "waiting" ? "Needs you" : state === "queued" ? held : using, line: `Computer use: ${doing}` };
 }
 
 /** The cue for the thread a pane shows: its tree's live sessions, live. */

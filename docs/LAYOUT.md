@@ -132,8 +132,8 @@ while the cues come and go. After the agents cue sits the computer cue
 this desktop can draw is live in the shown thread's tree
 (`useComputerCue` in lib/computerSection.ts, which reads the live rows
 alone, so it needs no panel mounted): the state's glyph, then "Using
-TextEdit", "Needs you" in amber while a card waits, or "Waiting for the
-Mac" while a step is held. A click opens the panel on Computer and,
+TextEdit" ("Using 2 apps" with sessions in several), "Needs you" in amber
+while a card waits, or "Waiting for the Mac" while a step is held. A click opens the panel on Computer and,
 pressed, closes it; it is `aria-disabled` with "No room for the panel"
 while the row is too narrow, and its hover warms the section's chunk. The agents cue (chrome/AgentsCue.tsx) is a
 quiet 24px control, the composer row's (`ROW_CONTROL`: 8px padding, 12px
@@ -310,7 +310,7 @@ whole minutes, 1 to 60, committed as `computer.sessionIdleMs`, then When a
 step needs the app in front, a `ChoiceSelect` of Bring it forward for a moment
 (`brief`) and Wait until I'm away (`away`), saved as `computer.activeApp`
 (docs/computer-protocol.md §26.6), then Keep pictures of the window, a
-`SettingSwitch` with "Kept on this Mac: a thread's newest 400, until 30 days after it last used the computer. Turning it off deletes them; the steps and the text read stay." (`keepPictures`, the setting
+`SettingSwitch` with "Kept on this Mac: a thread's newest 400, until 30 days after it last used the computer. Turning it off deletes them, not the steps or what was read." (`keepPictures`, the setting
 `computer.history.pictures`; docs/computer-protocol.md §17.9). Permissions:
 Accessibility and Screen Recording on the `PermissionRow` Appshots shares,
 muted Granted or amber Not granted with Grant… to the System Settings pane;

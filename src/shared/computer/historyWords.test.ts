@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { COMPUTER_ABORT_WORDS, COMPUTER_EFFECT_FACTS, COMPUTER_FAILURE_WORDS, COMPUTER_REFUSAL_WORDS, COMPUTER_ROUTE_WORDS } from '../statusWords'
 import { HOST_ERROR_KINDS } from './hostErrors'
+import { cutValue } from './observation'
 import {
   READ_TEXT_MAX_BYTES,
   cutReadText,
@@ -474,6 +475,32 @@ describe('scrubReadText', () => {
     expect(scrubReadText(read, [])).toBe(read)
     expect(scrubReadText(read, ['API', 'sk'])).toBe(read)
   })
+  it('a long value the service cut goes whole too: its first characters are the start of the text held back', () => {
+    const secret = `tok_${'a1b2c3d4'.repeat(25)}`
+    // the service prints a value's first 160 scalars and how many more it has (observation.ts cutValue)
+    const cut = cutValue(secret)
+    expect(cut).toBe(`${secret.slice(0, 160)}…(+${secret.length - 160} chars)`)
+    const read = `app "Chrome" · window "Keys"\n[48] input "Token" = ${JSON.stringify(cut)} focused\n[49] text = "kept"`
+    const scrubbed = scrubReadText(read, [secret])
+    expect(scrubbed).not.toContain('tok_')
+    expect(scrubbed).not.toContain('a1b2c3d4')
+    expect(scrubbed).toBe(`app "Chrome" · window "Keys"\n[48] input "Token" = "‹${secret.length} characters›" focused\n[49] text = "kept"`)
+    // over its budget the service cuts shorter: any cut that is the text's start, with the count that fits, goes
+    const short = `${secret.slice(0, 8)}…(+${secret.length - 8} chars)`
+    expect(scrubReadText(`[48] input "Token" = ${JSON.stringify(short)}`, [secret])).toBe(`[48] input "Token" = "‹${secret.length} characters›"`)
+    // with a quote or a newline in it the cut is still found, as the observation escapes it
+    const odd = `say "hi"\n${'x'.repeat(200)}`
+    expect(scrubReadText(`[9] text = ${JSON.stringify(cutValue(odd))}`, [odd])).toBe(`[9] text = "‹${[...odd].length} characters›"`)
+    // a cut name ends in the ellipsis alone, and goes when it shows enough to be the text
+    expect(scrubReadText(`[7] button ${JSON.stringify(`${secret.slice(0, 80)}…`)}`, [secret])).toBe(`[7] button "‹${secret.length} characters›"`)
+    // a cut of some other text, or one whose count does not fit, is not the text held back
+    const other = `[5] text = ${JSON.stringify(cutValue('z'.repeat(300)))}`
+    expect(scrubReadText(other, [secret])).toBe(other)
+    const wrong = `[5] text = ${JSON.stringify(`${secret.slice(0, 20)}…(+3 chars)`)}`
+    expect(scrubReadText(wrong, [secret])).toBe(wrong)
+    expect(scrubReadText('[6] button "Sa…"', ['Save for later'])).toBe('[6] button "Sa…"')
+  })
+
   it('takes the longer text first, so one that holds another goes whole', () => {
     expect(scrubReadText('value = "abcdefgh"', ['abcd', 'abcdefgh'])).toBe('value = "‹8 characters›"')
   })

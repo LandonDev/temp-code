@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useStore } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { createStore } from "zustand/vanilla";
 import type {
   ComputerHistoryCall,
@@ -252,12 +253,15 @@ export function resetComputerHistory(): void {
 export function useComputerHistory(keys: readonly HistoryKey[]): Record<string, KeyHistory> {
   const id = keys.map((k) => k.key).join("\n");
   useEffect(() => (id ? watchHistory(id.split("\n")) : undefined), [id]);
-  const byKey = useStore(store, (s) => s.byKey);
-  return useMemo(() => {
-    const out: Record<string, KeyHistory> = {};
-    for (const key of id ? id.split("\n") : []) if (byKey[key]) out[key] = byKey[key];
-    return out;
-  }, [byKey, id]);
+  // Only these keys' histories: a push for another thread's key changes none of them, so its readers render nothing.
+  return useStore(
+    store,
+    useShallow((s) => {
+      const out: Record<string, KeyHistory> = {};
+      for (const key of id ? id.split("\n") : []) if (s.byKey[key]) out[key] = s.byKey[key];
+      return out;
+    }),
+  );
 }
 
 /** Whether any of these keys holds a call: the section exists for a thread that used the computer, live or not. */

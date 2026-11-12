@@ -26,6 +26,23 @@ class FakeLink {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
+  opens = new Set<() => void>();
+  closes = new Set<() => void>();
+  onOpen(fn: () => void): () => void {
+    this.opens.add(fn);
+    return () => this.opens.delete(fn);
+  }
+  onClose(fn: () => void): () => void {
+    this.closes.add(fn);
+    return () => this.closes.delete(fn);
+  }
+  /** the socket drops, and comes back */
+  drop(): void {
+    for (const fn of [...this.closes]) fn();
+  }
+  reopen(): void {
+    for (const fn of [...this.opens]) fn();
+  }
   push(p: Record<string, unknown>): void {
     for (const fn of this.listeners) fn(p as ServerPush);
   }
@@ -145,8 +162,8 @@ describe("the live viewport", () => {
     expect(link.calls[0]).toEqual({ method: "computer.preview.start", params: { threadId: "s1", maxEdge: previewEdge(304 - VIEWPORT_INSETS, window.devicePixelRatio) } });
     expect(box().style.aspectRatio).toBe("960 / 600");
     // at most 240px, and 45% of the section's height where that is less: a short panel keeps its list
-    expect(VIEWPORT_MAX).toBe("min(240px, 45cqh)");
-    expect(box().getAttribute("style")).toContain("max-height: min(240px, 45cqh)");
+    expect(VIEWPORT_MAX).toBe("min(400px, 45cqh)");
+    expect(box().getAttribute("style")).toContain("max-height: min(400px, 45cqh)");
     expect(box().getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
     expect(box().querySelector("canvas")?.getAttribute("aria-hidden")).toBe("true");
   });
@@ -174,6 +191,30 @@ describe("the live viewport", () => {
     expect(box().getAttribute("data-frames")).toBe("1");
     expect(box().querySelector("canvas")?.className).not.toMatch(/transition/);
     expect(box().querySelector('[data-slot="skeleton"], .animate-pulse')).toBeNull();
+  });
+
+  it("a dropped socket is no live picture: the box goes back to its skeleton, and a new stream starts when the socket opens", async () => {
+    mount();
+    await flush();
+    await act(async () => link.push(frame(1)));
+    await flush();
+    expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
+    // the host forgot this viewer with the socket: what is on screen is no longer the window now
+    await act(async () => link.drop());
+    expect(box().querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(box().style.aspectRatio).toBe("960 / 600");
+    // a frame of the old stream that was still on its way draws nothing
+    await act(async () => link.push(frame(2)));
+    await flush();
+    expect(drawn).toHaveLength(1);
+    // the socket opens: a new stream is asked for, and its first frame is the picture again
+    await act(async () => link.reopen());
+    await flush();
+    expect(link.methods().filter((m) => m === "computer.preview.start")).toHaveLength(2);
+    await act(async () => link.push(frame(1, "pv_2")));
+    await flush();
+    expect(drawn).toHaveLength(2);
+    expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
   });
 
   it("ignores another preview's frames", async () => {

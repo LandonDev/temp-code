@@ -80,9 +80,14 @@ export interface ReadFold {
  * that is held before it began, which reads as what is asked ("Press ⌘S").
  */
 export function rowWords(row: Pick<StepRow, "step" | "namesApp" | "whole" | "call">, live = false, waits = false): { verb: string; object: string } {
-  // a batch that runs, or never finished, is its call as one row: "Working in Mail", or what was asked, "Work in Mail"
-  const whole = row.whole && row.call.steps.length > 1;
-  const step: ComputerHistoryStep = whole ? workingStep(row.call.app, live && !waits ? "live" : "asked") : waits && row.step.asked ? { ...row.step, ...row.step.asked } : row.step;
+  // a batch that runs is its call as one row, "Working in Mail"; one that never finished is how much was asked,
+  // "3 steps in Mail"
+  if (row.whole && row.call.steps.length > 1) {
+    if (!live || waits) return { verb: `${row.call.steps.length} steps`, object: row.call.app ? `in ${row.call.app}` : "" };
+    const working = workingStep(row.call.app, "live");
+    return { verb: working.verb, object: working.inApp };
+  }
+  const step: ComputerHistoryStep = waits && row.step.asked ? { ...row.step, ...row.step.asked } : row.step;
   return { verb: step.verb, object: row.namesApp || !step.object ? step.inApp : step.object };
 }
 
@@ -125,7 +130,16 @@ function RunningRow({ line, pinned, onFollow }: { line: RunningLine; pinned: boo
           </SwapIcon>
         </span>
       </span>
-      <Words verb={line.verb} object={line.object} whole={whole} />
+      {whole ? (
+        <Words verb={line.verb} object={line.object} whole />
+      ) : (
+        // a working line is one line: cut where the pane is narrow, and said whole on hover
+        <TruncateTip text={[line.verb, line.object].filter(Boolean).join(" ")}>
+          <span className="flex min-w-0 items-center gap-1">
+            <Words verb={line.verb} object={line.object} />
+          </span>
+        </TruncateTip>
+      )}
     </>
   );
   const lineClass = cn(whole ? WHOLE_LINE : STEP_LINE, ROW_INSET);

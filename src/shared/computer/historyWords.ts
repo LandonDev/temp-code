@@ -535,20 +535,42 @@ export function cutReadText(text: string, max = READ_TEXT_MAX_BYTES): string {
 /** A text worth taking out: shorter ones are words any window holds. */
 const SCRUB_MIN = 4
 
+/** A quoted string as an observation prints one. */
+const QUOTED = /"(?:[^"\\]|\\.)*"/g
+/** A value the service cut: its first scalars, then how many more it has (observation.ts `cutValue`); a name it cut ends in the ellipsis alone. */
+const CUT = /^([\s\S]*)…(?:\(\+(\d+) chars\))?$/
+
 /**
  * The read text with the call's held-back texts taken out: each place one
  * stands, as typed or as the observation escapes it, reads as its length.
- * The step said only how long the text was; the field's value in the read
- * that follows must not say more.
+ * The service prints a long value cut (its first scalars and a count of
+ * the rest, fewer still when the read is over its budget): a quoted value
+ * that is the start of a held-back text, cut, goes whole too. The step
+ * said only how long the text was; the field's value in the read that
+ * follows must not say more.
  */
 export function scrubReadText(text: string, masked: readonly string[]): string {
-  let out = text
   // the longest first, so a text that holds another goes whole
-  for (const secret of [...new Set(masked)].sort((a, b) => b.length - a.length)) {
-    const n = [...secret].length
-    if (n < SCRUB_MIN) continue
-    const mark = `‹${count(n, 'character')}›`
-    for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) out = out.split(form).join(mark)
-  }
-  return out
+  const secrets = [...new Set(masked)].filter((s) => [...s].length >= SCRUB_MIN).sort((a, b) => b.length - a.length)
+  if (!secrets.length) return text
+  const mark = (secret: string): string => `‹${count([...secret].length, 'character')}›`
+  let out = text
+  for (const secret of secrets) for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) out = out.split(form).join(mark(secret))
+  return out.replace(QUOTED, (literal) => {
+    let value: string
+    try {
+      value = JSON.parse(literal) as string
+    } catch {
+      return literal
+    }
+    const cut = CUT.exec(value)
+    if (!cut) return literal
+    const [, shown, rest] = cut
+    const hit = secrets.find((secret) => {
+      if (!shown || !secret.startsWith(shown) || secret === shown) return false
+      // a cut value says how many scalars it left out; a cut name says nothing, and must show enough to be the text
+      return rest !== undefined ? [...secret].length - [...shown].length === Number(rest) : [...shown].length >= SCRUB_MIN
+    })
+    return hit ? JSON.stringify(mark(hit)) : literal
+  })
 }
