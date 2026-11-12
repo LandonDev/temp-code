@@ -110,6 +110,8 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
     let over = false;
     let preview: string | null = null;
     let frames = 0;
+    /** the stream's target: it goes up when the host moves the stream to another window, or brings it back after an end */
+    let generation = 0;
     let shown: { app: string; window: string | null; width: number; height: number } | null = null;
     setState((prev) => ({ status: "starting", ...(prev.status === "live" ? { width: prev.width, height: prev.height } : {}) }));
 
@@ -118,8 +120,10 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
       const ctx = el?.getContext("2d");
       if (el && ctx) {
         try {
+          const mine = generation;
           const bitmap = await createImageBitmap(frameBlob(push.data));
-          if (!alive || over) return bitmap.close();
+          // (a frame of the window the stream has since left is not the new window's picture)
+          if (!alive || over || mine !== generation) return bitmap.close();
           if (el.width !== bitmap.width) el.width = bitmap.width;
           if (el.height !== bitmap.height) el.height = bitmap.height;
           ctx.drawImage(bitmap, 0, 0);
@@ -146,13 +150,21 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
           setState({ status: "ended", reason: push.reason ?? "closed" });
           return;
         }
-        over = false;
-        shown = {
+        const next = {
           app: push.app ?? shown?.app ?? "",
           window: push.window !== undefined ? push.window : (shown?.window ?? null),
           width: push.width ?? shown?.width ?? 16,
           height: push.height ?? shown?.height ?? 10,
         };
+        // Another window, or the stream back after it ended: what the canvas holds is not this window's picture.
+        // Nothing is drawn until its own first frame (the skeleton, in the new shape), and a frame of the old
+        // one still decoding is dropped.
+        if (over || (shown !== null && (next.app !== shown.app || next.window !== shown.window))) {
+          generation++;
+          frames = 0;
+        }
+        over = false;
+        shown = next;
         setState({ status: "live", ...shown, drawn: frames > 0 });
       }
     });

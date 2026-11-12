@@ -16,6 +16,7 @@ import {
   readSummary,
   refusalWords,
   resultFacts,
+  isHostSentence,
   scrubReadText,
   scrubWords,
   settledSteps,
@@ -652,13 +653,14 @@ describe('scrubWords: a held-back text out of one string of a record', () => {
     expect(scrubWords('saved ~/pa$$w.rd!.txt', ['pa$$w.rd!'])).toBe('saved ~/‹9 characters›.txt')
   })
 
-  it('does not cut a longer word in two, and leaves a sentence that is the host’s own', () => {
+  it('does not cut a longer word in two; a sentence of the host’s own is known as one', () => {
     expect(scrubWords('Typed into a text area in TextEdit', ['Text', 'text'])).toBe('Typed into a ‹4 characters› area in TextEdit')
     expect(scrubWords('myhunter2file', ['hunter2'])).toBe('myhunter2file')
-    expect(scrubWords('It failed', ['failed'])).toBe('It failed')
-    expect(scrubWords('The window was minimized', ['window'])).toBe('The window was minimized')
-    // a line that only holds the word is not the host's sentence
-    expect(scrubWords('The field kept failed', ['failed'])).toBe('The field kept ‹6 characters›')
+    // which strings are the host's own is the journal's to know, by where they stand in a record (history.ts `held`)
+    expect(isHostSentence('It failed')).toBe(true)
+    expect(isHostSentence('The window was minimized')).toBe(true)
+    expect(isHostSentence('The field kept failed')).toBe(false)
+    expect(scrubWords('It failed', ['failed'])).toBe('It ‹6 characters›')
     // three characters or fewer are left: any window holds them
     expect(scrubWords('abc — Notes', ['abc'])).toBe('abc — Notes')
   })

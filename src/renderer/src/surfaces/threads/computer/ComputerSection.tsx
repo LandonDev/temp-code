@@ -198,17 +198,21 @@ export function viewportOf(v: {
   }
   // one picture and one read per call: a batch's earlier step, or one that never ran, shows the window (or the
   // read) after every step that ran, and says so
-  const after =
-    pinned && call.steps.length > 1 && (shown.index < call.steps.length - 1 || shown.step.state === "not-run") ? (
-      <ViewportLine words={call.steps.every((step) => step.state === "ok") ? `After all ${call.steps.length} steps` : "After the steps that ran"} />
-    ) : null;
+  const afterWords =
+    pinned && call.steps.length > 1 && (shown.index < call.steps.length - 1 || shown.step.state === "not-run")
+      ? call.steps.every((step) => step.state === "ok")
+        ? `After all ${call.steps.length} steps`
+        : "After the steps that ran"
+      : null;
+  const after = afterWords ? <ViewportLine words={afterWords} /> : null;
   if (here.picture) {
     const url = here.picture.url;
     return { ...base, size: { width: here.picture.width, height: here.picture.height }, face: { kind: "picture", src: url, onOpen: (from) => v.onOpen(label, url, from) }, line: endedLine(stoodIn) ?? after ?? asIt };
   }
   // no picture: what the model read stands in its place, and why there is none where that is worth a line
   const none = call.picture && "none" in call.picture ? NO_PICTURE_WORDS[call.picture.none] : undefined;
-  const why = endedLine(here.text ? stoodIn : null) ?? (none ? <ViewportLine words={none} /> : null);
+  // (why there is no picture, and under a batch's earlier step that the read is the whole batch's: both, on one line)
+  const why = endedLine(here.text ? stoodIn : null) ?? (none ? <ViewportLine words={here.text && afterWords ? `${none}. ${afterWords}` : none} /> : null);
   if (here.text) return { ...base, size: null, face: { kind: "text", text: here.text }, line: why ?? after ?? asIt };
   return nothing(why);
 }

@@ -430,6 +430,44 @@ describe("the live viewport", () => {
     expect(box().style.aspectRatio).toBe("600 / 1200");
   });
 
+  it("another window is drawn by its own first frame alone: the old window's picture is never shown as it, and a frame of the old one still decoding is dropped", async () => {
+    const skeleton = () => box().querySelector('[data-slot="skeleton"], .animate-pulse');
+    mount();
+    await flush();
+    await act(async () => link.push(frame(1)));
+    await flush();
+    expect(drawn).toHaveLength(1);
+    expect(skeleton()).toBeNull();
+    // a frame of the first window is still decoding when the host moves the stream to another window
+    let decoded: (b: unknown) => void = () => {};
+    globalThis.createImageBitmap = vi.fn(() => new Promise((r) => (decoded = r))) as never;
+    await act(async () => link.push(frame(2)));
+    await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "live", app: "Mail", window: "Inbox", width: 600, height: 1200 }));
+    // the box is Mail's now, in Mail's shape, and nothing of Mail has been drawn: the skeleton, not TextEdit's last frame
+    expect(box().getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
+    expect(skeleton()).not.toBeNull();
+    await act(async () => decoded({ width: 960, height: 600, close: vi.fn() }));
+    await flush();
+    expect(drawn).toHaveLength(1);
+    expect(skeleton()).not.toBeNull();
+    // Mail's own first frame is its picture
+    globalThis.createImageBitmap = vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })) as never;
+    await act(async () => link.push(frame(3)));
+    await flush();
+    expect(drawn).toHaveLength(2);
+    expect(skeleton()).toBeNull();
+    // the same window in another size is the same picture
+    await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "live", app: "Mail", window: "Inbox", width: 700, height: 1200 }));
+    expect(skeleton()).toBeNull();
+    // a stream that ended and came back starts from nothing drawn too
+    await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "ended", reason: "window-minimized" }));
+    await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "live", app: "Mail", window: "Inbox", width: 700, height: 1200 }));
+    expect(skeleton()).not.toBeNull();
+    await act(async () => link.push(frame(4)));
+    await flush();
+    expect(skeleton()).toBeNull();
+  });
+
   it("asks for no frames with no session to draw, or one this desktop cannot draw", async () => {
     mount(null);
     await flush();

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ComputerHistoryStep } from '@shared/contract-computer'
-import { ComputerHistory, HISTORY_COMPACT_SLACK, HISTORY_KEEP_CALLS, HISTORY_KEEP_LINES, HISTORY_KEEP_MS, HISTORY_PAGE, PICTURE_TIMEOUT_MS, capturePicture, historyPicturesFromEnv, type HistoryChange } from './history'
+import { ComputerHistory, held, HISTORY_COMPACT_SLACK, HISTORY_KEEP_CALLS, HISTORY_KEEP_LINES, HISTORY_KEEP_MS, HISTORY_PAGE, PICTURE_TIMEOUT_MS, capturePicture, historyPicturesFromEnv, type HistoryChange } from './history'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { serviceSessionId } from './sessionId'
 import { FAKE_APPS, ManualClock } from './testFake'
@@ -798,7 +798,12 @@ describe('a held-back text leaves the journal at one place (held)', () => {
     const j = journal()
     // texts a batch may well type: words of the journal's structure, of the app's name, of the host's sentences
     const masked = ['click', 'failed', 'start', 'permission', 'turn-click', 'Text', 'Clicked', 'Read', 'Save']
-    const entry = j.history.begin('t1', { ...start(), token: 'turn-click', masked })
+    const entry = j.history.begin('t1', {
+      ...start({ steps: [step('Clicking', 'Save', { asked: { verb: 'Click', object: 'Save', inApp: 'Save in TextEdit' } }), step('Reading', 'Text', { kind: 'read', asked: { verb: 'Read', object: 'Text', inApp: 'Text in TextEdit' } })] }),
+      plan: ['Click Save', 'Read Text'],
+      token: 'turn-click',
+      masked
+    })
     await entry.end(
       end({
         window: 'Save — Text notes',
@@ -825,8 +830,41 @@ describe('a held-back text leaves the journal at one place (held)', () => {
       target: 'a button in the "Texture" group',
       facts: ['nothing changed', 'opened "‹4 characters›"']
     })
+    // a plan line keeps the host's verb, as the row it settles into does: only what it acts on is held back
+    expect(lines[0].plan).toEqual(['Click ‹4 characters›', 'Read ‹4 characters›'])
+    expect(lines[0].steps.map((st: ComputerHistoryStep) => st.asked)).toEqual([
+      { verb: 'Click', object: '‹4 characters›', inApp: '‹4 characters› in TextEdit' },
+      { verb: 'Read', object: '‹4 characters›', inApp: '‹4 characters› in TextEdit' }
+    ])
     // and it still folds into a call a reader can take
     expect((await j.calls('t1')).calls[0]).toMatchObject({ state: 'done', app: 'TextEdit', picture: { none: 'permission' } })
+  })
+
+  it('a sentence of the host’s own stands where the host writes it, and nowhere else: a window or an element of that name is held back', async () => {
+    const j = journal()
+    const entry = j.history.begin('t1', { ...start(), masked: ['failed', 'It failed'] })
+    await entry.end(
+      end({
+        window: 'It failed',
+        steps: [step('Clicked', 'It failed', { inApp: 'It failed in TextEdit', state: 'failed', tier: 'ax', target: 'It failed', reason: 'It failed', facts: ['nothing changed', 'It failed'] })]
+      })
+    )
+    const line = j.lines('t1')[1]
+    expect(line.window).toBe('‹9 characters›')
+    expect(line.steps[0]).toMatchObject({ object: '‹9 characters›', inApp: '‹9 characters› in TextEdit', target: '‹9 characters›', reason: 'It failed', facts: ['nothing changed', 'It failed'] })
+    // what a reader and a push get is the same
+    expect((await j.calls('t1')).calls[0].window).toBe('‹9 characters›')
+    expect(JSON.stringify(j.changes.at(-1))).not.toContain('"window":"It failed"')
+  })
+
+  it('a place is left alone by where it is, not by its name: an `app` or a `verb` anywhere else in a record is a window’s to have written', () => {
+    const record = { r: 'end', app: 'Text', read: 'Read Text', steps: [{ kind: 'click', verb: 'Text', asked: { verb: 'Text', object: 'Text' }, opened: { app: 'Text', verb: 'Text', kind: 'Text' } }] }
+    expect(held(record, ['Text'])).toEqual({
+      r: 'end',
+      app: 'Text',
+      read: 'Read Text',
+      steps: [{ kind: 'click', verb: 'Text', asked: { verb: 'Text', object: '‹4 characters›' }, opened: { app: '‹4 characters›', verb: '‹4 characters›', kind: '‹4 characters›' } }]
+    })
   })
 
   it('a call with nothing held back is written as it was given', async () => {

@@ -548,7 +548,10 @@ is out of reach.
   shape, at most `min(400px, 45cqh)` of the section (a tall pane gives
   the window room to be read; a short one keeps its list), on the `card` fill
   with `rounded-lg`, the picture centred in it on the `image-outline`
-  edge, a `Skeleton` in its shape until the first picture. It shows the
+  edge, a `Skeleton` in its shape until the first picture (and again
+  when the stream moves to another window, until that window's own
+  first frame: the last window's picture is never shown as the new
+  one). It shows the
   live stream, or a pinned step's kept picture (a click opens the
   lightbox), or the text the model read in a `CONSOLE` of the box's
   shape, or nothing. While a step is pinned the box keeps its height: a
@@ -557,7 +560,9 @@ is out of reach.
   kept"), so stepping through rows moves nothing. One 12px muted line
   sits 4px under the box only when it has something to say: why a preview
   ended; "After all 3 steps" (or "After the steps that ran") for a
-  batch's earlier step, or one that never ran; "As it was after this step" for a step pinned
+  batch's earlier step, or one that never ran, after the reason there is
+  no picture where there is one ("Screen Recording was off. After all 3
+  steps"); "As it was after this step" for a step pinned
   while a session is live; "As it was at 2:03 PM" where the newest step
   kept nothing and an older picture of its session stands in (another
   window's is named: "Inbox in Mail, as it was at 2:03 PM"); and
@@ -594,7 +599,7 @@ is out of reach.
   (red for a failed step, the one red; foreground for a stopped or
   unfinished one; muted "Not run"); a facts line (the tier's
   words, what it acted on, how it went, its time (with its day when that
-  is not today), as one comma
+  is not today, "Nov 3 2:03 PM": no comma of its own), as one comma
   sentence that wraps as text does, a long unbroken word too, the time
   kept whole, so a narrow panel never puts a short fact on a line of its
   own); and a read line

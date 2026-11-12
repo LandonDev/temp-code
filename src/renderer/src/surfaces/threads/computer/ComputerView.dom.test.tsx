@@ -53,6 +53,8 @@ import { rowsOf } from "../../../lib/computerHistory";
 // ── what the tests build ──
 
 const AT = new Date(2026, 10, 3, 14, 4).getTime();
+/** a step's time as its facts line says it: the day's comma is not one of the line's */
+const factTime = (ts: number): string => dayTime(ts).replace(", ", " ");
 const step = (verb: string, object = "", over: Partial<ComputerHistoryStep> = {}): ComputerHistoryStep => ({
   kind: "click",
   verb,
@@ -180,11 +182,11 @@ describe("following", () => {
     expect(openRow()!.className).toContain("bg-muted");
     expect(openRow()!.querySelector("button")!.getAttribute("aria-current")).toBe("true");
     const facts = [...openRow()!.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent);
-    expect(facts).toEqual([COMPUTER_TIER_WORDS.ax, '"Total"', dayTime(AT + 2400)]);
+    expect(facts).toEqual([COMPUTER_TIER_WORDS.ax, '"Total"', factTime(AT + 2400)]);
     // one comma run that breaks between words, never a fact alone on its line for want of room beside the last
     const run = openRow()!.querySelector('[data-slot="facts"]')!;
     expect(run.tagName).toBe("P");
-    expect(run.textContent).toBe(`${COMPUTER_TIER_WORDS.ax}, "Total", ${dayTime(AT + 2400)}`);
+    expect(run.textContent).toBe(`${COMPUTER_TIER_WORDS.ax}, "Total", ${factTime(AT + 2400)}`);
     expect(run.className).not.toMatch(/flex/);
     // the time is the one fact kept whole: "2:03 PM" never ends a line on "2:03"
     expect([...run.querySelectorAll("span")].map((x) => x.className)).toEqual(["", "", "whitespace-nowrap"]);
@@ -858,6 +860,30 @@ describe("pinning", () => {
     expect(lineUnder()).toBe("As it was after this step");
   });
 
+  it("a batch's earlier step with no picture says why there is none and that the read is the whole batch's", async () => {
+    h.preview.state = live();
+    h.readStep.mockImplementation(async () => ({ text: 'app "Mail" · window "New Message"\n[1] window "New Message"' }));
+    const steps = [step("Clicked", "To"), step("Typed", "into Subject", { kind: "type" }), step("Pressed", "⌘Return", { kind: "key" })];
+    mount(data([call(1, { picture: { none: "permission" }, text: true, read: "Read 3 changes", steps }), call(2)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(box()!.tagName).toBe("PRE");
+    expect(lineUnder()).toBe("Screen Recording was off. After all 3 steps");
+    // its last step is the one the read came after: the reason alone
+    fireEvent.click(rowButton("t1:1:2"));
+    await flush();
+    expect(lineUnder()).toBe("Screen Recording was off");
+    cleanup();
+    // a batch that stopped part way
+    const part = [step("Clicked", "To"), step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), step("Press", "⌘Return", { kind: "key", state: "not-run", tier: undefined })];
+    mount(data([call(1, { picture: { none: "minimized" }, text: true, read: "Read 1 change", steps: part }), call(2)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(lineUnder()).toBe("The window was minimized. After the steps that ran");
+  });
+
   it("a step whose picture is no longer kept and that read nothing is its line alone", async () => {
     h.preview.state = live();
     mount(data([call(1, { picture: { none: "gone" } }), call(2)], [entry()]));
@@ -1000,12 +1026,12 @@ describe("the row states", () => {
         steps: [step("Pressed", "⌘S", { kind: "key", tier: "front", facts: ["saved ~/run/Total.txt", "through the menu File › Save…", "still changing after 1.5 s"] })],
       }),
     );
-    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in front", "saved ~/run/Total.txt", "through the menu File › Save…", "still changing after 1.5 s", dayTime(AT + 1400)]);
+    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in front", "saved ~/run/Total.txt", "through the menu File › Save…", "still changing after 1.5 s", factTime(AT + 1400)]);
     expect(el.textContent).not.toMatch(/\b(ax|process|session)\b/);
     cleanup();
     // a read has no tier: its time alone, and what it took in
     const read = await openOn(call(1, { read: "Read no changes", steps: [{ kind: "read", verb: "Read", object: "", inApp: "TextEdit", state: "ok" }] }));
-    expect([...read.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual([dayTime(AT + 1400)]);
+    expect([...read.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual([factTime(AT + 1400)]);
     // its own row already says Read: the line is what it took in alone
     expect(read.querySelector('[data-slot="step-read"]')!.textContent).toBe("No changes");
     // a read that is its header alone is no disclosure
@@ -1014,7 +1040,7 @@ describe("the row states", () => {
 
   it("a password typed says its length only: the words are the host's", async () => {
     const el = await openOn(call(1, { steps: [step("Typed", "into Password", { kind: "type", target: "a password" })] }));
-    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in the background", "a password", dayTime(AT + 1400)]);
+    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in the background", "a password", factTime(AT + 1400)]);
   });
 
   it("a thin tree reads Looked at the picture", async () => {

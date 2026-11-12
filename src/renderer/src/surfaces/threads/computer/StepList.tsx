@@ -216,9 +216,11 @@ function StepDetail({ row, read, onToggleRead }: { row: StepRow; read: ReadFold;
   const state = unfinished ? "stopped" : step.state;
   // why: red for a step that failed; a stop is the person's or the turn's own, said plainly
   const why = unfinished ? "Didn't finish" : state === "not-run" ? "Not run" : state === "failed" || state === "stopped" ? (step.reason ?? (state === "failed" ? "Failed" : "Stopped")) : null;
+  // (a day's own comma, "Nov 3, 2:03 PM", would read as one more fact of the line)
+  const when = (ts: number): string => dayTime(ts).replace(", ", " ");
   const facts: ReactNode[] = unfinished
-    ? [dayTime(call.at)]
-    : [step.tier ? COMPUTER_TIER_WORDS[step.tier] : null, step.target, ...(step.facts ?? []), dayTime(call.endedAt ?? call.at)];
+    ? [when(call.at)]
+    : [step.tier ? COMPUTER_TIER_WORDS[step.tier] : null, step.target, ...(step.facts ?? []), when(call.endedAt ?? call.at)];
   // the call's read belongs to the last step that was tried: the closing read came after it, never after a step
   // that did not run. A read's own row already says Read, so its line is what it took in alone: "41 elements".
   const tried = call.steps.findLastIndex((s) => s.state !== "not-run");

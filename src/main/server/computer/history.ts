@@ -1,7 +1,7 @@
 import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ComputerHistoryCall, ComputerHistoryPicture, ComputerHistoryStep, HistoryPictureNone } from '@shared/contract-computer'
-import { cutReadText, scrubReadText, scrubWords } from '@shared/computer/historyWords'
+import { cutReadText, isHostSentence, scrubReadText, scrubWords, wordsLine } from '@shared/computer/historyWords'
 import type { Shot } from '@shared/computer/protocol'
 import { ComputerRpcError } from './connection'
 import type { Clock, ComputerService } from './service'
@@ -190,28 +190,49 @@ export interface ComputerHistoryOptions {
 }
 
 /**
- * A record's keys no window can have written: the journal's own structure, and the strings that are the system's
- * or the host's own words whole (the app's name, a step's verb, the read's summary).
+ * The places in a record no window can have written, by their path from the record (a list adds nothing to it):
+ * the journal's own structure, and the strings that are the system's or the host's own words whole (the app's
+ * name, a step's verb, the read's summary). A field of the same name anywhere else is not one of these.
  */
-const NOT_A_WINDOWS: ReadonlySet<string> = new Set(['r', 'kind', 'state', 'tier', 'token', 'none', 'app', 'verb', 'read'])
+const NOT_A_WINDOWS: ReadonlySet<string> = new Set([
+  'r',
+  'token',
+  'none',
+  'app',
+  'read',
+  'steps.kind',
+  'steps.state',
+  'steps.tier',
+  'steps.verb',
+  'steps.asked.verb'
+])
+/** The places the host writes a sentence of its own: one of them, whole, stands ("It failed"); anything else there is scrubbed. */
+const HOSTS_OWN: ReadonlySet<string> = new Set(['steps.reason', 'steps.facts'])
 
 /**
  * The one place a held-back text leaves the journal (docs/computer-protocol.md §17.9 "No secret in a record"):
  * every other string a record holds, however deep, is scrubbed here (`scrubWords`), before the record is folded,
  * pushed or written, so no caller has to remember which of its strings a window could have echoed. A field added
- * to a record later is scrubbed too, unless it is named above.
+ * to a record later is scrubbed too, unless its place is named above.
  */
-export function held<T>(value: T, masked: readonly string[]): T {
-  if (!masked.length) return value
-  const walk = (v: unknown): unknown =>
+export function held<T>(record: T, masked: readonly string[]): T {
+  if (!masked.length) return record
+  const walk = (v: unknown, path: string): unknown =>
     typeof v === 'string'
-      ? scrubWords(v, masked)
+      ? HOSTS_OWN.has(path) && isHostSentence(v)
+        ? v
+        : scrubWords(v, masked)
       : Array.isArray(v)
-        ? v.map(walk)
+        ? v.map((x) => walk(x, path))
         : v && typeof v === 'object'
-          ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, NOT_A_WINDOWS.has(k) ? x : walk(x)]))
+          ? Object.fromEntries(
+              Object.entries(v).map(([k, x]) => {
+                const at = path ? `${path}.${k}` : k
+                return [k, NOT_A_WINDOWS.has(at) ? x : walk(x, at)]
+              })
+            )
           : v
-  return walk(value) as T
+  return walk(record, '') as T
 }
 
 /** A file or folder that is simply not there (no such entry, or a path through something that is no folder). */
@@ -267,21 +288,19 @@ export class ComputerHistory {
       if (fresh || state.turn === 0) state.turn += 1
       n = state.n += 1
       state.open.add(n)
-      const record: StartRecord = held(
-        {
-          v: 1,
-          r: 'start',
-          n,
-          turn: state.turn,
-          ...(start.token !== undefined ? { token: start.token } : {}),
-          at,
-          app: start.app,
-          window: start.window,
-          steps: start.steps,
-          ...(start.plan?.length ? { plan: start.plan } : {})
-        },
+      const scrubbed: StartRecord = held(
+        { v: 1, r: 'start', n, turn: state.turn, ...(start.token !== undefined ? { token: start.token } : {}), at, app: start.app, window: start.window, steps: start.steps },
         masked
       )
+      // A plan line is a step as asked (`planWords`), verb first. With a text held back it is said again from the
+      // scrubbed step, so the host's verb stands and the line is still the words its row settles into.
+      const asked = scrubbed.steps.map((step) => step.asked)
+      const plan = !start.plan?.length
+        ? undefined
+        : masked.length && asked.length === start.plan.length && asked.every((words) => words !== undefined)
+          ? asked.map((words) => wordsLine(words!))
+          : held({ plan: start.plan }, masked).plan
+      const record: StartRecord = plan ? { ...scrubbed, plan } : scrubbed
       if (!state.born) state.born = at
       this.fold(state, record)
       this.changed(state, n)

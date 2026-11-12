@@ -623,7 +623,7 @@ const secretsOf = (masked: readonly string[]): string[] => [...new Set(masked)].
 /** What stands where a held-back text stood: how long it was. */
 const scrubMark = (secret: string): string => `‹${count([...secret].length, 'character')}›`
 
-/** The host's own sentences: a reason or a fact that is one of them, whole, says nothing a window said. */
+/** The host's own sentences: a step's reason or fact that is one of them, whole, says nothing a window said. */
 const HOST_SENTENCES: ReadonlySet<string> = new Set<string>([
   ...Object.values(COMPUTER_FAILURE_WORDS),
   ...Object.values(COMPUTER_REFUSAL_WORDS),
@@ -646,14 +646,16 @@ function asWord(form: string): RegExp {
   return new RegExp(`${before}${form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${after}`, 'gu')
 }
 
+/** A reason or a fact that is one of the host's own sentences, whole: the journal leaves it as it is in those fields alone. */
+export const isHostSentence = (text: string): boolean => HOST_SENTENCES.has(text)
+
 /**
  * A held-back text taken out of one string of a call's record (a window's title, an element's name, a fact, a
- * failure line), where it stands as a word of its own: "Text" typed into a field does not cut "TextEdit" in two,
- * and a sentence that is the host's own, whole, is left as it is. The read text is the window's own lines and
- * goes through `scrubReadText`, which takes the text out wherever it stands.
+ * failure line), where it stands as a word of its own: "Text" typed into a field does not cut "TextEdit" in two.
+ * The read text is the window's own lines and goes through `scrubReadText`, which takes the text out wherever it
+ * stands.
  */
 export function scrubWords(text: string, masked: readonly string[]): string {
-  if (HOST_SENTENCES.has(text)) return text
   let out = text
   for (const secret of secretsOf(masked)) for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) out = out.replace(asWord(form), scrubMark(secret))
   return out
