@@ -760,14 +760,15 @@ async function runChecked(
       callKey: `${threadId}:${++callSeq}`,
       // what the service has confirmed is the journal's whatever comes after: a later request of the batch that
       // fails leaves these steps as they ran, and a step the gate refused keeps the gate's reason
-      onSteps: (steps, gate) => {
+      onSteps: (steps, gate, did) => {
         note.results = steps
         if (gate) note.gate = gate
+        // (with a launch's own report, if the app came forward on the way to its target)
+        if (did?.front) note.front = mergeFront(pin.front, did.front)
+        if (did?.menusLeftOpen) note.menusLeftOpen = did.menusLeftOpen
       }
     })
-    if (result.front) note.front = mergeFront(note.front, result.front)
     if (result.observationError) note.unread = result.observationError
-    if (result.menusLeftOpen?.length) note.menusLeftOpen = result.menusLeftOpen
     for (const s of result.steps) if (s.status === 'failed') noteMissing(s.error)
     for (const [i, s] of result.steps.entries()) if (s.status === 'ok' && s.shot) await land(s.shot, `step ${i + 1}`, i + 1)
     await take(result.observation)
@@ -930,7 +931,7 @@ interface ActionsRun {
    * The call's results so far, one per action in the actions' order, and why the gate refused a step: told before
    * the first request, after each one, when a retry clears a step and at the end, so a request that throws loses none.
    */
-  onSteps?: (steps: StepResult[], gate?: Record<number, string>) => void
+  onSteps?: (steps: StepResult[], gate?: Record<number, string>, did?: { front?: FrontReport; menusLeftOpen?: string[] }) => void
   threadId: string
   session: string
   args: Args
@@ -982,7 +983,9 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   const hostLines = new Map<number, string>()
   /** why the gate refused each step it refused */
   const gateWhy: Record<number, string> = {}
-  const tell = (): void => run.onSteps?.(steps.slice(), Object.keys(gateWhy).length ? { ...gateWhy } : undefined)
+  /** what the requests so far did beside their steps: the app that came forward, the menus left open (set below) */
+  const did = (): { front?: FrontReport; menusLeftOpen?: string[] } => ({ ...(front ? { front } : {}), ...(menusLeftOpen.length ? { menusLeftOpen: [...menusLeftOpen] } : {}) })
+  const tell = (): void => run.onSteps?.(steps.slice(), Object.keys(gateWhy).length ? { ...gateWhy } : undefined, did())
   /** a step that waited before it ran: the line said before its own */
   const heldLines = new Map<number, string>()
   let observation: Observation | undefined

@@ -1546,6 +1546,22 @@ describe('fewer calls (§27)', () => {
       ])
     })
 
+    it('what an earlier request did beside its steps (the app came forward) is kept when a later request fails', async () => {
+      const h = make({ gate: admitAll(), env: { FAKE_ACT_STEAL: '1' }, history: { pictures: () => false } })
+      verdict(h, 'dev.fake.splitty', { key: 'session', type: 'session' })
+      await h.run('computer_observe', { app: 'Splitty' })
+      failRequest(h, 2, minimized())
+      expect((await h.run('computer_batch', { app: 'Splitty', actions: twoRequests })).isError).toBe(true)
+      await h.sessions.drained('t1')
+      const steps = (await h.history!.read(['t1']))[0].calls.at(-1)!.steps
+      expect(steps.map((s) => [s.verb, s.state])).toEqual([
+        ['Clicked', 'ok'],
+        ['Type', 'failed']
+      ])
+      // the first request said the app came forward and was put back: the fact stands on the step that ran
+      expect(steps[0].facts?.some((f) => /^Splitty came to the front and .+ was put back$/.test(f))).toBe(true)
+    })
+
     it('a step the gate refused up front keeps its place and its reason when a request before it fails', async () => {
       const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: false, reason: 'skipped', message: 'no' }), run: (c, send) => send(c.tiers) }
       const h = make({ gate, history: { pictures: () => false } })

@@ -526,6 +526,50 @@ describe("the live viewport", () => {
     expect(box().getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
   });
 
+  it("a window that changes shape under the stream is drawn in its new shape: the box takes the frame's own, once", async () => {
+    mount();
+    await flush();
+    await act(async () => link.push(frame(1)));
+    await flush();
+    expect(box().style.aspectRatio).toBe("960 / 600");
+    const before = renders;
+    // the window grew taller: the service sends frames of the new shape, and no other word of it
+    globalThis.createImageBitmap = vi.fn(async () => ({ width: 960, height: 900, close: vi.fn() })) as never;
+    await act(async () => link.push(frame(2)));
+    await flush();
+    expect(box().style.aspectRatio).toBe("960 / 900");
+    const after = renders;
+    expect(after).toBeGreaterThan(before);
+    // later frames of that shape render nothing
+    await act(async () => link.push(frame(3)));
+    await act(async () => link.push(frame(4)));
+    await flush();
+    expect(renders).toBe(after);
+    // a pixel of rounding is not another shape
+    globalThis.createImageBitmap = vi.fn(async () => ({ width: 959, height: 900, close: vi.fn() })) as never;
+    await act(async () => link.push(frame(5)));
+    await flush();
+    expect(box().style.aspectRatio).toBe("960 / 900");
+  });
+
+  it("a stream that was stopped leaves nothing called live: following again starts from the skeleton in its shape", async () => {
+    const skeleton = () => box().querySelector('[data-slot="skeleton"], .animate-pulse');
+    const view = mount();
+    await flush();
+    await act(async () => link.push(frame(1)));
+    await flush();
+    expect(skeleton()).toBeNull();
+    // a row is pinned: the stream stops
+    view.again({ open: false });
+    await flush();
+    expect(link.methods().at(-1)).toBe("computer.preview.stop");
+    // Go live: the box is the skeleton, in the shape it had, until the new stream's first frame
+    link.answer = () => new Promise(() => {});
+    view.again({ open: true });
+    expect(skeleton()).not.toBeNull();
+    expect(box().style.aspectRatio).toBe("960 / 600");
+  });
+
   it("asks for no frames with no session to draw, or one this desktop cannot draw", async () => {
     mount(null);
     await flush();

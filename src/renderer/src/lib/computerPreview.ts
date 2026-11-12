@@ -58,6 +58,10 @@ export interface PreviewOptions {
   onClick: (x: number, y: number) => void;
 }
 
+/** Starting again, in the shape the box last had: a stream that was live, or one already starting in a shape. */
+const starting = (prev: PreviewState): PreviewState =>
+  (prev.status === "live" || prev.status === "starting") && prev.width && prev.height ? { status: "starting", width: prev.width, height: prev.height } : { status: "starting" };
+
 /** The preview's state, and Retry for one that stopped. */
 export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): { state: PreviewState; retry: () => void } {
   const [state, setState] = useState<PreviewState>({ status: "starting" });
@@ -124,7 +128,7 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
     let shown: { app: string; window: string | null; width: number; height: number } | null = null;
     /** which window the stream is of, as the host tells windows apart: two of one app can share a title */
     let target: string | undefined;
-    setState((prev) => ({ status: "starting", ...(prev.status === "live" ? { width: prev.width, height: prev.height } : {}) }));
+    setState(starting);
 
     const draw = async (push: Extract<ServerPush, { push: "computer-frame" }>): Promise<void> => {
       const el = canvas.current;
@@ -147,8 +151,12 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
           bitmap.close();
           frames++;
           if (box?.current) box.current.dataset.frames = String(frames);
-          // React hears the first frame alone: every later one is the canvas's business
-          if (shown && frames === 1) setState({ status: "live", ...shown, drawn: true });
+          // A window that changed shape under the stream (resized, another pane of Settings) sends frames of the new
+          // shape with no word of it: the box takes the frame's own, or the picture would be stretched into the old one.
+          const reshaped = shown !== null && Math.abs(bitmap.width * shown.height - bitmap.height * shown.width) > Math.max(bitmap.width, bitmap.height);
+          if (shown && reshaped) shown = { ...shown, width: bitmap.width, height: bitmap.height };
+          // React hears the first frame, and a change of shape: every other frame is the canvas's business
+          if (shown && (frames === 1 || reshaped)) setState({ status: "live", ...shown, drawn: true });
         } catch {
           // An undecodable frame: skip it; the ack still lets the next one come.
         }
@@ -215,7 +223,7 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
       if (!alive) return;
       over = true;
       preview = null;
-      setState((prev) => ({ status: "starting", ...(prev.status === "live" ? { width: prev.width, height: prev.height } : {}) }));
+      setState(starting);
     });
     const offOpen = link.onOpen(() => {
       if (alive) setAttempt((n) => n + 1);
@@ -227,6 +235,9 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
       offClose();
       offOpen();
       if (preview) void link.request("computer.preview.stop", { preview }).catch(() => undefined);
+      // the stream is stopped (a row was pinned, the pane hidden): its picture is not live any more, and the next
+      // start begins from the skeleton in its shape, never from an empty box called live
+      setState((prev) => (prev.status === "live" ? starting(prev) : prev));
     };
   }, [attempt, box, canvas, edge, host, key, run]);
 

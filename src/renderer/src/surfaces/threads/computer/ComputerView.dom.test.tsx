@@ -14,7 +14,9 @@ const h = vi.hoisted(() => ({
   loadOlder: vi.fn(() => Promise.resolve()),
   retry: vi.fn(),
   pictureGone: vi.fn(),
-  preview: { state: { status: "starting" } as unknown, runs: [] as boolean[], entries: [] as unknown[], retry: vi.fn() },
+  // `own`: a live state says the window of the session it is asked for, as a real stream does; a test that sets it
+  // false names the stream's window itself
+  preview: { state: { status: "starting" } as unknown, own: true, runs: [] as boolean[], entries: [] as unknown[], retry: vi.fn() },
 }));
 vi.mock("../../../lib/computerSessions", () => ({ stopComputer: h.stopComputer, useComputerEntries: () => [] }));
 vi.mock("../../../lib/tcserver/commands", () => ({ stopTask: vi.fn(), taskLog: vi.fn(), killBackground: vi.fn() }));
@@ -33,7 +35,9 @@ vi.mock("../../../lib/computerPreview", () => ({
   useComputerPreview: (entry: unknown, opts: { run: boolean }) => {
     h.preview.runs.push(opts.run);
     h.preview.entries.push(entry);
-    return { state: h.preview.state, retry: h.preview.retry };
+    const state = h.preview.state as { status: string };
+    const app = (entry as { row: { apps: { name: string; window: string | null }[] } }).row.apps[0];
+    return { state: state.status === "live" && h.preview.own && app ? { ...state, app: app.name, window: app.window } : state, retry: h.preview.retry };
   },
 }));
 vi.mock("../../../lib/computerHistory", async (original) => ({
@@ -127,6 +131,7 @@ beforeEach(() => {
   urls = 0;
   revoked.length = 0;
   h.preview.state = { status: "starting" };
+  h.preview.own = true;
   h.preview.runs.length = 0;
   h.preview.entries.length = 0;
   h.readStep.mockReset();
@@ -440,6 +445,27 @@ describe("following", () => {
     view.again(d([text(AT + 70), mail(AT + 60)]));
     await flush();
     expect(lines()).toEqual(["Reading TextEdit", "Clicking Send in Mail"]);
+  });
+
+  it("the live picture and the row above it go by the window the stream is of, whichever of the stream and the session's row lands first", async () => {
+    // the session moved from TextEdit to Mail: the stream says Mail already, the row's push has not come
+    h.preview.own = false;
+    h.preview.state = live({ app: "Mail", window: "Inbox" });
+    const view = mount(data([call(1), call(2)], [entry()]));
+    await flush();
+    expect(box()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
+    expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("Inbox in Mail");
+    // the other order: the row says Mail and the stream is still TextEdit's; the picture is TextEdit's, and says so
+    h.preview.state = live({ app: "TextEdit", window: "Untitled" });
+    view.again(data([call(1), call(2)], [entry({ apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }] })]));
+    await flush();
+    expect(box()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
+    expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("Untitled in TextEdit");
+    // before the stream has said anything the row is all there is
+    h.preview.state = { status: "starting" };
+    view.again(data([call(1), call(2)], [entry({ apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }] })]));
+    await flush();
+    expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("Inbox in Mail");
   });
 
   it("two live sessions: the followed one's row sits last, next to the box; each has its own Stop, by name, and its own line", async () => {
@@ -862,6 +888,21 @@ describe("pinning", () => {
     fireEvent.click(rowButton("t1:2:2"));
     await flush();
     expect(lineUnder()).toBe("After the steps that ran");
+  });
+
+  it("a pinned picture of another window than the followed session's is named: the row above the box is that session's", async () => {
+    h.preview.state = live();
+    // the session worked in Mail earlier in the turn and is in TextEdit now
+    const mail = call(1, { app: "Mail", window: "Inbox", steps: [step("Clicked", "Send", { inApp: "Send in Mail" })] });
+    mount(data([mail, call(2)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(lineUnder()).toBe("Inbox in Mail, as it was after this step");
+    // a step in the window the session is in now needs no name
+    fireEvent.click(rowButton("t1:2:0"));
+    await flush();
+    expect(lineUnder()).toBe("As it was after this step");
   });
 
   it("a pinned picture with nothing live needs no line: its row says its time", async () => {

@@ -539,7 +539,10 @@ is out of reach.
   is pinned) and Stop (the Activity row's ghost icon button; with several
   sessions each is named for its session). The session the viewport
   follows is the row right above the box, the others above it in the
-  order they began, so a picture is never read as another session's. It
+  order they began, so a picture is never read as another session's;
+  while its stream is live that row and the box go by the window the
+  stream says it is of (the stream and the session's row are two pushes
+  that land in either order). It
   stays followed while it works and for five seconds after its last call
   (`followedSession`): two sessions taking turns never swap the rows or
   the picture after every call; then the look goes to the one at work.
@@ -551,7 +554,9 @@ is out of reach.
   edge, a `Skeleton` in its shape until the first picture (and again
   when the stream moves to another window or the section follows
   another session, until that window's own first frame: the last
-  picture is never shown as the new one's). It shows the
+  picture is never shown as the new one's). A window that changes shape
+  under the stream is drawn in its new shape: the box takes the frame's
+  own. It shows the
   live stream, or a pinned step's kept picture (a click opens the
   lightbox), or the text the model read in a `CONSOLE` of the box's
   shape, or nothing. While a step is pinned the box keeps its height: a
@@ -563,7 +568,8 @@ is out of reach.
   batch's earlier step, or one that never ran, after the reason there is
   no picture where there is one ("Screen Recording was off. After all 3
   steps"); "As it was after this step" for a step pinned
-  while a session is live; "As it was at 2:03 PM" where the newest step
+  while a session is live ("Inbox in Mail, as it was after this step"
+  where it is not the window that session is in now); "As it was at 2:03 PM" where the newest step
   kept nothing and an older picture of its session stands in (another
   window's is named: "Inbox in Mail, as it was at 2:03 PM"); and
   "Couldn't read the picture" with Retry when the read failed, which is

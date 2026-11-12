@@ -4,6 +4,7 @@ import { loadToast } from "../../../components/ui/toaster";
 import { openLightbox } from "../../../chrome/lightboxStore";
 import { useDocumentVisible, usePaneVisible } from "../../../hooks/paneVisibility";
 import { computerLabel } from "../../../lib/activity";
+import type { PreviewState } from "../../../lib/computerPreview";
 import {
   flatRows,
   historyKeyOf,
@@ -78,6 +79,12 @@ const shownAt = (call: ComputerHistoryCall): number => (call.picture && !("none"
 /** What a kept face is, as its accessible name: "Untitled in TextEdit at 2:04 PM". */
 /** A time in the line under the box: its "PM" stays on the time's line where a narrow panel wraps the sentence. */
 const lineTime = (ts: number): string => dayTime(ts).replace(/ (?=[AP]M$)/, "\u00a0");
+/**
+ * The followed session's window as its stream says it while one is live: the stream and the session's row are two
+ * pushes that land in either order, and the picture must go by the name of the window it is of.
+ */
+const liveName = (entry: ComputerEntry, state: PreviewState | undefined): string =>
+  state?.status === "live" && state.app ? (state.window ? `${state.window} in ${state.app}` : state.app) : computerLabel(entry);
 const keptLabel = (call: ComputerHistoryCall): string => `${windowIn(call)} at ${dayTime(shownAt(call))}`;
 /**
  * A step's media as the section asks for it. Its id carries the history's
@@ -147,7 +154,7 @@ export function viewportOf(v: {
   const state = live?.stream.state;
   const over = state?.status === "ended" || state?.status === "failed";
   // Following a live window: the stream, a skeleton in its shape until the first frame.
-  if (live && !pinned && !over) return { face: liveFace(live.stream), label: `Live view of ${computerLabel(live.entry)}`, size: streamSize(live.stream.state) };
+  if (live && !pinned && !over) return { face: liveFace(live.stream), label: `Live view of ${liveName(live.entry, state)}`, size: streamSize(live.stream.state) };
   // The stream ended: today's line, under the newest step's kept picture when there is one.
   const endedWords = live && !pinned && state && over ? (state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error) : null;
   const endedRetry = live && state && (state.status === "failed" || (state.status === "ended" && RETRY_ENDS.has(state.reason))) ? live.stream.retry : undefined;
@@ -171,7 +178,7 @@ export function viewportOf(v: {
   const base = { label, size, height: pinned ? keptHeight : null };
   // a pinned row's own facts carry its time; an older step standing in for the newest says when it was, and whose
   // window it is where that is not the newest step's
-  const asItWords = v.asOf ? (pinned ? "As it was after this step" : v.another ? `${windowIn(call)}, as it was at ${lineTime(at)}` : `As it was at ${lineTime(at)}`) : null;
+  const asItWords = v.asOf ? (pinned ? (v.another ? `${windowIn(call)}, as it was after this step` : "As it was after this step") : v.another ? `${windowIn(call)}, as it was at ${lineTime(at)}` : `As it was at ${lineTime(at)}`) : null;
   const asIt = asItWords ? <ViewportLine words={asItWords} /> : null;
   // Under a preview that ended, a kept picture is a still under a live session's row: it always says when it was.
   // With Screen Recording off the read text is the look there is, and says its time only when it is not the
@@ -321,7 +328,7 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   const shownRow = pinnedRow ?? (!lead || over ? standIn() : null);
   // What the stand-in is measured against: the followed session's window while one is live, else the open step's.
   const another =
-    !pinnedRow && shownRow !== null
+    shownRow !== null
       ? lead
         ? // the followed session's row names the window it is in now: a still of any other window, its own older
           // one included, is named
@@ -398,8 +405,9 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     () =>
       [...data.entries]
         .sort((a, b) => Number(sessionId(a) === leadId) - Number(sessionId(b) === leadId) || a.row.since - b.row.since)
-        .map((e) => ({ id: sessionId(e), label: computerLabel(e), stopping: stopping.has(sessionId(e)) })),
-    [data.entries, leadId, stopping],
+        // (the followed session's row names the window its live picture is of)
+        .map((e) => ({ id: sessionId(e), label: sessionId(e) === leadId && !pinnedRow ? liveName(e, stream.state) : computerLabel(e), stopping: stopping.has(sessionId(e)) })),
+    [data.entries, leadId, pinnedRow, stopping, stream.state],
   );
   // The running lines keep their order as the sessions take turns: the followed session's first, next to the box,
   // then the others as they began.
