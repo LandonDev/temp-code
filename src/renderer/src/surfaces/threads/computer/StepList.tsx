@@ -12,7 +12,7 @@ import { TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
 import { AppWindow, Camera, ChevronRight, Hourglass, Keyboard, Minus, MousePointerClick, MoveVertical, ScanText, TextCursor, type IconComponent } from "../../../chrome/icons";
 import type { StepGroup, StepRow } from "../../../lib/computerHistory";
-import { clockTime, dayTime } from "../../../lib/duration";
+import { dayTime } from "../../../lib/duration";
 import { STAGGER } from "../../../lib/ease";
 import { SwapIcon } from "../../../motion/IconSwap";
 import { GLYPH_SLOT, STEP_LINE } from "../../transcript/stepLine";
@@ -217,8 +217,8 @@ function StepDetail({ row, read, onToggleRead }: { row: StepRow; read: ReadFold;
   // why: red for a step that failed; a stop is the person's or the turn's own, said plainly
   const why = unfinished ? "Didn't finish" : state === "not-run" ? "Not run" : state === "failed" || state === "stopped" ? (step.reason ?? (state === "failed" ? "Failed" : "Stopped")) : null;
   const facts: ReactNode[] = unfinished
-    ? [clockTime(call.at)]
-    : [step.tier ? COMPUTER_TIER_WORDS[step.tier] : null, step.target, ...(step.facts ?? []), clockTime(call.endedAt ?? call.at)];
+    ? [dayTime(call.at)]
+    : [step.tier ? COMPUTER_TIER_WORDS[step.tier] : null, step.target, ...(step.facts ?? []), dayTime(call.endedAt ?? call.at)];
   // the call's read belongs to the last step that was tried: the closing read came after it, never after a step
   // that did not run. A read's own row already says Read, so its line is what it took in alone: "41 elements".
   const tried = call.steps.findLastIndex((s) => s.state !== "not-run");

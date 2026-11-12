@@ -1,7 +1,7 @@
 import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ComputerHistoryCall, ComputerHistoryPicture, ComputerHistoryStep, HistoryPictureNone } from '@shared/contract-computer'
-import { cutReadText, scrubReadText } from '@shared/computer/historyWords'
+import { cutReadText, scrubReadText, scrubWords } from '@shared/computer/historyWords'
 import type { Shot } from '@shared/computer/protocol'
 import { ComputerRpcError } from './connection'
 import type { Clock, ComputerService } from './service'
@@ -189,29 +189,32 @@ export interface ComputerHistoryOptions {
   pictures?: () => boolean
 }
 
-/** A file or folder that is simply not there (no such entry, or a path through something that is no folder). */
-/** A record's keys that are the journal's own structure: never a thing a window, an app or the model said. */
-const STRUCTURAL: ReadonlySet<string> = new Set(['r', 'kind', 'state', 'tier', 'token', 'none'])
+/**
+ * A record's keys no window can have written: the journal's own structure, and the strings that are the system's
+ * or the host's own words whole (the app's name, a step's verb, the read's summary).
+ */
+const NOT_A_WINDOWS: ReadonlySet<string> = new Set(['r', 'kind', 'state', 'tier', 'token', 'none', 'app', 'verb', 'read'])
 
 /**
  * The one place a held-back text leaves the journal (docs/computer-protocol.md §17.9 "No secret in a record"):
- * every string a record holds but its structure, however deep, is scrubbed here, before the record is folded,
+ * every other string a record holds, however deep, is scrubbed here (`scrubWords`), before the record is folded,
  * pushed or written, so no caller has to remember which of its strings a window could have echoed. A field added
- * to a record later is scrubbed too, unless it is named structural above.
+ * to a record later is scrubbed too, unless it is named above.
  */
 export function held<T>(value: T, masked: readonly string[]): T {
   if (!masked.length) return value
   const walk = (v: unknown): unknown =>
     typeof v === 'string'
-      ? scrubReadText(v, masked)
+      ? scrubWords(v, masked)
       : Array.isArray(v)
         ? v.map(walk)
         : v && typeof v === 'object'
-          ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, STRUCTURAL.has(k) ? x : walk(x)]))
+          ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, NOT_A_WINDOWS.has(k) ? x : walk(x)]))
           : v
   return walk(value) as T
 }
 
+/** A file or folder that is simply not there (no such entry, or a path through something that is no folder). */
 const isAbsent = (e: NodeJS.ErrnoException | undefined): boolean => e?.code === 'ENOENT' || e?.code === 'ENOTDIR'
 
 const isRecord = (v: unknown): v is HistoryRecord => {
@@ -293,7 +296,8 @@ export class ComputerHistory {
         this.run(state, async () => {
           if (n === null) return
           state.open.delete(n)
-          const text = end.text !== undefined ? cutReadText(held(end.text, masked)) : undefined
+          // (the read text is the window's own lines: a held-back text goes wherever it stands in them)
+          const text = end.text !== undefined ? cutReadText(scrubReadText(end.text, masked)) : undefined
           const kept = text !== undefined && (await this.writeStep(state, `${n}.txt`, text))
           const record: EndRecord = held(
             {

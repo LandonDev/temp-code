@@ -45,7 +45,7 @@ vi.mock("../../../lib/computerHistory", async (original) => ({
 }));
 
 import { COMPUTER_TIER_WORDS } from "@server/shared/statusWords";
-import { clockTime, dayTime } from "../../../lib/duration";
+import { dayTime } from "../../../lib/duration";
 import { ComputerSectionBody, FOLLOW_HOLD_MS, followedSession, runningLines } from "./ComputerSection";
 import { PICTURE_DIM_MS, STEP_MEDIA_LIMIT, StepMediaCache } from "./stepMedia";
 import { rowsOf } from "../../../lib/computerHistory";
@@ -180,11 +180,11 @@ describe("following", () => {
     expect(openRow()!.className).toContain("bg-muted");
     expect(openRow()!.querySelector("button")!.getAttribute("aria-current")).toBe("true");
     const facts = [...openRow()!.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent);
-    expect(facts).toEqual([COMPUTER_TIER_WORDS.ax, '"Total"', clockTime(AT + 2400)]);
+    expect(facts).toEqual([COMPUTER_TIER_WORDS.ax, '"Total"', dayTime(AT + 2400)]);
     // one comma run that breaks between words, never a fact alone on its line for want of room beside the last
     const run = openRow()!.querySelector('[data-slot="facts"]')!;
     expect(run.tagName).toBe("P");
-    expect(run.textContent).toBe(`${COMPUTER_TIER_WORDS.ax}, "Total", ${clockTime(AT + 2400)}`);
+    expect(run.textContent).toBe(`${COMPUTER_TIER_WORDS.ax}, "Total", ${dayTime(AT + 2400)}`);
     expect(run.className).not.toMatch(/flex/);
     // the time is the one fact kept whole: "2:03 PM" never ends a line on "2:03"
     expect([...run.querySelectorAll("span")].map((x) => x.className)).toEqual(["", "", "whitespace-nowrap"]);
@@ -1000,12 +1000,12 @@ describe("the row states", () => {
         steps: [step("Pressed", "⌘S", { kind: "key", tier: "front", facts: ["saved ~/run/Total.txt", "through the menu File › Save…", "still changing after 1.5 s"] })],
       }),
     );
-    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in front", "saved ~/run/Total.txt", "through the menu File › Save…", "still changing after 1.5 s", clockTime(AT + 1400)]);
+    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in front", "saved ~/run/Total.txt", "through the menu File › Save…", "still changing after 1.5 s", dayTime(AT + 1400)]);
     expect(el.textContent).not.toMatch(/\b(ax|process|session)\b/);
     cleanup();
     // a read has no tier: its time alone, and what it took in
     const read = await openOn(call(1, { read: "Read no changes", steps: [{ kind: "read", verb: "Read", object: "", inApp: "TextEdit", state: "ok" }] }));
-    expect([...read.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual([clockTime(AT + 1400)]);
+    expect([...read.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual([dayTime(AT + 1400)]);
     // its own row already says Read: the line is what it took in alone
     expect(read.querySelector('[data-slot="step-read"]')!.textContent).toBe("No changes");
     // a read that is its header alone is no disclosure
@@ -1014,7 +1014,7 @@ describe("the row states", () => {
 
   it("a password typed says its length only: the words are the host's", async () => {
     const el = await openOn(call(1, { steps: [step("Typed", "into Password", { kind: "type", target: "a password" })] }));
-    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in the background", "a password", clockTime(AT + 1400)]);
+    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in the background", "a password", dayTime(AT + 1400)]);
   });
 
   it("a thin tree reads Looked at the picture", async () => {
@@ -1151,6 +1151,29 @@ describe("the read line", () => {
     fireEvent.click(failed.querySelector("button")!);
     await flush();
     expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read");
+  });
+
+  it("a picture the record says is gone is not drawn from an earlier read: the newer read's failure stands there, with Retry", async () => {
+    let fail = false;
+    h.readStep.mockImplementation(async (_key: string, n: number) => {
+      if (fail) throw new Error("no");
+      return picture(n);
+    });
+    const view = mount(data([call(1, { text: true, read: "Read 3 changes", rev: 3 })]));
+    await flush();
+    expect(box()!.getAttribute("data-face")).toBe("picture");
+    // Keep pictures was turned off: the record says the picture is gone, the text stays, and the new read fails
+    fail = true;
+    view.again(data([call(1, { picture: { none: "gone" }, text: true, read: "Read 3 changes", rev: 4 })]));
+    await flush();
+    expect(document.querySelector('[data-face="picture"]')).toBeNull();
+    expect(lineUnder()).toBe("Couldn't read the textRetry");
+    // Retry reads again, and what the call still keeps is shown
+    fail = false;
+    h.readStep.mockImplementation(async () => ({ text: 'app "TextEdit"\n[1] window "Untitled"' }));
+    await act(async () => fireEvent.click(document.querySelector('[data-slot="computer-line"] button')!));
+    await flush();
+    expect(box()!.tagName).toBe("PRE");
   });
 
   it("where the viewport already shows the read text, the row's read line says what was read and opens nothing", async () => {

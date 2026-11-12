@@ -177,9 +177,9 @@ time has one form, `clockTime` (lib/duration.ts): the locale's hour and
 minute, 12-hour with AM/PM where it writes it so ("Landed 12:08 PM",
 "Finished 2:02 PM"), never a hand-padded "14:02"; `tabular-nums` where it
 sits in a column. Where a time can be another day's (the Computer
-section's group headings and its "As it was at" lines: the journal keeps
-30 days) it names its day, `dayTime`: "2:02 PM" today, "Mon 2:02 PM"
-within the week, "Nov 3, 2:02 PM" before.
+section's group headings, its "As it was at" lines and a step's time in
+its facts: the journal keeps 30 days) it names its day, `dayTime`:
+"2:02 PM" today, "Mon 2:02 PM" within the week, "Nov 3, 2:02 PM" before.
 
 ### Spacing
 
@@ -593,7 +593,8 @@ is out of reach.
   the words: a 12px line saying why, for a step that did not end well
   (red for a failed step, the one red; foreground for a stopped or
   unfinished one; muted "Not run"); a facts line (the tier's
-  words, what it acted on, how it went, the clock time, as one comma
+  words, what it acted on, how it went, its time (with its day when that
+  is not today), as one comma
   sentence that wraps as text does, a long unbroken word too, the time
   kept whole, so a narrow panel never puts a short fact on a line of its
   own); and a read line

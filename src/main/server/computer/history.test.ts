@@ -758,23 +758,23 @@ describe('the kept picture', () => {
 describe('a held-back text leaves the journal at one place (held)', () => {
   const TOKEN = 'hunter2-token'
   const MARK = '‹13 characters›'
-  /** the token in every string a record can hold */
+  /** the token in every string of a step that a window can have written */
   const all = (verb: string, state?: ComputerHistoryStep['state']): ComputerHistoryStep => ({
     kind: 'type',
-    verb: `${verb} ${TOKEN}`,
+    verb,
     object: `into ${TOKEN}`,
-    inApp: `into ${TOKEN} in ${TOKEN}`,
+    inApp: `into ${TOKEN} in Notes`,
     target: `a field named ${TOKEN}`,
     facts: [`opened "${TOKEN}"`, `saved ~/${TOKEN}.txt`],
     reason: `No element is named ${TOKEN}`,
-    asked: { verb: `Type ${TOKEN}`, object: `into ${TOKEN}`, inApp: `into ${TOKEN} in ${TOKEN}` },
+    asked: { verb: 'Type', object: `into ${TOKEN}`, inApp: `into ${TOKEN} in Notes` },
     ...(state ? { state, tier: 'ax' as const } : {})
   })
 
   it('no string of a call says it: not the log, not what is pushed or read, not the kept text', async () => {
     const j = journal()
-    const entry = j.history.begin('t1', { app: `${TOKEN} Notes`, window: `${TOKEN} — Notes`, steps: [all('Typing')], plan: [`Type ${TOKEN}`, 'Press Return'], masked: [TOKEN] })
-    await entry.end({ app: `${TOKEN} Notes`, window: `${TOKEN} — Notes`, steps: [all('Typed', 'failed')], read: `Read ${TOKEN}`, text: `app "Notes" · window "${TOKEN} — Notes"\n[1] input "Name" = "${TOKEN}"` })
+    const entry = j.history.begin('t1', { app: 'Notes', window: `${TOKEN} — Notes`, steps: [all('Typing')], plan: [`Type into ${TOKEN}`, 'Press Return'], masked: [TOKEN] })
+    await entry.end({ app: 'Notes', window: `${TOKEN} — Notes`, steps: [all('Typed', 'failed')], read: 'Read 2 elements', text: `app "Notes" · window "${TOKEN} — Notes"\n[1] input "Name" = "${TOKEN}"\n[2] text = "x${TOKEN}y"` })
     await entry.picture({ none: 'permission' })
     const read = await j.calls('t1')
     const log = readFileSync(join(j.dir('t1'), 'log.jsonl'), 'utf8')
@@ -784,27 +784,49 @@ describe('a held-back text leaves the journal at one place (held)', () => {
     // every place it stood says how long it was instead
     const call = read.calls[0]
     expect(call.window).toBe(`${MARK} — Notes`)
-    expect(call.steps[0]).toMatchObject({ object: `into ${MARK}`, target: `a field named ${MARK}`, facts: [`opened "${MARK}"`, `saved ~/${MARK}.txt`], reason: `No element is named ${MARK}` })
+    expect(call.steps[0]).toMatchObject({ verb: 'Typed', object: `into ${MARK}`, target: `a field named ${MARK}`, facts: [`opened "${MARK}"`, `saved ~/${MARK}.txt`], reason: `No element is named ${MARK}` })
+    // in the read text it goes wherever it stands, inside a longer value too
     expect(text).toContain(`= "${MARK}"`)
+    expect(text).toContain(`= "x${MARK}y"`)
     // the start was scrubbed before it was pushed, not only the end: the running call's plan and words
     const running = j.changes[0] as { call: { plan?: string[]; steps: ComputerHistoryStep[] } }
-    expect(running.call.plan).toEqual([`Type ${MARK}`, 'Press Return'])
-    expect(running.call.steps[0].asked).toEqual({ verb: `Type ${MARK}`, object: `into ${MARK}`, inApp: `into ${MARK} in ${MARK}` })
+    expect(running.call.plan).toEqual([`Type into ${MARK}`, 'Press Return'])
+    expect(running.call.steps[0].asked).toEqual({ verb: 'Type', object: `into ${MARK}`, inApp: `into ${MARK} in Notes` })
   })
 
-  it('leaves the record’s own structure alone, whatever was typed', async () => {
+  it('takes it out where it stands as a word, and leaves the journal’s structure, the app’s name and the host’s own words', async () => {
     const j = journal()
-    // texts that are also words of the journal's structure
-    const entry = j.history.begin('t1', { ...start(), token: 'turn-click', masked: ['click', 'failed', 'start', 'permission', 'turn-click'] })
-    await entry.end(end({ steps: [step('Clicked', 'Save', { state: 'failed', tier: 'process', reason: 'It failed' })] }))
+    // texts a batch may well type: words of the journal's structure, of the app's name, of the host's sentences
+    const masked = ['click', 'failed', 'start', 'permission', 'turn-click', 'Text', 'Clicked', 'Read', 'Save']
+    const entry = j.history.begin('t1', { ...start(), token: 'turn-click', masked })
+    await entry.end(
+      end({
+        window: 'Save — Text notes',
+        read: 'Read 3 changes',
+        steps: [step('Clicked', 'Save', { state: 'failed', tier: 'process', reason: 'It failed', target: 'a button in the "Texture" group', facts: ['nothing changed', 'opened "Save"'] })]
+      })
+    )
     await entry.picture({ none: 'permission' })
     const lines = j.lines('t1')
     expect(lines.map((l) => l.r)).toEqual(['start', 'end', 'picture'])
     expect(lines[0].token).toBe('turn-click')
-    expect(lines[1].steps[0]).toMatchObject({ kind: 'click', state: 'failed', tier: 'process', reason: 'It ‹6 characters›' })
     expect(lines[2].none).toBe('permission')
+    expect(lines[1]).toMatchObject({ app: 'TextEdit', read: 'Read 3 changes', window: '‹4 characters› — ‹4 characters› notes' })
+    expect(lines[1].steps[0]).toMatchObject({
+      kind: 'click',
+      state: 'failed',
+      tier: 'process',
+      verb: 'Clicked',
+      // a name that is the typed word is held back; the app's name inside the row's words is not cut in two
+      object: '‹4 characters›',
+      inApp: '‹4 characters› in TextEdit',
+      // the host's own sentences stand whole, and a longer word that holds the text is not it
+      reason: 'It failed',
+      target: 'a button in the "Texture" group',
+      facts: ['nothing changed', 'opened "‹4 characters›"']
+    })
     // and it still folds into a call a reader can take
-    expect((await j.calls('t1')).calls[0]).toMatchObject({ state: 'done', picture: { none: 'permission' } })
+    expect((await j.calls('t1')).calls[0]).toMatchObject({ state: 'done', app: 'TextEdit', picture: { none: 'permission' } })
   })
 
   it('a call with nothing held back is written as it was given', async () => {

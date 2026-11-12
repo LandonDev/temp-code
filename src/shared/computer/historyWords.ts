@@ -371,10 +371,13 @@ const SESSION_WHY: Readonly<Record<string, string>> = {
   'in-use': 'Another app held the screen'
 }
 
+/** What a step that failed says when nothing says why (run.ts uses the same words for an end it cannot word). */
+export const FAILED_WORDS = 'It failed'
+
 /** A line's first sentence, as a person's: up to its first `;`, a capital first. */
 function firstSentence(line: string): string {
   const cut = line.split(';')[0].trim().replace(/[.:]+$/, '')
-  return cut ? cut.charAt(0).toUpperCase() + cut.slice(1) : 'It failed'
+  return cut ? cut.charAt(0).toUpperCase() + cut.slice(1) : FAILED_WORDS
 }
 
 /** Why a step failed, in a person's words: the kind's line, else the service's own sentence up to its first `;`. */
@@ -535,8 +538,10 @@ export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
     }
     return { ...base, state: 'not-run' }
   })
-  // what the call says of itself goes on the last step that ran
-  const last = steps.findLastIndex((st) => st.state === 'ok')
+  // what the call says of itself goes on the last step that ran; where none did, on the last one that was tried:
+  // the tab the host selected, the app that came forward and the menu left open happened whatever the step did
+  const ranLast = steps.findLastIndex((st) => st.state === 'ok')
+  const last = ranLast >= 0 ? ranLast : steps.findLastIndex((st) => st.state !== 'not-run')
   if (last >= 0) {
     // every step answered and the call still failed (the service went during the closing read): the steps ran, and
     // the end the model was told has no step of its own to stand on
@@ -613,6 +618,47 @@ export function cutReadText(text: string, max = READ_TEXT_MAX_BYTES): string {
 /** A text worth taking out: shorter ones are words any window holds. */
 const SCRUB_MIN = 4
 
+/** The texts worth taking out, the longest first, so a text that holds another goes whole. */
+const secretsOf = (masked: readonly string[]): string[] => [...new Set(masked)].filter((s) => [...s].length >= SCRUB_MIN).sort((a, b) => b.length - a.length)
+/** What stands where a held-back text stood: how long it was. */
+const scrubMark = (secret: string): string => `‹${count([...secret].length, 'character')}›`
+
+/** The host's own sentences: a reason or a fact that is one of them, whole, says nothing a window said. */
+const HOST_SENTENCES: ReadonlySet<string> = new Set<string>([
+  ...Object.values(COMPUTER_FAILURE_WORDS),
+  ...Object.values(COMPUTER_REFUSAL_WORDS),
+  ...Object.values(COMPUTER_ABORT_WORDS),
+  ...Object.values(COMPUTER_EFFECT_FACTS),
+  ...Object.values(FOCUS_WHY),
+  ...Object.values(SESSION_WHY),
+  ...Object.values(GATE_END).flatMap((end) => (end.reason ? [end.reason] : [])),
+  COMPUTER_SKIPPED_WORDS,
+  APPS_UNLISTED,
+  FAILED_WORDS
+])
+
+const WORD_CHAR = /[\p{L}\p{N}]/u
+/** `form` where it stands as a word of its own: no letter or digit against an end of it that is one. */
+function asWord(form: string): RegExp {
+  const chars = [...form]
+  const before = WORD_CHAR.test(chars[0]) ? '(?<![\\p{L}\\p{N}])' : ''
+  const after = WORD_CHAR.test(chars[chars.length - 1]) ? '(?![\\p{L}\\p{N}])' : ''
+  return new RegExp(`${before}${form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${after}`, 'gu')
+}
+
+/**
+ * A held-back text taken out of one string of a call's record (a window's title, an element's name, a fact, a
+ * failure line), where it stands as a word of its own: "Text" typed into a field does not cut "TextEdit" in two,
+ * and a sentence that is the host's own, whole, is left as it is. The read text is the window's own lines and
+ * goes through `scrubReadText`, which takes the text out wherever it stands.
+ */
+export function scrubWords(text: string, masked: readonly string[]): string {
+  if (HOST_SENTENCES.has(text)) return text
+  let out = text
+  for (const secret of secretsOf(masked)) for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) out = out.replace(asWord(form), scrubMark(secret))
+  return out
+}
+
 /** A quoted string as an observation prints one. */
 const QUOTED = /"(?:[^"\\]|\\.)*"/g
 /** A value the service cut: its first scalars, then how many more it has (observation.ts `cutValue`); a name it cut ends in the ellipsis alone. */
@@ -628,10 +674,9 @@ const CUT = /^([\s\S]*)…(?:\(\+(\d+) chars\))?$/
  * follows must not say more.
  */
 export function scrubReadText(text: string, masked: readonly string[]): string {
-  // the longest first, so a text that holds another goes whole
-  const secrets = [...new Set(masked)].filter((s) => [...s].length >= SCRUB_MIN).sort((a, b) => b.length - a.length)
+  const secrets = secretsOf(masked)
   if (!secrets.length) return text
-  const mark = (secret: string): string => `‹${count([...secret].length, 'character')}›`
+  const mark = scrubMark
   let out = text
   for (const secret of secrets) for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) out = out.split(form).join(mark(secret))
   return out.replace(QUOTED, (literal) => {

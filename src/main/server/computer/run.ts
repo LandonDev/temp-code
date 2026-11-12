@@ -24,7 +24,7 @@ import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, mayRunAtAx, type Acti
 import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type AppsOutcome, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
-import { maskedTexts, planWords, plannedSteps, readSummary, settledSteps, type PlannedStep } from '@shared/computer/historyWords'
+import { FAILED_WORDS, maskedTexts, planWords, plannedSteps, readSummary, settledSteps, type PlannedStep } from '@shared/computer/historyWords'
 import { approvalLine } from '@shared/approvalLine'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
@@ -370,7 +370,7 @@ export async function runComputerTool(
       void entry.end({
         app: words.app,
         window: args.window ?? null,
-        steps: planned.map(({ asked, done: _done, ...step }, k) => ({ ...step, ...asked, ...(k === 0 ? { state: 'failed' as const, reason: 'It failed' } : { state: 'not-run' as const }) }))
+        steps: planned.map(({ asked, done: _done, ...step }, k) => ({ ...step, ...asked, ...(k === 0 ? { state: 'failed' as const, reason: FAILED_WORDS } : { state: 'not-run' as const }) }))
       })
     }
     journaled?.(entry, obs ? { session: t.serviceSession, pid: obs.app.pid, windowId: obs.window.id, width: obs.space.width, height: obs.space.height, epoch: obs.epoch } : null)

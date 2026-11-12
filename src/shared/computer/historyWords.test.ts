@@ -17,6 +17,7 @@ import {
   refusalWords,
   resultFacts,
   scrubReadText,
+  scrubWords,
   settledSteps,
   stepTargetWords,
   workingStep,
@@ -491,6 +492,22 @@ describe('settledSteps', () => {
     expect(settledSteps({ ...base, results: held.slice(0, 2), refused: { kind: 'service_restarted', line: 'x' } }).map((x) => x.state)).toEqual(['ok', 'not-run', 'not-run'])
   })
 
+  it('what the call did to the Mac is said though no step ran: on the last step that was tried', () => {
+    const two = { app: 'Safari', actions: [{ action: 'left_click', element: 44 }, { action: 'key', text: 'Return' }] }
+    const steps = settledSteps({
+      tool: 'computer_batch',
+      args: two,
+      ctx: { app: 'Safari' },
+      results: [failed('left_click', { kind: 'stale_element' }), { index: 1, action: 'key', status: 'not-run' }],
+      selectedTab: 'Web report',
+      front: { raised: true, restored: 'failed' },
+      menusLeftOpen: ['Action']
+    })
+    expect(steps.map((x) => x.state)).toEqual(['failed', 'not-run'])
+    expect(steps[0].facts).toEqual(['selected the tab "Web report"', 'Safari came to the front and could not be put back', 'left the menu Action open'])
+    expect(steps[1].facts).toBeUndefined()
+  })
+
   it('a request that failed whole says the service’s kind', () => {
     const steps = settledSteps({ tool: 'computer_act', args: { app: 'TextEdit', action: 'left_click', element: 44 }, ctx, error: { kind: 'window_minimized', message: 'm' } })
     expect(steps[0]).toMatchObject({ state: 'failed', reason: 'The window was minimized' })
@@ -624,5 +641,25 @@ describe('cutReadText', () => {
     expect(cut.split('\n')[0]).toBe('éé')
     expect(cut).not.toContain('�')
     expect(cut.split('\n')[1]).toBe('… cut here, 1 more line')
+  })
+})
+
+describe('scrubWords: a held-back text out of one string of a record', () => {
+  it('takes the text out where it stands as a word of its own, raw or as a fact quotes it', () => {
+    expect(scrubWords('hunter2-token — Notes', ['hunter2-token'])).toBe('‹13 characters› — Notes')
+    expect(scrubWords('report-hunter2.pdf', ['hunter2'])).toBe('report-‹7 characters›.pdf')
+    expect(scrubWords('opened "a\\"b c"', ['a"b c'])).toBe('opened "‹5 characters›"')
+    expect(scrubWords('saved ~/pa$$w.rd!.txt', ['pa$$w.rd!'])).toBe('saved ~/‹9 characters›.txt')
+  })
+
+  it('does not cut a longer word in two, and leaves a sentence that is the host’s own', () => {
+    expect(scrubWords('Typed into a text area in TextEdit', ['Text', 'text'])).toBe('Typed into a ‹4 characters› area in TextEdit')
+    expect(scrubWords('myhunter2file', ['hunter2'])).toBe('myhunter2file')
+    expect(scrubWords('It failed', ['failed'])).toBe('It failed')
+    expect(scrubWords('The window was minimized', ['window'])).toBe('The window was minimized')
+    // a line that only holds the word is not the host's sentence
+    expect(scrubWords('The field kept failed', ['failed'])).toBe('The field kept ‹6 characters›')
+    // three characters or fewer are left: any window holds them
+    expect(scrubWords('abc — Notes', ['abc'])).toBe('abc — Notes')
   })
 })

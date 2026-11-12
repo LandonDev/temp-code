@@ -107,6 +107,17 @@ describe('the answer and the journal: a step that ran', () => {
     expect((await newest(h)).steps[0].facts).toContain('selected the tab "Web report"')
   })
 
+  it('the tab the host selected is said though the step it selected it for failed', async () => {
+    const h = make({ gate: admitAll(), env: { FAKE_WEB_ACTIVE: '1' } })
+    await h.run('computer_apps', {})
+    await h.run('computer_observe', { app: 'Webby' })
+    const o = await h.run('computer_act', { app: 'Webby', window: 'Web report', action: 'left_click', named: 'Nope' })
+    expect(o.steps[0]).toBe('Selected tab "Web report" in window "Web report - Webby"')
+    expect(o.steps[1]).toMatch(/^left_click "Nope" · failed: /)
+    // the browser shows another tab now, whatever the click did: the fact stands on the step that was tried
+    expect((await newest(h)).steps).toMatchObject([{ verb: 'Click', state: 'failed', reason: 'Nothing by that name was found', facts: ['selected the tab "Web report"'] }])
+  })
+
   it('a read that was still changing when it was taken', async () => {
     const h = make()
     // the fake's reads always settle: this one says it ran out of time, as the service does for a busy window

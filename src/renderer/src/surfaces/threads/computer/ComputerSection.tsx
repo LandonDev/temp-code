@@ -163,7 +163,11 @@ export function viewportOf(v: {
   const at = shownAt(call);
   const label = keptLabel(call);
   const size = kept ? { width: kept.width, height: kept.height } : null;
-  const here = media.landed?.id === (v.shownId ?? `${shown.key}:${call.n}`) ? media.landed.media : null;
+  const landed = media.landed?.id === (v.shownId ?? `${shown.key}:${call.n}`) ? media.landed.media : null;
+  // A picture the record says it no longer keeps (pictures were turned off, it aged out) is never drawn from what
+  // an earlier read left: the newer read's text, its skeleton or its failure with Retry stands there instead.
+  const stale = landed?.picture !== undefined && !kept;
+  const here = stale ? null : landed;
   const base = { label, size, height: pinned ? keptHeight : null };
   // a pinned row's own facts carry its time; an older step standing in for the newest says when it was, and whose
   // window it is where that is not the newest step's
@@ -186,7 +190,7 @@ export function viewportOf(v: {
     }
     // on its way: the picture before it stays, under its own name, dimmed once that has taken a moment; a first
     // picture is a skeleton
-    const before = media.landed?.media.picture;
+    const before = stale ? undefined : media.landed?.media.picture;
     if (before && media.landed) {
       return { ...base, label: keptLabel(media.landed.call), face: { kind: "picture", src: before.url, dim: media.late }, line: ended };
     }
