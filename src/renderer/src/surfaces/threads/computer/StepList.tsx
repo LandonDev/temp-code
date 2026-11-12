@@ -193,7 +193,7 @@ function ReadText({ text, element }: { text: string; element?: number }) {
   );
 }
 
-/** A step's facts as one line of prose: each fact a span, a comma and a space between them. */
+/** A step's facts as one line of prose: each fact a span, a comma and a space between them; the time, last, stays whole. */
 function StepFacts({ parts }: { parts: readonly ReactNode[] }) {
   const shown = parts.filter((part) => part !== null && part !== undefined && part !== false && part !== "");
   if (!shown.length) return null;
@@ -202,7 +202,7 @@ function StepFacts({ parts }: { parts: readonly ReactNode[] }) {
       {shown.map((part, i) => (
         <Fragment key={i}>
           {i > 0 ? ", " : null}
-          <span>{part}</span>
+          <span className={i === shown.length - 1 ? "whitespace-nowrap" : undefined}>{part}</span>
         </Fragment>
       ))}
     </p>

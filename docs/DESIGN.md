@@ -589,8 +589,8 @@ under them is the section's one scroller.
   (red for a failed step, the one red; foreground for a stopped or
   unfinished one; muted "Not run"); a facts line (the tier's
   words, what it acted on, how it went, the clock time, as one comma
-  sentence that wraps as text does, so a narrow panel never puts a
-  fact on a line of its own); and a read line
+  sentence that wraps as text does, the time kept whole, so a narrow
+  panel never puts a short fact on a line of its own); and a read line
   ("46 elements" after a read row, "Read 3 changes" after an act; a
   batch's read sits on the last step that was tried) whose
   chevron trails its words and opens the text in a `CONSOLE` capped at

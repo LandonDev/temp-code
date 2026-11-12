@@ -232,10 +232,10 @@ export const COMPUTER_REFUSAL_WORDS: Readonly<
   refused_app: 'That app is off limits'
 }
 
-/** Why a call ended before its answer, by its abort reason (computer/run.ts `abortedLine`). */
 /** A step whose Run-now card was answered Skip, or never answered: the gate hears one no for both, so the words are true of both. */
 export const COMPUTER_SKIPPED_WORDS = 'Run now was not chosen'
 
+/** Why a call ended before its answer, by its abort reason (computer/run.ts `abortedLine`). */
 export const COMPUTER_ABORT_WORDS: Readonly<Record<string, string>> = {
   stopped: 'Stopped',
   interrupt: 'Stopped',

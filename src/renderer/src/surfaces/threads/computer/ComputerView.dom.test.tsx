@@ -185,6 +185,8 @@ describe("following", () => {
     expect(run.tagName).toBe("P");
     expect(run.textContent).toBe(`${COMPUTER_TIER_WORDS.ax}, "Total", ${clockTime(AT + 2400)}`);
     expect(run.className).not.toMatch(/flex/);
+    // the time is the one fact kept whole: "2:03 PM" never ends a line on "2:03"
+    expect([...run.querySelectorAll("span")].map((x) => x.className)).toEqual(["", "", "whitespace-nowrap"]);
     // the rest are one line each, and only the oldest names its app
     expect(rows().map(words)).toEqual(["Typedinto Save As", "ClickedStep 1 in TextEdit"]);
     expect(rows()[1].querySelector('[data-slot="step-detail"]')).toBeNull();
