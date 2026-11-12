@@ -534,7 +534,16 @@ describe("the live viewport", () => {
     expect(box().style.aspectRatio).toBe("960 / 600");
     const before = renders;
     // the window grew taller: the service sends frames of the new shape, and no other word of it
-    globalThis.createImageBitmap = vi.fn(async () => ({ width: 960, height: 900, close: vi.fn() })) as never;
+    // (as a real bitmap, this one has no size once it is closed)
+    const bitmap = (width: number, height: number) => ({
+      width,
+      height,
+      close() {
+        this.width = 0;
+        this.height = 0;
+      },
+    });
+    globalThis.createImageBitmap = vi.fn(async () => bitmap(960, 900)) as never;
     await act(async () => link.push(frame(2)));
     await flush();
     expect(box().style.aspectRatio).toBe("960 / 900");
@@ -546,7 +555,7 @@ describe("the live viewport", () => {
     await flush();
     expect(renders).toBe(after);
     // a pixel of rounding is not another shape
-    globalThis.createImageBitmap = vi.fn(async () => ({ width: 959, height: 900, close: vi.fn() })) as never;
+    globalThis.createImageBitmap = vi.fn(async () => bitmap(959, 900)) as never;
     await act(async () => link.push(frame(5)));
     await flush();
     expect(box().style.aspectRatio).toBe("960 / 900");

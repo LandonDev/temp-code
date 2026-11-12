@@ -355,6 +355,19 @@ describe("following", () => {
     expect(runningLines([later], ended)).toEqual([{ id: "running:local:t1", state: "working", verb: "", object: "Clicking Save in TextEdit" }]);
   });
 
+  it("a call on another app than the one the session read last names its app: the row and the picture are still the other's", () => {
+    // the session's row is TextEdit's (what it read last); the call acts on Mail from the book it kept
+    const row = entry({ running: { tool: "computer_act", words: "Clicking Reply in Mail", startedAt: AT + 3000 } });
+    const start = running(2, { app: "Mail", steps: [step("Clicking", "Reply", { state: undefined, inApp: "Reply in Mail", asked: { verb: "Click", object: "Reply", inApp: "Reply in Mail" } })] });
+    expect(runningLines([row], rowsOf([{ key: "t1", threadId: "t1", calls: [call(1), start] }]))).toEqual([{ id: "running:local:t1", state: "working", verb: "Clicking", object: "Reply in Mail" }]);
+    // held for the Mac: what waits names it too
+    const held = entry({ running: { tool: "computer_act", words: "Waiting for the Mac to be free, 2nd in line", startedAt: AT + 3000, held: true } });
+    expect(runningLines([held], rowsOf([{ key: "t1", threadId: "t1", calls: [call(1), start] }]))[0]).toMatchObject({ state: "queued", waits: "Click Reply in Mail" });
+    // a call on the session's own app says no app: the row above does
+    const own = running(2, { steps: [step("Clicking", "Save", { state: undefined })] });
+    expect(runningLines([row], rowsOf([{ key: "t1", threadId: "t1", calls: [call(1), own] }]))[0]).toMatchObject({ verb: "Clicking", object: "Save" });
+  });
+
   it("a held step that has not begun reads as what is asked under its line, never as under way", () => {
     const held = entry({ running: { tool: "computer_act", words: "Waiting for the Mac to be free, 2nd in line", startedAt: AT, held: true } });
     const start = running(2, { steps: [step("Pressing", "⌘S", { state: undefined, tier: undefined, kind: "key", asked: { verb: "Press", object: "⌘S", inApp: "⌘S in TextEdit" } })] });
@@ -903,6 +916,17 @@ describe("pinning", () => {
     fireEvent.click(rowButton("t1:2:0"));
     await flush();
     expect(lineUnder()).toBe("As it was after this step");
+    cleanup();
+    // a batch's earlier step in that other window is named too, whichever of its rows is open
+    const steps = [step("Clicked", "To", { inApp: "To in Mail" }), step("Typed", "into Subject", { kind: "type", inApp: "into Subject in Mail" }), step("Pressed", "⌘Return", { kind: "key", inApp: "⌘Return in Mail" })];
+    mount(data([call(1, { app: "Mail", window: "Inbox", steps }), call(2)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(lineUnder()).toBe("Inbox in Mail, after all 3 steps");
+    fireEvent.click(rowButton("t1:1:2"));
+    await flush();
+    expect(lineUnder()).toBe("Inbox in Mail, as it was after this step");
   });
 
   it("a pinned picture with nothing live needs no line: its row says its time", async () => {

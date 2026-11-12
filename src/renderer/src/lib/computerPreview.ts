@@ -148,13 +148,15 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
           if (el.width !== bitmap.width) el.width = bitmap.width;
           if (el.height !== bitmap.height) el.height = bitmap.height;
           ctx.drawImage(bitmap, 0, 0);
+          // (read before the close: a closed bitmap's width and height are 0)
+          const drew = { width: bitmap.width, height: bitmap.height };
           bitmap.close();
           frames++;
           if (box?.current) box.current.dataset.frames = String(frames);
           // A window that changed shape under the stream (resized, another pane of Settings) sends frames of the new
           // shape with no word of it: the box takes the frame's own, or the picture would be stretched into the old one.
-          const reshaped = shown !== null && Math.abs(bitmap.width * shown.height - bitmap.height * shown.width) > Math.max(bitmap.width, bitmap.height);
-          if (shown && reshaped) shown = { ...shown, width: bitmap.width, height: bitmap.height };
+          const reshaped = shown !== null && Math.abs(drew.width * shown.height - drew.height * shown.width) > Math.max(drew.width, drew.height);
+          if (shown && reshaped) shown = { ...shown, ...drew };
           // React hears the first frame, and a change of shape: every other frame is the canvas's business
           if (shown && (frames === 1 || reshaped)) setState({ status: "live", ...shown, drawn: true });
         } catch {

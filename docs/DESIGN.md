@@ -547,6 +547,9 @@ is out of reach.
   (`followedSession`): two sessions taking turns never swap the rows or
   the picture after every call; then the look goes to the one at work.
   The running lines keep that order too: the followed session's first.
+  A line names its app with several sessions, and when its call is on
+  another app than the one its session read last (the row and the
+  picture stay with that one until the session reads again).
 - **The viewport**: a box at the pane's width less 24px in the picture's
   shape, at most `min(400px, 45cqh)` of the section (a tall pane gives
   the window room to be read; a short one keeps its list), on the `card` fill
@@ -568,8 +571,9 @@ is out of reach.
   batch's earlier step, or one that never ran, after the reason there is
   no picture where there is one ("Screen Recording was off. After all 3
   steps"); "As it was after this step" for a step pinned
-  while a session is live ("Inbox in Mail, as it was after this step"
-  where it is not the window that session is in now); "As it was at 2:03 PM" where the newest step
+  while a session is live ("Inbox in Mail, as it was after this step",
+  "Inbox in Mail, after all 3 steps", where it is not the window that
+  session is in now); "As it was at 2:03 PM" where the newest step
   kept nothing and an older picture of its session stands in (another
   window's is named: "Inbox in Mail, as it was at 2:03 PM"); and
   "Couldn't read the picture" with Retry when the read failed, which is
