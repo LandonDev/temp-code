@@ -233,8 +233,8 @@ export const COMPUTER_REFUSAL_WORDS: Readonly<
 }
 
 /** Why a call ended before its answer, by its abort reason (computer/run.ts `abortedLine`). */
-/** A step the person chose Skip for on the Run-now card. */
-export const COMPUTER_SKIPPED_WORDS = 'You chose Skip'
+/** A step whose Run-now card was answered Skip, or never answered: the gate hears one no for both, so the words are true of both. */
+export const COMPUTER_SKIPPED_WORDS = 'Run now was not chosen'
 
 export const COMPUTER_ABORT_WORDS: Readonly<Record<string, string>> = {
   stopped: 'Stopped',

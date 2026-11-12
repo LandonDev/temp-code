@@ -747,7 +747,10 @@ async function runChecked(
       drop,
       gateCtx,
       wordsOf: (a) => actionWords(a, titleCtx()),
-      callKey: `${threadId}:${++callSeq}`
+      callKey: `${threadId}:${++callSeq}`,
+      // what the service has confirmed is the journal's whatever comes after: a later request of the batch that
+      // fails leaves these steps as they ran
+      onSteps: (answered) => (note.results = answered)
     })
     note.results = result.steps
     if (result.gate) note.gate = result.gate
@@ -903,6 +906,8 @@ export function remember(t: ThreadComputer, query: string, obs: Observation): vo
 }
 
 interface ActionsRun {
+  /** the steps the service has answered so far, told after each request of a split batch: a later request that fails must not lose them */
+  onSteps?: (answered: StepResult[]) => void
   threadId: string
   session: string
   args: Args
@@ -1102,6 +1107,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
       front = mergeFront(front, r.front)
       for (const m of r.menusLeftOpen ?? []) if (!menusLeftOpen.includes(m)) menusLeftOpen.push(m)
       r.steps.forEach((s, k) => (steps[at + k] = { ...s, index: at + k }))
+      run.onSteps?.(steps.filter((s) => s.status !== 'not-run'))
       for (const s of r.steps)
         if (s.status === 'ok' && s.opened) {
           run.follow(s.opened)

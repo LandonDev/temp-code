@@ -180,6 +180,11 @@ describe("following", () => {
     expect(openRow()!.querySelector("button")!.getAttribute("aria-current")).toBe("true");
     const facts = [...openRow()!.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent);
     expect(facts).toEqual([COMPUTER_TIER_WORDS.ax, '"Total"', clockTime(AT + 2400)]);
+    // one comma run that breaks between words, never a fact alone on its line for want of room beside the last
+    const run = openRow()!.querySelector('[data-slot="facts"]')!;
+    expect(run.tagName).toBe("P");
+    expect(run.textContent).toBe(`${COMPUTER_TIER_WORDS.ax}, "Total", ${clockTime(AT + 2400)}`);
+    expect(run.className).not.toMatch(/flex/);
     // the rest are one line each, and only the oldest names its app
     expect(rows().map(words)).toEqual(["Typedinto Save As", "ClickedStep 1 in TextEdit"]);
     expect(rows()[1].querySelector('[data-slot="step-detail"]')).toBeNull();
@@ -1018,6 +1023,8 @@ describe("the read line", () => {
     expect(openRow()!.querySelector('[data-slot="step-read"] svg')!.getAttribute("class")).toContain("rotate-90");
     const pre = openRow()!.querySelector<HTMLElement>('[data-slot="step-read-text"]')!;
     expect(pre.tabIndex).toBe(0);
+    // positioned: the acted line's offset is from the console's own top, wherever the row stands in the list
+    expect(pre.className.split(/\s+/)).toContain("relative");
     expect(pre.className.split(/\s+/)).toEqual(expect.arrayContaining(["max-h-60", "overflow-x-auto", "overflow-y-auto", "whitespace-pre"]));
     expect(pre.textContent).toContain('[45] button "Cancel"');
     const acted = [...pre.querySelectorAll("[data-acted]")];

@@ -417,8 +417,8 @@ describe('settledSteps', () => {
     expect(settledSteps({ tool: 'computer_act', args: one, ctx, results: [failed('left_click', { kind: 'needs_tier', needed: 'session' })] })[0]).toMatchObject({ state: 'failed', reason: 'It needed your pointer and keyboard' })
     // Skip on the Run-now card is the person's own no
     const refusedBy = (reason: string) => settledSteps({ tool: 'computer_act', args: one, ctx, gate: { 0: reason }, results: [failed('left_click', { kind: 'needs_tier', needed: 'session' })] })[0]
-    expect(refusedBy('skipped')).toMatchObject({ verb: 'Click', state: 'stopped', reason: 'You chose Skip' })
-    expect(refusedBy('skipped-earlier')).toMatchObject({ state: 'stopped', reason: 'You chose Skip' })
+    expect(refusedBy('skipped')).toMatchObject({ verb: 'Click', state: 'stopped', reason: 'Run now was not chosen' })
+    expect(refusedBy('skipped-earlier')).toMatchObject({ state: 'stopped', reason: 'Run now was not chosen' })
     // the gate's reason is said as what it was: a locked screen, a sleeping Mac, are not "it needed your pointer"
     expect(refusedBy('screen-locked')).toMatchObject({ state: 'failed', reason: 'The screen was locked' })
     expect(refusedBy('asleep')).toMatchObject({ state: 'failed', reason: 'The Mac was asleep' })
@@ -426,7 +426,7 @@ describe('settledSteps', () => {
     // a step the gate refused before anything of it ran (the browser tab's hold) has no result of its own
     const batch2 = { app: 'TextEdit', actions: [{ action: 'left_click', element: 44 }, { action: 'key', text: 'super+s' }] }
     const tab = settledSteps({ tool: 'computer_batch', args: batch2, ctx, gate: { 1: 'skipped' }, results: [ok('left_click')], refused: { line: 'x' } })
-    expect(tab.map((x) => [x.verb, x.state, x.reason])).toEqual([['Clicked', 'ok', undefined], ['Press', 'stopped', 'You chose Skip']])
+    expect(tab.map((x) => [x.verb, x.state, x.reason])).toEqual([['Clicked', 'ok', undefined], ['Press', 'stopped', 'Run now was not chosen']])
     const alone = settledSteps({ tool: 'computer_act', args: one, ctx, gate: { 0: 'screen-locked' }, refused: { line: 'needs the session tier' } })
     expect(alone[0]).toMatchObject({ state: 'failed', reason: 'The screen was locked' })
     // an abort that came after every step answered marks nothing
@@ -458,6 +458,14 @@ describe('settledSteps', () => {
     // a plain field found the same way keeps its length
     const plain = settledSteps({ tool: 'computer_act', args: { ...typed, named: 'Subject' }, ctx, planned, results: [ok('type', { resolved: 33, element: { index: 33, line: 'input "Subject"' } })] })
     expect(plain[0].target).toBe('12 characters')
+  })
+
+  it('a later request of a split batch that fails leaves the steps the service already answered as they ran', () => {
+    const three = { app: 'TextEdit', actions: [{ action: 'left_click', element: 44 }, { action: 'key', text: 'super+s' }, { action: 'key', text: 'Return' }] }
+    // the first request answered; the app was gone before the second
+    const steps = settledSteps({ tool: 'computer_batch', args: three, ctx, planned: plannedSteps('computer_batch', three, ctx), results: [ok('left_click')], error: { kind: 'window_minimized', message: 'm' } })
+    expect(steps.map((x) => [x.verb, x.state])).toEqual([['Clicked', 'ok'], ['Press', 'failed'], ['Press', 'not-run']])
+    expect(steps[1].reason).toBeTruthy()
   })
 
   it('a request that failed whole says the service’s kind', () => {

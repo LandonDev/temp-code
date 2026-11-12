@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { ComputerHistoryStep, ComputerStepKind } from "@server/shared/contract-computer";
 import { workingStep } from "@server/shared/computer/historyWords";
 import { COMPUTER_TIER_WORDS } from "@server/shared/statusWords";
@@ -15,7 +15,6 @@ import type { StepGroup, StepRow } from "../../../lib/computerHistory";
 import { clockTime } from "../../../lib/duration";
 import { STAGGER } from "../../../lib/ease";
 import { SwapIcon } from "../../../motion/IconSwap";
-import { Facts } from "../../settings/hosts/Facts";
 import { GLYPH_SLOT, STEP_LINE } from "../../transcript/stepLine";
 
 /**
@@ -180,7 +179,8 @@ function ReadText({ text, element }: { text: string; element?: number }) {
     if (el && line) el.scrollTop = Math.max(0, line.offsetTop - el.clientHeight / 2);
   }, [text, element]);
   return (
-    <pre ref={box} tabIndex={0} aria-label="What was read" data-slot="step-read-text" className={cn(CONSOLE, "m-0 mt-1 max-h-60 overflow-x-auto overflow-y-auto whitespace-pre")}>
+    // positioned, so a line's offset is from the console's own top, wherever the row stands in the list
+    <pre ref={box} tabIndex={0} aria-label="What was read" data-slot="step-read-text" className={cn(CONSOLE, "relative m-0 mt-1 max-h-60 overflow-x-auto overflow-y-auto whitespace-pre")}>
       {text.split("\n").map((line, i) => {
         const hit = acted?.test(line) === true;
         return (
@@ -190,6 +190,22 @@ function ReadText({ text, element }: { text: string; element?: number }) {
         );
       })}
     </pre>
+  );
+}
+
+/** A step's facts as one line of prose: each fact a span, a comma and a space between them. */
+function StepFacts({ parts }: { parts: readonly ReactNode[] }) {
+  const shown = parts.filter((part) => part !== null && part !== undefined && part !== false && part !== "");
+  if (!shown.length) return null;
+  return (
+    <p data-slot="facts" className="m-0 text-muted-foreground tabular-nums">
+      {shown.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 ? ", " : null}
+          <span>{part}</span>
+        </Fragment>
+      ))}
+    </p>
   );
 }
 
@@ -215,7 +231,9 @@ function StepDetail({ row, read, onToggleRead }: { row: StepRow; read: ReadFold;
           {why}
         </p>
       ) : null}
-      <Facts parts={facts} className="text-muted-foreground" />
+      {/* One comma run that breaks between words: in a narrow pane a short fact joins the line a long one ends
+          on, where `Facts`' own spans, which wrap whole, would each stand alone. */}
+      <StepFacts parts={facts} />
       {reads ? (
         call.text && !read.above ? (
           <Collapsible open={read.open}>

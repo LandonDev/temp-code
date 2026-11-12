@@ -501,7 +501,9 @@ export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
       ended = true
       return { ...base, ...gated }
     }
-    if (!ended && end && (!ran || s.abort)) {
+    // (a request that failed after earlier ones of the batch answered fails the first step it held, and leaves
+    // those that ran as they ran)
+    if (!ended && end && (!ran || s.abort || s.error)) {
       ended = true
       return { ...base, ...end }
     }

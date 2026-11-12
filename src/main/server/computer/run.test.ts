@@ -7,6 +7,7 @@ import { hostErrorLine } from '@shared/computer/hostErrors'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { PERMISSION_SWITCH, remember, waitedIn, type ThreadComputer } from './run'
 import { CallTiming, parseTimingLine } from '@shared/computer/bridgeTiming'
+import { ComputerRpcError } from './connection'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
 import { ManualClock, settle } from './testFake'
@@ -1053,7 +1054,7 @@ describe('web content (§25)', () => {
   })
 
   it('the journal says a refused tab switch as what it was: Skip is the person’s own no, a locked screen is a locked screen', async () => {
-    for (const [reason, state, words] of [['skipped', 'stopped', 'You chose Skip'], ['screen-locked', 'failed', 'The screen was locked'], ['asleep', 'failed', 'The Mac was asleep']] as const) {
+    for (const [reason, state, words] of [['skipped', 'stopped', 'Run now was not chosen'], ['screen-locked', 'failed', 'The screen was locked'], ['asleep', 'failed', 'The Mac was asleep']] as const) {
       const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: false, reason, message: 'the gate refused this tab switch' }), run: (c, send) => send(c.tiers) }
       const h = make({ gate, env: { FAKE_WEB_ACTIVE: '1' }, history: { pictures: () => false } })
       // the tool's answer is as it was
@@ -1486,6 +1487,27 @@ describe('fewer calls (§27)', () => {
       expect(o.steps.slice(1)).toEqual([stopLine, stopLine])
       expect(batches(h)).toHaveLength(1)
       expect(last(h, 'state.get').params.mode).toBe('auto')
+    })
+
+    it('a later request that fails leaves the journal the steps the service already answered, as they ran', async () => {
+      const h = make({ gate: admitAll(), history: { pictures: () => false } })
+      verdict(h, 'dev.fake.splitty', { key: 'session', type: 'session' })
+      await h.run('computer_observe', { app: 'Splitty' })
+      // the click's request answers; the text is its own request, and the service refuses that one whole
+      const send = h.service.request.bind(h.service)
+      let sent = 0
+      h.service.request = ((method: string, ...rest: unknown[]) =>
+        method === 'action.batch' && ++sent === 2
+          ? Promise.reject(new ComputerRpcError(-32000, 'gone', { kind: 'window_minimized', message: 'gone' }))
+          : (send as (...a: unknown[]) => unknown)(method, ...rest)) as typeof h.service.request
+      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'left_click', named: 'Search' }, { action: 'type', text: 'hello' }] })
+      expect(o.isError).toBe(true)
+      await h.sessions.drained('t1')
+      const call = (await h.history!.read(['t1']))[0].calls.at(-1)!
+      expect(call.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([
+        ['Clicked', 'ok', undefined],
+        ['Type', 'failed', 'The window was minimized']
+      ])
     })
 
     it('a named click, then text in the next segment, runs: the prior names what it resolved and focused', async () => {
