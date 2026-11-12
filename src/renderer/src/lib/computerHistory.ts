@@ -333,7 +333,7 @@ export function rowsOf(sessions: readonly HistorySession[]): StepList {
   groups.sort((a, b) => b.newest - a.newest);
   return {
     running: running.filter((r) => r.step !== undefined),
-    groups: groups.map(({ newest: _newest, ...group }, i) => (i === 0 && !group.heading?.title ? { ...group, heading: null } : group)),
+    groups: groups.map((group, i) => ({ id: group.id, heading: i === 0 && !group.heading?.title ? null : group.heading, rows: group.rows })),
   };
 }
 

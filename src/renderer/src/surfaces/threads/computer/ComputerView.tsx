@@ -1,0 +1,113 @@
+import { forwardRef, type Ref } from "react";
+import { Button } from "@renderer/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { TruncateTip } from "@renderer/components/tip";
+import { Square, SquareMousePointer } from "../../../chrome/icons";
+import type { StepGroup } from "../../../lib/computerHistory";
+import { StepList, type ReadFold, type RunningLine } from "./StepList";
+import { Viewport, type ViewportProps } from "./Viewport";
+
+/**
+ * The right panel's Computer section, pure (docs/DESIGN.md "Panels",
+ * docs/LAYOUT.md "The right side"): a column on the panel's 12px inset with
+ * no card, border or header of its own. A row per live session (the window
+ * in its app, Go live while a row is pinned, Stop), the viewport, then the
+ * steps, which are the section's one scroller. One list is both the live
+ * view and the history: the running call is its top line, the finished
+ * steps sit under it, and choosing a row drives the picture. The container
+ * (ComputerSection) joins the live rows, the journal and the stream; this
+ * draws what it is given, so every state is a fixture.
+ */
+
+/** One live session of the thread's tree. */
+export interface LiveSession {
+  id: string;
+  /** "Untitled in TextEdit" */
+  label: string;
+  stopping?: boolean;
+}
+
+export interface ComputerViewProps {
+  /** the live sessions, the one that acted last (the one the viewport follows) first; none once the turn settled */
+  sessions: readonly LiveSession[];
+  /** a row was chosen by hand: Go live shows, and the viewport is that call's picture */
+  pinned: boolean;
+  /** null: nothing to show in a box and nothing to say under one */
+  viewport: ViewportProps | null;
+  running: readonly RunningLine[];
+  groups: readonly StepGroup[];
+  openId: string | null;
+  read: ReadFold;
+  status: "loading" | "ready" | "failed";
+  more: boolean;
+  loadingMore?: boolean;
+  onSelect: (id: string) => void;
+  onFollow: () => void;
+  onStop: (sessionId: string) => void;
+  onToggleRead: () => void;
+  onRetry: () => void;
+  onOlder: () => void;
+  /** the viewport's box (the stream writes its counts there) */
+  boxRef?: Ref<HTMLElement>;
+}
+
+function SessionRow({ session, first, pinned, onFollow, onStop }: { session: LiveSession; first: boolean; pinned: boolean; onFollow: () => void; onStop: () => void }) {
+  return (
+    <div data-slot="computer-session" className="flex h-9 min-w-0 items-center gap-2">
+      <SquareMousePointer className="size-3.5 shrink-0 text-muted-foreground" />
+      <TruncateTip text={session.label}>
+        <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-foreground">{session.label}</span>
+      </TruncateTip>
+      {/* Go live belongs to the session the viewport follows, and only while a row is pinned. */}
+      {first && pinned ? (
+        <Tooltip>
+          <TooltipTrigger render={<Button variant="ghost" size="xs" data-slot="go-live" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={onFollow} />}>Go live</TooltipTrigger>
+          <TooltipContent>Follow the live window</TooltipContent>
+        </Tooltip>
+      ) : null}
+      <Tooltip>
+        <TooltipTrigger
+          render={<Button variant="ghost" size="icon-xs" className="-me-1 shrink-0 text-muted-foreground hover:text-foreground" aria-label="Stop" disabled={session.stopping} onClick={onStop} />}
+        >
+          <Square className="size-2.5 fill-current" />
+        </TooltipTrigger>
+        <TooltipContent>Stop</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+export const ComputerView = forwardRef(function ComputerView(props: ComputerViewProps, ref: Ref<HTMLDivElement>) {
+  const { sessions, pinned, viewport, boxRef } = props;
+  const head = sessions.length > 0 || viewport !== null;
+  return (
+    // A size container, so the viewport's cap can be a share of the section's height.
+    <div ref={ref} data-slot="computer-section" data-following={!pinned || undefined} className="flex min-h-0 flex-1 flex-col [container-type:size]">
+      {head ? (
+        <div className={sessions.length ? "shrink-0 px-3 pt-1.5 pb-2" : "shrink-0 px-3 pt-3 pb-2"}>
+          {sessions.map((session, i) => (
+            <SessionRow key={session.id} session={session} first={i === 0} pinned={pinned} onFollow={props.onFollow} onStop={() => props.onStop(session.id)} />
+          ))}
+          {viewport ? <Viewport ref={boxRef} {...viewport} /> : null}
+        </div>
+      ) : (
+        <div className="h-3 shrink-0" />
+      )}
+      <StepList
+        running={props.running}
+        groups={props.groups}
+        openId={props.openId}
+        pinned={pinned}
+        read={props.read}
+        status={props.status}
+        more={props.more}
+        loadingMore={props.loadingMore}
+        onSelect={props.onSelect}
+        onFollow={props.onFollow}
+        onToggleRead={props.onToggleRead}
+        onRetry={props.onRetry}
+        onOlder={props.onOlder}
+      />
+    </div>
+  );
+});

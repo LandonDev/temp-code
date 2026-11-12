@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
+import { useRef } from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import type { ServerPush } from "@server/shared/contract";
-import { registry } from "../../lib/connection/registry";
-import { PaneVisibilityContext } from "../../hooks/paneVisibility";
-import { CLICK_MARK } from "../../lib/ease";
-import { PREVIEW_QUIET_MS, previewEdge } from "../../lib/computerPreview";
-import type { ComputerEntry } from "../../lib/computerSessions";
-import { ComputerPreview } from "./ComputerPreview";
+import { registry } from "../../../lib/connection/registry";
+import { PaneVisibilityContext, useDocumentVisible, usePaneVisible } from "../../../hooks/paneVisibility";
+import { CLICK_MARK } from "../../../lib/ease";
+import { PREVIEW_QUIET_MS, previewEdge } from "../../../lib/computerPreview";
+import type { ComputerEntry } from "../../../lib/computerSessions";
+import { ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, VIEWPORT_MAX, Viewport, ViewportLine, liveFace, streamSize, useLiveStream } from "./Viewport";
 
 /** A stand-in for this Mac's link: records requests in order and lets the test push. */
 class FakeLink {
@@ -91,25 +92,62 @@ const entry = (over: Partial<ComputerSessionRow> = {}, previewable = true): Comp
 const flush = () => act(async () => {});
 const frame = (seq: number, preview = "pv_1") => ({ push: "computer-frame", preview, seq, width: 960, height: 600, data: btoa("jpeg") });
 
-function mount(e = entry(), props: { open?: boolean; pane?: boolean } = {}) {
-  const tree = (o: { open?: boolean; pane?: boolean }, en: ComputerEntry) => (
+/** How many times the tree around the picture rendered: a frame must never add to it. */
+let renders = 0;
+
+/** The viewport as the section draws it live: the stream while it is seen, the line alone once nothing more will come. */
+function Live({ entry: en, run }: { entry: ComputerEntry | null; run: boolean }) {
+  const pane = usePaneVisible();
+  const doc = useDocumentVisible();
+  const root = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLElement>(null);
+  const stream = useLiveStream(en, run && pane && doc, box, root);
+  renders += 1;
+  const { state } = stream;
+  const over = state.status === "ended" || state.status === "failed";
+  const app = state.status === "live" ? state.app : (en?.row.apps[0]?.name ?? "");
+  const win = state.status === "live" ? state.window : (en?.row.apps[0]?.window ?? null);
+  return (
+    <div ref={root} data-testid="section">
+      <Viewport
+        ref={box}
+        face={over || !en?.previewable ? null : liveFace(stream)}
+        label={`Live view of ${win ? `${win} in ${app}` : app}`}
+        size={streamSize(state)}
+        line={
+          over ? (
+            <ViewportLine
+              words={state.status === "ended" ? ENDED_WORDS[state.reason] : "The preview stopped"}
+              onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined}
+            />
+          ) : null
+        }
+      />
+    </div>
+  );
+}
+
+function mount(e: ComputerEntry | null = entry(), props: { open?: boolean; pane?: boolean } = {}) {
+  const tree = (o: { open?: boolean; pane?: boolean }, en: ComputerEntry | null) => (
     <PaneVisibilityContext.Provider value={o.pane ?? true}>
-      <ComputerPreview entry={en} open={o.open ?? true} />
+      <Live entry={en} run={o.open ?? true} />
     </PaneVisibilityContext.Provider>
   );
   const view = render(tree(props, e));
-  return { ...view, again: (o: { open?: boolean; pane?: boolean }, en = e) => view.rerender(tree(o, en)) };
+  return { ...view, again: (o: { open?: boolean; pane?: boolean }, en: ComputerEntry | null = e) => view.rerender(tree(o, en)) };
 }
 const box = () => screen.getByRole("img");
 
-describe("ComputerPreview", () => {
+describe("the live viewport", () => {
   it("starts at the box's edge in device pixels and sizes the box to the stream", async () => {
     mount();
     await flush();
-    expect(link.calls[0]).toEqual({ method: "computer.preview.start", params: { threadId: "s1", maxEdge: previewEdge(304 - 16, window.devicePixelRatio) } });
+    expect(link.calls[0]).toEqual({ method: "computer.preview.start", params: { threadId: "s1", maxEdge: previewEdge(304 - VIEWPORT_INSETS, window.devicePixelRatio) } });
     expect(box().style.aspectRatio).toBe("960 / 600");
-    expect(box().style.maxHeight).toBe("240px");
-    expect(box().getAttribute("aria-label")).toBe("Preview of Untitled in TextEdit");
+    // at most 240px, and 45% of the section's height where that is less: a short panel keeps its list
+    expect(VIEWPORT_MAX).toBe("min(240px, 45cqh)");
+    expect(box().getAttribute("style")).toContain("max-height: min(240px, 45cqh)");
+    expect(box().getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
     expect(box().querySelector("canvas")?.getAttribute("aria-hidden")).toBe("true");
   });
 
@@ -145,9 +183,46 @@ describe("ComputerPreview", () => {
     expect(drawn).toHaveLength(0);
   });
 
-  it("stops on a closed fold, a hidden pane, a hidden document and unmount", async () => {
+  it("a frame repaints the canvas and re-renders nothing: ten frames leave the render count where the first left it", async () => {
+    mount();
+    await flush();
+    await act(async () => link.push(frame(1)));
+    await flush();
+    // the first frame drops the skeleton: that is the one render a frame may cause
+    expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
+    const after = renders;
+    for (let seq = 2; seq <= 11; seq++) {
+      await act(async () => link.push(frame(seq)));
+      await flush();
+    }
+    expect(drawn).toHaveLength(11);
+    expect(renders).toBe(after);
+    // the count the Mac proof reads is written on the box by hand
+    expect(box().getAttribute("data-frames")).toBe("11");
+    expect(link.methods().filter((m) => m === "computer.preview.ack")).toHaveLength(11);
+    // nor does a click
+    await act(async () => link.push({ push: "computer-click", preview: "pv_1", at: [480, 300], width: 960, height: 600 }));
+    expect(renders).toBe(after);
+    expect(box().getAttribute("data-marks")).toBe("1");
+  });
+
+  it("a change of shape is the one thing after the first frame that renders", async () => {
+    mount();
+    await flush();
+    await act(async () => link.push(frame(1)));
+    await flush();
+    const after = renders;
+    await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "live", width: 600, height: 1200 }));
+    expect(renders).toBeGreaterThan(after);
+    expect(box().style.aspectRatio).toBe("600 / 1200");
+    // the frame already drawn stays: no skeleton comes back
+    expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
+  });
+
+  it("stops when the section stops following (a row is pinned), on a hidden pane, a hidden document and unmount", async () => {
     const view = mount();
     await flush();
+    // a pinned row: the Mac stops capturing for it
     view.again({ open: false });
     await flush();
     expect(link.methods()).toEqual(["computer.preview.start", "computer.preview.stop"]);
@@ -186,7 +261,7 @@ describe("ComputerPreview", () => {
     await flush();
     const starts = link.calls.filter((c) => c.method === "computer.preview.start");
     expect(starts).toHaveLength(2);
-    expect(starts[1].params.maxEdge).toBe(previewEdge(600, window.devicePixelRatio));
+    expect(starts[1].params.maxEdge).toBe(previewEdge(616 - VIEWPORT_INSETS, window.devicePixelRatio));
   });
 
   it("marks a click at its share of the picture by the click's own size, with or without a frame, restarted each time", async () => {
@@ -258,7 +333,7 @@ describe("ComputerPreview", () => {
     await flush();
     const starts = link.calls.filter((c) => c.method === "computer.preview.start");
     expect(starts).toHaveLength(2);
-    expect(starts[1].params.maxEdge).toBe(previewEdge(304 - 16, window.devicePixelRatio));
+    expect(starts[1].params.maxEdge).toBe(previewEdge(304 - VIEWPORT_INSETS, window.devicePixelRatio));
   });
 
   it("drops a frame that finished decoding after the preview ended", async () => {
@@ -279,31 +354,96 @@ describe("ComputerPreview", () => {
     mount();
     await flush();
     await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "live", app: "Mail", window: "Inbox", width: 600, height: 1200 }));
-    expect(box().getAttribute("aria-label")).toBe("Preview of Inbox in Mail");
+    expect(box().getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
     expect(box().style.aspectRatio).toBe("600 / 1200");
   });
 
-  it("says what a held step waits on, and a card waiting on the Mac before that, in the status vocabulary", async () => {
-    const held = mount(entry({ running: { tool: "computer_act", words: "Waiting for the Mac to be free, 2nd in line", startedAt: 1, held: true } }));
-    await flush();
-    const line = document.querySelector('[data-slot="computer-held"]')!;
-    expect(line.getAttribute("data-state")).toBe("queued");
-    expect(line.textContent).toContain("Waiting for the Mac to be free, 2nd in line");
-    held.unmount();
-    mount(entry({ asking: { line: "Click Save in TextEdit?" }, running: { tool: "computer_act", words: "x", startedAt: 1, held: true } }));
-    await flush();
-    const asking = document.querySelector('[data-slot="computer-asking"]')!;
-    expect(asking.getAttribute("data-state")).toBe("waiting");
-    expect(asking.textContent).toContain("Needs you");
-    expect(asking.textContent).toContain("Click Save in TextEdit?");
-    expect(document.querySelector('[data-slot="computer-held"]')).toBeNull();
-  });
-
-  it("shows the line alone, and asks for no frames, where this desktop cannot preview", async () => {
-    mount(entry({ asking: { line: "Click Save in TextEdit?" } }, false));
+  it("asks for no frames with no session to draw, or one this desktop cannot draw", async () => {
+    mount(null);
     await flush();
     expect(screen.queryByRole("img")).toBeNull();
-    expect(document.querySelector('[data-slot="computer-asking"]')).toBeTruthy();
     expect(link.calls).toHaveLength(0);
+    cleanup();
+    mount(entry({}, false));
+    await flush();
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(link.calls).toHaveLength(0);
+  });
+});
+
+describe("the viewport's faces", () => {
+  const still = <img alt="" src="data:," />;
+  it("a kept picture is a button named for what it shows, and a click opens it from the box", () => {
+    const onOpen = vi.fn();
+    render(<Viewport face={{ kind: "picture", src: "blob:kept", onOpen }} label="Untitled in TextEdit at 2:04 PM" size={{ width: 960, height: 804 }} />);
+    const button = screen.getByRole("button", { name: "Untitled in TextEdit at 2:04 PM" });
+    expect(button.getAttribute("data-face")).toBe("picture");
+    expect(button.style.aspectRatio).toBe("960 / 804");
+    expect(button.querySelector("img")?.getAttribute("src")).toBe("blob:kept");
+    // no frame count on a picture that is not the stream
+    expect(button.hasAttribute("data-frames")).toBe(false);
+    button.click();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("the old picture dims while the next is on its way, over the fast fade and nothing else", () => {
+    const { rerender } = render(<Viewport face={{ kind: "picture", src: "blob:a" }} label="x" />);
+    const img = () => document.querySelector("img")!;
+    expect(img().className).not.toContain("opacity-40");
+    expect(img().className).toContain("transition-opacity");
+    expect(img().className).toContain("duration-(--dur-fast)");
+    expect(img().className).toContain("motion-reduce:transition-opacity");
+    rerender(<Viewport face={{ kind: "picture", src: "blob:a", dim: true }} label="x" />);
+    expect(img().className).toContain("opacity-40");
+    expect(img().getAttribute("data-dim")).toBe("true");
+  });
+
+  it("the live box does not open the lightbox: it is a picture, not a button", () => {
+    render(<Viewport face={{ kind: "live", picture: still, drawn: true }} label="Live view of Untitled in TextEdit" frames={3} marks={1} />);
+    const live = screen.getByRole("img", { name: "Live view of Untitled in TextEdit" });
+    expect(live.tagName).toBe("DIV");
+    expect([live.getAttribute("data-frames"), live.getAttribute("data-marks"), live.getAttribute("data-face")]).toEqual(["3", "1", "live"]);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("with no picture it shows what the model read, in a console of the box's shape the keyboard reaches", () => {
+    render(<Viewport face={{ kind: "text", text: 'app "TextEdit"\n[1] window "Untitled"' }} label="What was read of Untitled in TextEdit" line={<ViewportLine words="Screen Recording was off" />} />);
+    const pre = document.querySelector("pre")!;
+    expect(pre.getAttribute("data-face")).toBe("text");
+    expect(pre.tabIndex).toBe(0);
+    expect(pre.getAttribute("aria-label")).toBe("What was read of Untitled in TextEdit");
+    expect(pre.textContent).toContain('[1] window "Untitled"');
+    expect(pre.className.split(/\s+/)).toEqual(expect.arrayContaining(["whitespace-pre", "overflow-x-auto", "overflow-y-auto", "focus-ring", "font-mono"]));
+    expect(pre.style.aspectRatio).toBe("16 / 10");
+    expect(screen.getByText("Screen Recording was off")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("a first picture on its way is a skeleton in the picture's shape", () => {
+    render(<Viewport face={{ kind: "skeleton" }} label="Untitled in TextEdit at 2:04 PM" size={{ width: 930, height: 1280 }} />);
+    const boxEl = screen.getByRole("img");
+    expect(boxEl.style.aspectRatio).toBe("930 / 1280");
+    expect(boxEl.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(boxEl.querySelector("[data-slot=computer-picture]")!.getAttribute("style")).toContain("930 / 1280");
+  });
+
+  it("pinned, the box keeps the height it is given and centres a picture of another shape", () => {
+    render(<Viewport face={{ kind: "picture", src: "blob:tall" }} label="x" size={{ width: 930, height: 1280 }} height={190} />);
+    const boxEl = screen.getByRole("img");
+    expect(boxEl.style.height).toBe("190px");
+    expect(boxEl.style.aspectRatio).toBe("");
+    expect(boxEl.className).toContain("justify-center");
+    const picture = boxEl.querySelector<HTMLElement>("[data-slot=computer-picture]")!;
+    expect(picture.style.aspectRatio).toBe("930 / 1280");
+    expect(picture.className).toContain("h-full");
+  });
+
+  it("no face is the line alone, and nothing at all with no line", () => {
+    const { container, rerender } = render(<Viewport face={null} label="x" line={<ViewportLine words="The window closed" />} />);
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("The window closed")).toBeTruthy();
+    rerender(<Viewport face={null} label="x" />);
+    expect(container.innerHTML).toBe("");
   });
 });

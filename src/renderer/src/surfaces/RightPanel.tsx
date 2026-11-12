@@ -35,12 +35,16 @@ import { useAgents } from "../lib/threads/agents";
 import { useActivity } from "../lib/activity";
 import { useComputerSection } from "../lib/computerSection";
 import { ActivitySection } from "./threads/ActivitySection";
+import { computerChunk } from "./chunks";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
 import { SessionActionsContext } from "./threadChat";
 import { LoadingLine } from "./SurfaceSkeleton";
 import { shortcutFor } from "../lib/settings";
 
+// The Computer section (the window live or as it was, and the thread's steps) loads with its first use; the
+// title bar's cue and this header's segment warm it on hover.
+const ComputerSection = computerChunk.surface("ComputerSection", <LoadingLine label="Loading the steps" />);
 // The Debug section drives the editor chunk's DAP session; it loads with it.
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
 // Listed for a dev build, and for any thread that asked for it ("Debug this file").
@@ -95,6 +99,7 @@ export function PanelSections({
                   <TabsTrigger
                     value={s}
                     aria-label={SECTION_LABEL[s]}
+                    {...(s === "computer" ? computerChunk.intent : {})}
                     className={cn("flex-none p-0 not-data-active:hover:bg-foreground/5", compact ? "size-6 rounded-md" : "size-7 rounded-lg", TABS_PILL_TRIGGER)}
                   />
                 }
@@ -332,7 +337,7 @@ function SectionBody({
         />
       );
     case "computer":
-      return null;
+      return <ComputerSection threadId={session.id} />;
     case "notes":
       return <NotesBody session={session} />;
     case "changes":

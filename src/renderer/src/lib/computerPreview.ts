@@ -16,11 +16,16 @@ import type { ComputerEntry } from "./computerSessions";
  * A frame is decoded off the main thread (`createImageBitmap`), drawn onto the
  * canvas and only then acked, so the rate is what the pane can paint. It runs
  * only while it is seen; anything else stops it on the host.
+ *
+ * A frame repaints the canvas and nothing else: React hears when the stream
+ * starts, draws its first frame, changes shape or ends, and the frame count
+ * goes to the box's `data-frames` by hand (the Mac proof reads it), so four
+ * frames a second never re-render the section around the picture.
  */
 
 export type PreviewState =
   | { status: "starting"; width?: number; height?: number }
-  | { status: "live"; app: string; window: string | null; width: number; height: number; frames: number }
+  | { status: "live"; app: string; window: string | null; width: number; height: number; /** a frame is on the canvas */ drawn: boolean }
   | { status: "ended"; reason: ComputerPreviewEndReason }
   | { status: "failed"; message: string };
 
@@ -47,6 +52,8 @@ export interface PreviewOptions {
   /** the box's CSS width */
   boxWidth: number;
   canvas: RefObject<HTMLCanvasElement | null>;
+  /** the box that carries `data-frames`: each drawn frame is counted on it by hand */
+  box?: RefObject<HTMLElement | null>;
   /** a click, as shares of the frame it is in (0..1 each way) */
   onClick: (x: number, y: number) => void;
 }
@@ -59,6 +66,7 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
   const [edge, setEdge] = useState<number | null>(null);
   const onClick = useRef(opts.onClick);
   const canvas = opts.canvas;
+  const box = opts.box;
   const host = entry.previewHost;
   const key = entry.previewKey;
   const run = opts.run && entry.previewable && !!host && !!key && edge !== null;
@@ -104,7 +112,9 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
           ctx.drawImage(bitmap, 0, 0);
           bitmap.close();
           frames++;
-          if (shown) setState({ status: "live", ...shown, frames });
+          if (box?.current) box.current.dataset.frames = String(frames);
+          // React hears the first frame alone: every later one is the canvas's business
+          if (shown && frames === 1) setState({ status: "live", ...shown, drawn: true });
         } catch {
           // An undecodable frame: skip it; the ack still lets the next one come.
         }
@@ -130,7 +140,7 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
           width: push.width ?? shown?.width ?? 16,
           height: push.height ?? shown?.height ?? 10,
         };
-        setState({ status: "live", ...shown, frames });
+        setState({ status: "live", ...shown, drawn: frames > 0 });
       }
     });
 
@@ -148,7 +158,7 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
           return;
         }
         shown = { app: started.app, window: started.window, width: started.width, height: started.height };
-        setState({ status: "live", ...shown, frames });
+        setState({ status: "live", ...shown, drawn: frames > 0 });
       })
       .catch((e: unknown) => {
         if (alive) setState({ status: "failed", message: e instanceof Error ? e.message : String(e) });
@@ -159,7 +169,7 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
       off();
       if (preview) void link.request("computer.preview.stop", { preview }).catch(() => undefined);
     };
-  }, [attempt, canvas, edge, host, key, run]);
+  }, [attempt, box, canvas, edge, host, key, run]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   return { state, retry };

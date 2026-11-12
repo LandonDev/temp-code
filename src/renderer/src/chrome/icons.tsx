@@ -9,6 +9,11 @@ import AtIcon from "@hugeicons/core-free-icons/AtIcon";
 import Attachment01Icon from "@hugeicons/core-free-icons/Attachment01Icon";
 import CornerDownRightIcon from "@hugeicons/core-free-icons/CornerDownRightIcon";
 import CursorInWindowIcon from "@hugeicons/core-free-icons/CursorInWindowIcon";
+import CursorTextIcon from "@hugeicons/core-free-icons/CursorTextIcon";
+import HourglassIcon from "@hugeicons/core-free-icons/HourglassIcon";
+import MousePointerClickIcon from "@hugeicons/core-free-icons/MousePointerClickIcon";
+import ScanTextIcon from "@hugeicons/core-free-icons/ScanTextIcon";
+import ScrollVerticalIcon from "@hugeicons/core-free-icons/ScrollVerticalIcon";
 import SlashIcon from "@hugeicons/core-free-icons/SlashIcon";
 import AddSquareIcon from "@hugeicons/core-free-icons/AddSquareIcon";
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
@@ -207,6 +212,12 @@ export const ChartBar = wrap(BarChartIcon, "ChartBar");
 export const AppWindow = wrap(AppWindowIcon, "AppWindow");
 /** Computer use: an app window driven by the agent (the Activity row, a computer call's row). */
 export const SquareMousePointer = wrap(CursorInWindowIcon, "SquareMousePointer");
+// A computer step's kind in the Computer section (surfaces/threads/computer/StepList.tsx).
+export const MousePointerClick = wrap(MousePointerClickIcon, "MousePointerClick");
+export const TextCursor = wrap(CursorTextIcon, "TextCursor");
+export const MoveVertical = wrap(ScrollVerticalIcon, "MoveVertical");
+export const ScanText = wrap(ScanTextIcon, "ScanText");
+export const Hourglass = wrap(HourglassIcon, "Hourglass");
 export const Archive = wrap(ArchiveIcon, "Archive");
 export const ArchiveRestore = wrap(ArchiveRestoreIcon, "ArchiveRestore");
 export const ArrowDownCircle = wrap(CircleArrowDown01Icon, "ArrowDownCircle");
