@@ -30,6 +30,13 @@ export class PreviewGate<F extends { seq: number }> {
     w.pending = undefined
     w.send(w.flight)
   }
+  /**
+   * No watcher takes a frame until it is `ready` again: a stream that moves to another window says so first
+   * (the `live` push), and a frame of the new window before that would be drawn as the old one's.
+   */
+  hold(): void {
+    for (const w of this.watchers.values()) w.ready = false
+  }
   remove(id: string): void {
     this.watchers.delete(id)
   }

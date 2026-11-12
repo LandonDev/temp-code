@@ -428,8 +428,13 @@ export interface StepListProps {
   onOlder: () => void;
 }
 
-/** The pinned row's top inside the scroller. */
+/** A row's top inside the scroller. */
 const topOf = (el: HTMLElement): number => el.offsetTop;
+/** The first row whose end is past the scroller's top: the one the person is reading from. */
+const firstInView = (el: HTMLElement): HTMLElement | null => {
+  for (const row of el.querySelectorAll<HTMLElement>("[data-step]")) if (topOf(row) + row.offsetHeight > el.scrollTop) return row;
+  return null;
+};
 
 /** The list counts as at its top within this many pixels: there it stays as steps land. */
 const AT_TOP = 4;
@@ -475,24 +480,29 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
     setLanded(next);
   }
 
-  // While a row is pinned, rows that land above it do not move it: the list scrolls on by their height, from 0 too.
-  // The offset is that row's own: choosing another row starts again from where the new one stands.
+  // Following, a list at its top stays there as steps land: the live end. One the person scrolled keeps its place
+  // (so does a page of earlier steps they asked for); following again, by Go live or Home, goes back to the top.
+  const atTop = useRef(true);
+
+  // The browser's scroll anchoring is off (the list moves itself below), so the rows the person looks at are held
+  // by hand. While a row is pinned, rows that land above it do not move it: the list scrolls on by their height,
+  // from 0 too; the offset is that row's own, and choosing another row starts again from where the new one stands.
+  // Scrolled with nothing pinned, the row held is the first in view (`onScroll` notes it): a click aimed at a row
+  // must not land on the one a new step slid under the pointer.
   const anchor = useRef<{ id: string; top: number } | null>(null);
   useLayoutEffect(() => {
     const el = scroller.current;
-    const row = pinned && openId ? el?.querySelector<HTMLElement>(`[data-step="${quoted(openId)}"]`) : null;
-    if (!el || !row || !openId) {
+    const id = pinned ? openId : atTop.current ? null : (anchor.current?.id ?? null);
+    const row = el && id ? el.querySelector<HTMLElement>(`[data-step="${quoted(id)}"]`) : null;
+    if (!el || !row || !id) {
       anchor.current = null;
       return;
     }
     const top = topOf(row);
-    if (anchor.current?.id === openId && top !== anchor.current.top) el.scrollTop += top - anchor.current.top;
-    anchor.current = { id: openId, top };
+    if (anchor.current?.id === id && top !== anchor.current.top) el.scrollTop += top - anchor.current.top;
+    anchor.current = { id, top };
   }, [idsKey, openId, pinned, running.length]);
 
-  // Following, a list at its top stays there as steps land: the live end. One the person scrolled keeps its place
-  // (so does a page of earlier steps they asked for); following again, by Go live or Home, goes back to the top.
-  const atTop = useRef(true);
   /** where the list's own reveal of the open row left it: being there is still following, not the person's scroll */
   const revealed = useRef<number | null>(null);
   const wasPinned = useRef(pinned);
@@ -534,6 +544,11 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
         const top = e.currentTarget.scrollTop;
         atTop.current = top <= AT_TOP || top === revealed.current;
         if (!atTop.current) revealed.current = null;
+        // scrolled by the person and nothing pinned: the row they read from is the one to hold as steps land
+        if (!pinned && !atTop.current) {
+          const row = firstInView(e.currentTarget);
+          anchor.current = row?.dataset.step ? { id: row.dataset.step, top: topOf(row) } : null;
+        }
       }}
       // the list keeps its own place as rows land (the effects above): the browser's scroll anchoring would add to it
       className="relative min-h-16 flex-1 overflow-x-hidden overflow-y-auto px-1 pb-3 [overflow-anchor:none]"

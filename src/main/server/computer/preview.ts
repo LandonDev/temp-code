@@ -42,6 +42,8 @@ interface Stream {
   ended: ComputerPreviewEndReason | null
   queue: Promise<void>
   revision: number
+  /** the stream's window has been said to its watchers (the start's answer, or the `live` push of a restart): frames may go */
+  announced: boolean
 }
 export class ComputerPreviews {
   private readonly streams = new Map<string, Stream>()
@@ -107,6 +109,7 @@ export class ComputerPreviews {
         ended: null,
         queue: Promise.resolve(),
         revision: 0,
+        announced: false,
         gate: new PreviewGate(
           () => this.deps.clock?.now() ?? Date.now(),
           (seq) => {
@@ -135,7 +138,8 @@ export class ComputerPreviews {
     // resolves): a frame naming an id the client has not been told would never be drawn or acked.
     const stream = s
     ;(this.deps.defer ?? ((fn: () => void) => void setTimeout(fn, 0)))(() => {
-      stream.gate.ready(id)
+      // (a restart under way has not said its window yet: its `live` push readies this watcher)
+      if (stream.announced) stream.gate.ready(id)
       const early = watcher.early ?? []
       watcher.early = null
       if (stream.watchers.get(id) === watcher) for (const click of early) viewer.send(click)
@@ -200,6 +204,10 @@ export class ComputerPreviews {
       await this.stopStream(s)
       if (revision !== s.revision || !s.watchers.size || this.streams.get(s.threadId) !== s) return
       s.gate.reset()
+      // The watchers already drawing get no frame of the new stream before the push that says whose window it is:
+      // the service may send one before its start answers, and it would be drawn under the old window's name.
+      s.gate.hold()
+      s.announced = false
       try {
         const target = this.deps.sessions.previewTarget(s.threadId)
         if (!target) {
@@ -225,6 +233,9 @@ export class ComputerPreviews {
         s.ended = null
         s.answer = { ...s.answer, width: size.width, height: size.height }
         this.push(s, { state: 'live', ...s.answer })
+        s.announced = true
+        // (a watcher whose start answer is not out yet is readied by its own start)
+        for (const w of s.watchers.values()) if (w.early === null) s.gate.ready(w.id)
       } catch (error) {
         if (revision !== s.revision) return
         const kind = error instanceof ComputerRpcError ? error.data?.kind : null

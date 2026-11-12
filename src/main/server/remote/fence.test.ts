@@ -254,6 +254,17 @@ describe('fenceRequest', () => {
     expect(() => check('fs.read', { projectId: 'p-root', path: 'src/a.ts' })).not.toThrow()
     expect(() => check('fs.copyPath', { from: join(root, 'src'), destParent: join(root, 'out') })).not.toThrow()
     expect(() => check('git.fileDiff', { cwd: root, path: 'src/a.ts' })).not.toThrow()
+    // file.read is fenced to the app's own directories by its handler; the history inside one is still not its to read,
+    // by its real place or through a link to it
+    expect(() => check('file.read', { path: join(history, 't1', 'steps', '1.txt') })).toThrow(FenceError)
+    symlinkSync(history, join(root, 'linked-history'))
+    expect(() => check('file.read', { path: join(root, 'linked-history', 't1', 'steps', '1.txt') })).toThrow(FenceError)
+    expect(() => check('file.read', { path: join(data, 'computer', 'beside.txt') })).not.toThrow()
+    // a path of several lines, or of great length, that normalizes into the history is the same place
+    expect(() => check('fs.read', { projectId: 'p-data', path: 'computer/\n/../history/t1/steps/1.txt' })).toThrow(FenceError)
+    expect(() => check('fs.read', { projectId: 'p-data', path: `${'x/../'.repeat(2000)}computer/history/t1/steps/1.txt` })).toThrow(FenceError)
+    expect(() => check('fs.read', { projectId: 'p-data', path: `${'x/../'.repeat(2000)}computer/beside.txt` })).not.toThrow()
+    expect(() => check('fs.read', { projectId: 'p-root', path: 'src/\n/../a.ts' })).not.toThrow()
     // a file's content and a search's words are not paths, and a method that names no file is never read as one
     expect(() => check('fs.write', { projectId: 'p-root', path: 'src/a.ts', content: join(history, 't1') })).not.toThrow()
     expect(() => check('search.project', { options: { cwd: data, query: 'computer/history' } })).not.toThrow()

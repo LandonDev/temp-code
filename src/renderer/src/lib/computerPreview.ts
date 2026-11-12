@@ -122,8 +122,14 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
         try {
           const mine = generation;
           const bitmap = await createImageBitmap(frameBlob(push.data));
-          // (a frame of the window the stream has since left is not the new window's picture)
-          if (!alive || over || mine !== generation) return bitmap.close();
+          if (!alive || over) return bitmap.close();
+          // A frame of the window the stream has since left is not the new window's picture: it is dropped, and
+          // acked all the same, so the host's gate lets the new window's frames through.
+          if (mine !== generation) {
+            bitmap.close();
+            void link.request("computer.preview.ack", { preview: push.preview, seq: push.seq }).catch(() => undefined);
+            return;
+          }
           if (el.width !== bitmap.width) el.width = bitmap.width;
           if (el.height !== bitmap.height) el.height = bitmap.height;
           ctx.drawImage(bitmap, 0, 0);

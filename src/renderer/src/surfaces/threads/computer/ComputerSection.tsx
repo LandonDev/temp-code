@@ -76,6 +76,8 @@ const windowIn = (call: Pick<ComputerHistoryCall, "app" | "window">): string => 
 /** When a call's kept picture was taken (after its answer), else when the call ended. */
 const shownAt = (call: ComputerHistoryCall): number => (call.picture && !("none" in call.picture) ? call.picture.at : (call.endedAt ?? call.at));
 /** What a kept face is, as its accessible name: "Untitled in TextEdit at 2:04 PM". */
+/** A time in the line under the box: its "PM" stays on the time's line where a narrow panel wraps the sentence. */
+const lineTime = (ts: number): string => dayTime(ts).replace(/ (?=[AP]M$)/, "\u00a0");
 const keptLabel = (call: ComputerHistoryCall): string => `${windowIn(call)} at ${dayTime(shownAt(call))}`;
 /**
  * A step's media as the section asks for it. Its id carries the history's
@@ -171,13 +173,13 @@ export function viewportOf(v: {
   const base = { label, size, height: pinned ? keptHeight : null };
   // a pinned row's own facts carry its time; an older step standing in for the newest says when it was, and whose
   // window it is where that is not the newest step's
-  const asItWords = v.asOf ? (pinned ? "As it was after this step" : v.another ? `${windowIn(call)}, as it was at ${dayTime(at)}` : `As it was at ${dayTime(at)}`) : null;
+  const asItWords = v.asOf ? (pinned ? "As it was after this step" : v.another ? `${windowIn(call)}, as it was at ${lineTime(at)}` : `As it was at ${lineTime(at)}`) : null;
   const asIt = asItWords ? <ViewportLine words={asItWords} /> : null;
   // Under a preview that ended, a kept picture is a still under a live session's row: it always says when it was.
   // With Screen Recording off the read text is the look there is, and says its time only when it is not the
   // open step's own.
   const noRecording = state?.status === "ended" && state.reason === "permission";
-  const stoodIn = endedWords && !noRecording ? (asItWords ?? `As it was at ${dayTime(at)}`) : asItWords;
+  const stoodIn = endedWords && !noRecording ? (asItWords ?? `As it was at ${lineTime(at)}`) : asItWords;
   // Nothing to put in a box. A pinned step keeps the box's place, so stepping through rows moves nothing; else the line alone.
   const nothing = (line: ReactNode): ViewportProps | null =>
     pinned && keptHeight ? { ...base, size: null, face: { kind: "none" }, line: line ?? <ViewportLine words="No picture was kept" /> } : line ? { face: null, label, line } : null;

@@ -155,6 +155,30 @@ describe('ComputerPreviews over tc-computer', () => {
     })
     expect(a.some((f) => f.push === 'computer-frame')).toBe(false)
   })
+  it('a stream that moves to another window says so before any frame of it: one the service sends before its start answers waits for the live push', async () => {
+    const { h, previews, va, a, receive } = await setup({ FAKE_NO_FRAMES: '1' })
+    const first = await previews.start(va, { threadId: 't1', maxEdge: 512 })
+    await new Promise((r) => setTimeout(r, 5))
+    // the watcher is drawing; the thread reads another app, and the new stream's start is slow to answer
+    let finish!: (value: { stream: string; width: number; height: number }) => void
+    const pending = new Promise<{ stream: string; width: number; height: number }>((resolve) => (finish = resolve))
+    const real = h.service.request.bind(h.service) as (...args: unknown[]) => Promise<unknown>
+    const request = vi.spyOn(h.service, 'request').mockImplementation(((method: string, ...rest: unknown[]) =>
+      method === 'capture.stream.start' ? pending : real(method, ...rest)) as never)
+    await h.run('computer_act', { app: 'Thin', action: 'left_click', coordinate: [640, 536] })
+    await vi.waitFor(() => expect(request.mock.calls.some((c) => c[0] === 'capture.stream.start')).toBe(true))
+    const stream = (request.mock.calls.find((c) => c[0] === 'capture.stream.start')![1] as { stream: string }).stream
+    // the service's first frame of the new window comes before its answer
+    receive({ method: 'capture/frame', params: { stream, seq: 1, ts: 1, width: 512, height: 429, format: 'jpeg', data: 'anBlZw==' } })
+    expect(a.some((f) => f.push === 'computer-frame')).toBe(false)
+    finish({ stream, width: 512, height: 429 })
+    await vi.waitFor(() => expect(a.some((f) => f.push === 'computer-frame')).toBe(true))
+    // the push that names the window is ahead of its first frame, under the watcher's own id
+    const live = a.findLastIndex((f) => f.state === 'live')
+    expect(a[live]).toMatchObject({ app: 'Thin', preview: first.preview })
+    expect(a.findIndex((f) => f.push === 'computer-frame')).toBeGreaterThan(live)
+    request.mockRestore()
+  })
   it('ends a departed row and stops its stream', async () => {
     const { h, previews, va, a, clock } = await setup()
     await previews.start(va, { threadId: 't1', maxEdge: 512 })

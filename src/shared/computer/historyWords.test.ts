@@ -653,6 +653,21 @@ describe('scrubWords: a held-back text out of one string of a record', () => {
     expect(scrubWords('saved ~/pa$$w.rd!.txt', ['pa$$w.rd!'])).toBe('saved ~/‹9 characters›.txt')
   })
 
+  it('a name the service printed cut, that is the start of the text, goes whole too', () => {
+    const long = `token-${'x'.repeat(120)}`
+    const cut = `${long.slice(0, 100)}…`
+    expect(scrubWords(`Click ${cut}`, [long])).toBe('Click ‹126 characters›')
+    expect(scrubWords(`${cut} in Notes`, [long])).toBe('‹126 characters› in Notes')
+    expect(scrubWords(`a button in the "${cut}" group`, [long])).toBe('a button in the "‹126 characters›" group')
+    // cut shorter, as a read over its budget cuts it
+    expect(scrubWords(`Click ${long.slice(0, 8)}…`, [long])).toBe('Click ‹126 characters›')
+    // an ellipsis of the window's own, after words that are not the text's start, is left
+    expect(scrubWords('Click Save…', [long])).toBe('Click Save…')
+    expect(scrubWords('through the menu File › Save…', ['Saved as draft'])).toBe('through the menu File › Save…')
+    // the service leaves eight scalars of a name it cuts at the least: fewer is the window's own ellipsis
+    expect(scrubWords('Click token-x…', [long])).toBe('Click token-x…')
+  })
+
   it('does not cut a longer word in two; a sentence of the host’s own is known as one', () => {
     expect(scrubWords('Typed into a text area in TextEdit', ['Text', 'text'])).toBe('Typed into a ‹4 characters› area in TextEdit')
     expect(scrubWords('myhunter2file', ['hunter2'])).toBe('myhunter2file')

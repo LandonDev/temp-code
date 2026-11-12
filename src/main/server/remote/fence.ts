@@ -183,8 +183,8 @@ export function fenceRequest(req: ClientRequest, roots: readonly string[], attac
 // ── the denied directories, through every file method ───────────────────
 
 /** The methods whose params may name a file: only their strings are read as paths. */
-const FILE_METHOD = /^(fs|git|github|project|search|attachment|lsp|fim|build|projectLogo)\./
-/** A string longer than this, or of several lines, is content, not a path. */
+const FILE_METHOD = /^(fs|file|git|github|project|search|attachment|lsp|fim|build|projectLogo)\./
+/** No file system opens a path longer than this: a candidate that is still longer once normalized names no file. */
 const PATH_MAX = 4096
 /** More strings than any real request names (a sync's path lists run to thousands); past it the request is refused. */
 const STRINGS_MAX = 100_000
@@ -203,7 +203,8 @@ const CONTENT_KEYS: ReadonlySet<string> = new Set(['content', 'query', 'text', '
 function pathStrings(value: unknown, out: string[], depth = 0): boolean {
   if (depth > DEPTH_MAX) return false
   if (typeof value === 'string') {
-    if (value && value.length <= PATH_MAX && !value.includes('\n')) out.push(value)
+    // every string: one of several lines or of great length may still normalize to a path ("a/\n/../b")
+    if (value) out.push(value)
     return out.length <= STRINGS_MAX
   }
   if (Array.isArray(value)) return value.every((v) => pathStrings(v, out, depth + 1))
@@ -233,7 +234,8 @@ export function fenceDenied(req: ClientRequest, bases: readonly string[], denied
   for (const s of strings) {
     if (judged.has(s)) continue
     const whole = s.startsWith('~') || isAbsolute(s)
-    const candidates = whole ? [s] : bases.map((base) => join(expandPath(base), s))
+    // as the handlers will read it: normalized, so a way round through `..` or an odd segment is the place it ends at
+    const candidates = (whole ? [expandPath(s)] : bases.map((base) => join(expandPath(base), s))).filter((c) => c.length <= PATH_MAX)
     if (candidates.some((c) => insideRoots(c, denied))) throw new FenceError(req.method)
   }
   const carried = CARRIED[req.method]?.((params ?? {}) as Record<string, unknown>) ?? []

@@ -867,6 +867,22 @@ describe('a held-back text leaves the journal at one place (held)', () => {
     })
   })
 
+  it('an element named by the text, in the book cut at its hundredth character, keeps none of it in the start, the plan or the end', async () => {
+    const j = journal()
+    const long = `acct-${'9'.repeat(120)}`
+    const cut = `${long.slice(0, 100)}…`
+    // a batch types the text with no target, then clicks the element the screen names by it
+    const click = (verb: string, extra: Partial<ComputerHistoryStep> = {}): ComputerHistoryStep => ({ kind: 'click', verb, object: cut, inApp: `${cut} in Notes`, target: `a row in the "${cut}" outline`, asked: { verb: 'Click', object: cut, inApp: `${cut} in Notes` }, ...extra })
+    const entry = j.history.begin('t1', { app: 'Notes', window: 'Notes', steps: [click('Clicking')], plan: [`Click ${cut}`], masked: [long] })
+    await entry.end({ app: 'Notes', window: 'Notes', steps: [click('Clicked', { state: 'ok', tier: 'ax' })] })
+    const said = [readFileSync(join(j.dir('t1'), 'log.jsonl'), 'utf8'), JSON.stringify(j.changes), JSON.stringify(await j.calls('t1'))]
+    for (const where of said) {
+      expect(where).not.toContain(long.slice(0, 100))
+      expect(where).not.toContain(long.slice(0, 12))
+    }
+    expect((await j.calls('t1')).calls[0].steps[0]).toMatchObject({ verb: 'Clicked', object: '‹125 characters›', inApp: '‹125 characters› in Notes', target: 'a row in the "‹125 characters›" outline' })
+  })
+
   it('a call with nothing held back is written as it was given', async () => {
     const j = journal()
     const entry = j.history.begin('t1', start())

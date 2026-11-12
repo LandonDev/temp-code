@@ -38,8 +38,9 @@
   (docs/computer-protocol.md §17.9), by a path named outright
   (`fenceRequest`'s `denied`), by one named through a project id or
   inside a `cwd`, and by a copy or a move whose source holds it
-  (`fenceDenied`); `fsMedia` and project search leave it out for every
-  caller.
+  (`fenceDenied`, which covers `file.read` too and reads each string of a
+  request normalized, as the handlers will, whatever its length or
+  lines); `fsMedia` and project search leave it out for every caller.
 - Pairing: an admin makes a code (`XXXXX-XXXXX`, 10 minutes, single use) in
   the pane or over `POST /api/pairings`; the link is `<origin>/pair#<code>`.
   Redemption claims the row in one conditional UPDATE before minting, so

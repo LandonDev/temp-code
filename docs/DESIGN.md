@@ -620,8 +620,10 @@ is out of reach.
   pinned row do not move it. Following, a list at its top stays there as
   steps land and as a call's running line starts (where the list's own
   reveal of a failed step left it counts as its top: the next call is
-  followed); one the person scrolled
-  keeps its place, and so does a page of earlier steps they asked for.
+  followed); one the person scrolled holds the row they read from, the
+  list moving on by what lands above it (the browser's scroll anchoring
+  is off, so the list does this by hand, as for a pinned row), and so
+  does a page of earlier steps they asked for.
 - **Loading and failure**: skeleton rows in the rows' shape while the
   first read is out; one red line, "Couldn't read the steps", with Retry,
   above whatever steps are there.

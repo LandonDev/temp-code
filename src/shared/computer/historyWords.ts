@@ -656,9 +656,39 @@ export const isHostSentence = (text: string): boolean => HOST_SENTENCES.has(text
  * stands.
  */
 export function scrubWords(text: string, masked: readonly string[]): string {
+  const secrets = secretsOf(masked)
   let out = text
-  for (const secret of secretsOf(masked)) for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) out = out.replace(asWord(form), scrubMark(secret))
-  return out
+  for (const secret of secrets) for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) out = out.replace(asWord(form), scrubMark(secret))
+  return secrets.length && out.includes(CUT_MARK) ? scrubCutNames(out, secrets) : out
+}
+
+const CUT_MARK = '…'
+/** The fewest scalars the service leaves of a name it cuts (a read over its budget halves a name down to these). */
+const CUT_NAME_MIN = 8
+
+/**
+ * A name the service printed cut (its first scalars, then `…`: an element named by a long text is in the book
+ * that way) that is the start of a held-back text goes whole too, as a cut value does in the read text. A menu
+ * item's own "Save…" is no cut name: the service leaves eight scalars of a name at the least.
+ */
+function scrubCutNames(text: string, secrets: readonly string[]): string {
+  let out = ''
+  let rest = text
+  for (let cut = rest.indexOf(CUT_MARK); cut >= 0; cut = rest.indexOf(CUT_MARK)) {
+    const before = rest.slice(0, cut)
+    let hit: { secret: string; start: number } | null = null
+    for (const secret of secrets) {
+      // the longest start of the text that ends right at the cut, on a word's edge
+      for (let k = Math.min(before.length, secret.length - 1); k >= CUT_NAME_MIN && !hit; k--) {
+        const start = before.length - k
+        if (before.endsWith(secret.slice(0, k)) && (start === 0 || !WORD_CHAR.test(before[start - 1]) || !WORD_CHAR.test(secret[0]))) hit = { secret, start }
+      }
+      if (hit) break
+    }
+    out += hit ? before.slice(0, hit.start) + scrubMark(hit.secret) : before + CUT_MARK
+    rest = rest.slice(cut + CUT_MARK.length)
+  }
+  return out + rest
 }
 
 /** A quoted string as an observation prints one. */

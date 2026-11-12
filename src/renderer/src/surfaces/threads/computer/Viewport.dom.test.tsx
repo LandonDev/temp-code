@@ -450,6 +450,8 @@ describe("the live viewport", () => {
     await flush();
     expect(drawn).toHaveLength(1);
     expect(skeleton()).not.toBeNull();
+    // dropped, and acked all the same: the host's gate must not wait on a frame nobody will draw
+    expect(link.calls.filter((c) => c.method === "computer.preview.ack").map((c) => (c.params as { seq: number }).seq)).toEqual([1, 2]);
     // Mail's own first frame is its picture
     globalThis.createImageBitmap = vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })) as never;
     await act(async () => link.push(frame(3)));
