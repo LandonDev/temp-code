@@ -259,7 +259,11 @@ describe("following", () => {
     const line = runningRows()[0];
     expect(line.getAttribute("data-state")).toBe("queued");
     expect(line.querySelector('[data-state="queued"]')).toBeTruthy();
-    expect(line.querySelector(".h-7 .text-foreground")!.textContent).toBe("Waiting for the Mac to be free, 2nd in line");
+    const said = line.querySelector('[data-slot="step-line"] .text-foreground')!;
+    expect(said.textContent).toBe("Waiting for the Mac to be free, 2nd in line");
+    // said whole: it wraps in a narrow pane, it is never cut
+    expect(said.className).not.toContain("truncate");
+    expect(line.querySelector('[data-slot="step-line"]')!.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-7", "items-start"]));
     expect(line.querySelector('[data-slot="step-plan"]')!.textContent).toBe("Clicking Save");
     // the panel never answers the card: no Run now, no Skip
     expect(screen.queryByRole("button", { name: /Run now|Skip|Allow/ })).toBeNull();
@@ -272,7 +276,8 @@ describe("following", () => {
     const line = runningRows()[0];
     expect(line.getAttribute("data-state")).toBe("waiting");
     expect(line.querySelector('[data-state="waiting"]')!.className).toContain("text-warning");
-    expect(line.querySelector(".h-7")!.textContent).toBe("Click Save in TextEdit?");
+    expect(line.querySelector('[data-slot="step-line"]')!.textContent).toBe("Click Save in TextEdit?");
+    expect(line.querySelector('[data-slot="step-line"] .text-foreground')!.className).not.toContain("truncate");
     expect(line.querySelector('[data-slot="step-plan"]')).toBeNull();
   });
 
@@ -664,7 +669,8 @@ describe("the row states", () => {
     // a read has no tier: its time alone, and what it took in
     const read = await openOn(call(1, { read: "Read no changes", steps: [{ kind: "read", verb: "Read", object: "", inApp: "TextEdit", state: "ok" }] }));
     expect([...read.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual([clockTime(AT + 1400)]);
-    expect(read.querySelector('[data-slot="step-read"]')!.textContent).toBe("Read no changes");
+    // its own row already says Read: the line is what it took in alone
+    expect(read.querySelector('[data-slot="step-read"]')!.textContent).toBe("No changes");
     // a read that is its header alone is no disclosure
     expect(read.querySelector('[data-slot="step-read"]')!.tagName).toBe("SPAN");
   });

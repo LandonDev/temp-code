@@ -125,7 +125,10 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, line, 
   const { width, height: tall } = size && size.width > 0 && size.height > 0 ? size : DEFAULT_SIZE;
   const aspect = `${width} / ${tall}`;
   const boxStyle = height ? { height, maxHeight: VIEWPORT_MAX } : { aspectRatio: aspect, maxHeight: VIEWPORT_MAX };
-  const boxClass = cn("flex w-full justify-center overflow-hidden rounded-lg bg-card", FADE_IN);
+  // In its own shape the picture fills the box's height. In a kept height it is as wide as that height allows and no
+  // wider than the box, so a picture of any shape sits whole inside it, centred both ways.
+  const fit = height ? { aspectRatio: aspect, width: `min(100%, ${Math.round((height * width) / tall)}px)` } : { aspectRatio: aspect };
+  const boxClass = cn("relative flex w-full justify-center overflow-hidden rounded-lg bg-card", height && "items-center", FADE_IN);
   const below = line ? <div className={face ? "pt-1" : undefined}>{line}</div> : null;
   if (!face) return below ? <div data-slot="computer-viewport">{below}</div> : null;
   if (face.kind === "text") {
@@ -145,9 +148,11 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, line, 
       </div>
     );
   }
+  // Until a picture is there the skeleton is the whole box, never a box inside the box.
+  const waiting = face.kind === "skeleton" || (face.kind === "live" && !face.drawn);
   const picture = (
-    <div data-slot="computer-picture" className="relative h-full max-w-full" style={{ aspectRatio: aspect }}>
-      {face.kind === "skeleton" || (face.kind === "live" && !face.drawn) ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}
+    <div data-slot="computer-picture" className={cn(height ? "max-h-full" : "h-full max-w-full", !waiting && "relative")} style={fit}>
+      {waiting ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}
       {face.kind === "live" ? face.picture : null}
       {face.kind === "picture" ? (
         <img

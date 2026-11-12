@@ -73,14 +73,17 @@ export function rowWords(row: Pick<StepRow, "step" | "namesApp" | "whole" | "cal
   return { verb: step.verb, object: row.namesApp || !step.object ? step.inApp : step.object };
 }
 
-function Words({ verb, object, quiet }: { verb: string; object: string; quiet?: boolean }) {
+function Words({ verb, object, quiet, whole }: { verb: string; object: string; quiet?: boolean; /** said whole, wrapping, never cut */ whole?: boolean }) {
   return (
     <>
       {verb ? <span className="shrink-0 text-muted-foreground">{verb}</span> : null}
-      {object ? <span className={cn("min-w-0 truncate", quiet ? "text-muted-foreground" : "text-foreground")}>{object}</span> : null}
+      {object ? <span className={cn("min-w-0", !whole && "truncate", quiet ? "text-muted-foreground" : "text-foreground")}>{object}</span> : null}
     </>
   );
 }
+
+/** A line that says its words whole: the step grid's height as a minimum, the glyph on its first line. */
+const WHOLE_LINE = "flex min-h-7 min-w-0 items-start gap-1 py-1 font-sans text-[13px] leading-5";
 
 /** How a finished row ended, as its mark: nothing for a step that ran or did not run. */
 type RowMark = "failed" | "stopped" | null;
@@ -97,26 +100,33 @@ function RowGlyph({ kind, mark }: { kind: ComputerStepKind; mark: RowMark }) {
 
 /** The running call: one line, its state in the glyph's place, and under it a batch's plan or what a held step waits to do. */
 function RunningRow({ line, pinned, onFollow }: { line: RunningLine; pinned: boolean; onFollow: () => void }) {
+  // A card's question and a hold's line are for the person: said whole, wrapping where the pane is narrow.
+  const whole = line.state !== "working";
   const head = (
     <>
-      <span className={GLYPH_SLOT} data-slot="step-glyph">
-        <SwapIcon state={line.state}>
-          <StatusMark state={line.state} word={false} still aria-hidden />
-        </SwapIcon>
+      <span className="flex h-5 shrink-0 items-center">
+        <span className={GLYPH_SLOT} data-slot="step-glyph">
+          <SwapIcon state={line.state}>
+            <StatusMark state={line.state} word={false} still aria-hidden />
+          </SwapIcon>
+        </span>
       </span>
-      <Words verb={line.verb} object={line.object} />
+      <Words verb={line.verb} object={line.object} whole={whole} />
     </>
   );
+  const lineClass = cn(whole ? WHOLE_LINE : STEP_LINE, ROW_INSET);
   const under = line.waits ? [line.waits] : line.plan;
   return (
     <div data-slot="step-running" data-state={line.state}>
       {pinned ? (
         // While a row is pinned the running line is a way back to the live window.
-        <button type="button" aria-label={`Follow the live window: ${[line.verb, line.object].filter(Boolean).join(" ")}`} onClick={onFollow} className={cn(STEP_LINE, ROW_INSET, ROW_PRESS, "w-full rounded-lg text-start")}>
+        <button type="button" aria-label={`Follow the live window: ${[line.verb, line.object].filter(Boolean).join(" ")}`} onClick={onFollow} className={cn(lineClass, ROW_PRESS, "w-full rounded-lg text-start")}>
           {head}
         </button>
       ) : (
-        <div className={cn(STEP_LINE, ROW_INSET)}>{head}</div>
+        <div data-slot="step-line" className={lineClass}>
+          {head}
+        </div>
       )}
       {under?.length ? (
         <div className={cn(WORDS_COLUMN, "pb-1 text-xs leading-4 text-muted-foreground")} data-slot="step-plan">
@@ -161,8 +171,10 @@ function StepDetail({ row, read, onToggleRead }: { row: StepRow; read: ReadFold;
   const facts: ReactNode[] = unfinished
     ? [clockTime(call.at)]
     : [step.tier ? COMPUTER_TIER_WORDS[step.tier] : null, step.target, ...(step.facts ?? []), clockTime(call.endedAt ?? call.at)];
-  // the call's read belongs to its last step: the closing read came after them all
-  const reads = !unfinished && row.index === call.steps.length - 1 ? call.read : undefined;
+  // the call's read belongs to its last step: the closing read came after them all. A read's own row already says
+  // Read, so its line is what it took in alone: "41 elements", "No changes".
+  const took = !unfinished && row.index === call.steps.length - 1 ? call.read : undefined;
+  const reads = took && step.kind === "read" ? took.replace(/^Read (.)/, (_, first: string) => (/\d/.test(first) ? first : first.toUpperCase())) : took;
   return (
     <div className={cn(WORDS_COLUMN, "flex flex-col gap-1 pb-2 text-xs leading-4")} data-slot="step-detail">
       {why ? (
@@ -396,11 +408,13 @@ export function StepList({ running, groups, openId, pinned, read, status, more, 
       ))}
       {status === "loading" && !ids.length ? <RowsSkeleton /> : null}
       {groups.map((group, g) => (
-        <section key={group.id} data-slot="step-group" aria-label={group.heading ? groupName(group.heading) : "Latest steps"} className={g > 0 ? "mt-4" : undefined}>
+        // groups sit 16px apart; a first group with a heading (a subagent's) stands 8px off the running lines above it
+        <section key={group.id} data-slot="step-group" aria-label={group.heading ? groupName(group.heading) : "Latest steps"} className={g > 0 ? "mt-4" : group.heading && running.length ? "mt-2" : undefined}>
           {group.heading ? (
             <h3 data-slot="step-heading" className={cn(ROW_INSET, "m-0 flex min-w-0 items-baseline gap-1 pb-1 text-xs leading-4 font-medium text-muted-foreground")}>
               {group.heading.title ? <span className="min-w-0 truncate">{group.heading.title}</span> : null}
-              <span className="shrink-0 tabular-nums">{clockTime(group.heading.at)}</span>
+              {/* beside a title the time is the lighter of the two facts */}
+              <span className={cn("shrink-0 tabular-nums", group.heading.title && "font-normal")}>{clockTime(group.heading.at)}</span>
             </h3>
           ) : null}
           {group.rows.map((row) => {
@@ -422,7 +436,8 @@ export function StepList({ running, groups, openId, pinned, read, status, more, 
         </section>
       ))}
       {more ? (
-        <div className={cn(ROW_INSET, "pt-2")}>
+        // on the words' column, its own inset hung outside it so its words line up with the rows'
+        <div className={cn(WORDS_COLUMN, "pt-2")}>
           <Button variant="ghost" size="xs" data-slot="steps-older" className="-ms-2 text-muted-foreground hover:text-foreground" disabled={loadingMore} onClick={onOlder}>
             <BusyLabel busy={!!loadingMore} label="Show earlier steps" />
           </Button>

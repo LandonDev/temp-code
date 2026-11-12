@@ -434,9 +434,12 @@ describe("the viewport's faces", () => {
     expect(boxEl.style.height).toBe("190px");
     expect(boxEl.style.aspectRatio).toBe("");
     expect(boxEl.className).toContain("justify-center");
+    expect(boxEl.className).toContain("items-center");
     const picture = boxEl.querySelector<HTMLElement>("[data-slot=computer-picture]")!;
     expect(picture.style.aspectRatio).toBe("930 / 1280");
-    expect(picture.className).toContain("h-full");
+    // as wide as the kept height allows (190 × 930 / 1280), and never wider than the box
+    expect(picture.getAttribute("style")).toContain("width: min(100%, 138px)");
+    expect(picture.className.split(/\s+/)).not.toContain("h-full");
   });
 
   it("no face is the line alone, and nothing at all with no line", () => {
