@@ -393,6 +393,31 @@ describe("following", () => {
     expect(order()).toEqual(["Untitled in TextEdit", "Inbox in Mail"]);
   });
 
+  it("the running lines keep their order as two sessions take turns: the followed one's first, the rest as they began", async () => {
+    h.preview.state = live();
+    const mail = (lastCallAt: number): ComputerEntry =>
+      entry({ threadId: "sub1", since: AT + 5, lastCallAt, apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }], running: { tool: "computer_act", words: "Clicking Send in Mail", startedAt: AT + 100 } });
+    const text = (lastCallAt: number): ComputerEntry => entry({ since: AT, lastCallAt, running: { tool: "computer_observe", words: "Reading TextEdit", startedAt: AT + 100 } });
+    const d = (entries: ComputerEntry[]): ComputerSectionData => ({
+      entries,
+      keys: [{ key: "t1", threadId: "t1" }, { key: "sub1", threadId: "sub1" }],
+      histories: { t1: { born: 1, calls: [], more: false, status: "ready" }, sub1: { born: 2, calls: [], more: false, status: "ready" } },
+      exists: true,
+      live: true,
+    });
+    // the hook gives the sessions with the one that acted last first; that order changes with every call
+    const view = mount(d([text(AT + 50), mail(AT + 40)]));
+    await flush();
+    const lines = (): (string | null)[] => runningRows().map((r) => r.textContent);
+    expect(lines()).toEqual(["Reading TextEdit", "Clicking Send in Mail"]);
+    view.again(d([mail(AT + 60), text(AT + 50)]));
+    await flush();
+    expect(lines()).toEqual(["Reading TextEdit", "Clicking Send in Mail"]);
+    view.again(d([text(AT + 70), mail(AT + 60)]));
+    await flush();
+    expect(lines()).toEqual(["Reading TextEdit", "Clicking Send in Mail"]);
+  });
+
   it("two live sessions: the followed one's row sits last, next to the box; each has its own Stop, by name, and its own line", async () => {
     h.preview.state = live();
     const lead = entry({ threadId: "sub1", apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }], running: { tool: "computer_act", words: "Clicking Send in Mail", startedAt: AT } });
@@ -952,8 +977,8 @@ describe("the row states", () => {
   });
 
   it("a password typed says its length only: the words are the host's", async () => {
-    const el = await openOn(call(1, { steps: [step("Typed", "into Password", { kind: "type", target: "20 characters" })] }));
-    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in the background", "20 characters", clockTime(AT + 1400)]);
+    const el = await openOn(call(1, { steps: [step("Typed", "into Password", { kind: "type", target: "a password" })] }));
+    expect([...el.querySelectorAll('[data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(["in the background", "a password", clockTime(AT + 1400)]);
   });
 
   it("a thin tree reads Looked at the picture", async () => {
@@ -1222,7 +1247,8 @@ describe("when the preview ends", () => {
       mount(data([call(1), call(2)], [entry()]));
       await flush();
       expect(box()!.querySelector("img")!.getAttribute("src"), said).toMatch(/^blob:/);
-      expect(lineUnder().replace("Retry", "")).toBe(said);
+      // a kept picture under a live session's row is a still: the end's line says when it was
+      expect(lineUnder().replace("Retry", "")).toBe(`${said}. As it was at ${clockTime(AT + 2450)}`);
       expect(!!screen.queryByRole("button", { name: "Retry" }), said).toBe(retry);
       if (retry) {
         fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -1256,9 +1282,21 @@ describe("when the preview ends", () => {
     await flush();
     expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 1450)}`);
     cleanup();
+    // its newest step's own picture is a still under a live session's row too: it says when it was
     mount(data([call(1), call(2)], [entry()]));
     await flush();
-    expect(lineUnder()).toBe("The window closed");
+    expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 2450)}`);
+    cleanup();
+    // a kept picture that cannot be read says so beside the end, and Retry is that read's
+    h.readStep.mockRejectedValue(new Error("the socket dropped"));
+    mount(data([call(1), call(2)], [entry()]));
+    await flush();
+    expect(lineUnder()).toBe("The window closed. Couldn't read the pictureRetry");
+    h.readStep.mockImplementation(async (_k: string, n: number) => picture(n));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(box()!.querySelector("img")).toBeTruthy();
+    expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 2450)}`);
   });
 
   it("with no step kept it is the line alone", async () => {
@@ -1276,10 +1314,16 @@ describe("when the preview ends", () => {
     await flush();
     expect(box()!.tagName).toBe("PRE");
     expect(box()!.textContent).toBe("the newest read");
-    expect(lineUnder()).toBe("Turn on Screen Recording for TempCode in System Settings");
+    // the text is an older step's than the open row: it says when it was read
+    expect(lineUnder()).toBe(`Turn on Screen Recording for TempCode in System Settings. As it was at ${clockTime(AT + 1400)}`);
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     // the open row is still the newest step
     expect(words(openRow())).toBe("ClickedStep 2");
+    cleanup();
+    // the newest step's own read needs no time
+    mount(data([call(1, { picture: { none: "permission" }, text: true, read: "Read 46 elements", steps: [{ kind: "read", verb: "Read", object: "", inApp: "TextEdit", state: "ok" }] })], [entry()]));
+    await flush();
+    expect(lineUnder()).toBe("Turn on Screen Recording for TempCode in System Settings");
   });
 });
 
@@ -1499,6 +1543,31 @@ describe("the kept pictures' cache", () => {
     expect(cache.peek("t1", callOf(2, 3))?.picture?.url).toBe("blob:2");
   });
 
+  it("a read is its history's: one asked for before the key was dropped is never handed to the history that began after, nor says its picture is gone", async () => {
+    const answers: ((a: ComputerHistoryStepAnswer) => void)[] = [];
+    const gonePictures: string[] = [];
+    const cache = new StepMediaCache({
+      read: () => new Promise<ComputerHistoryStepAnswer>((resolve) => answers.push(resolve)),
+      onPictureGone: (key, n) => void gonePictures.push(`${key}:${n}`),
+      createUrl: () => "blob:new",
+      revokeUrl: () => undefined,
+    });
+    const old = cache.load("t1", callOf(1));
+    // the history is removed and begins again: its call 1, at the same revision, is another call
+    cache.dropKey("t1");
+    const fresh = cache.load("t1", callOf(1));
+    expect(fresh).not.toBe(old);
+    expect(answers).toHaveLength(2);
+    // the old read answers that the picture is gone: that is said of nothing
+    answers[0]({});
+    expect(await old).toEqual({ rev: 3 });
+    expect(gonePictures).toEqual([]);
+    // the new call's own read lands as itself
+    answers[1](picture(1));
+    expect((await fresh).picture?.url).toBe("blob:new");
+    expect(cache.peek("t1", callOf(1))?.picture?.url).toBe("blob:new");
+  });
+
   it("a read still out when its key was dropped, or the cache cleared, keeps nothing: its picture is revoked as it lands", async () => {
     for (const end of ["clear", "dropKey"] as const) {
       let answer: (a: ComputerHistoryStepAnswer) => void = () => undefined;
@@ -1514,14 +1583,15 @@ describe("the kept pictures' cache", () => {
       else cache.dropKey("t1");
       answer({ ...picture(1), text: "text 1" });
       expect(await load, end).toEqual({ rev: 3 });
-      expect(made, end).toEqual(["blob:1"]);
-      expect(gone, end).toEqual(["blob:1"]);
+      // nothing of it is made, kept or said
+      expect(made, end).toEqual([]);
+      expect(gone, end).toEqual([]);
       expect(cache.size, end).toBe(0);
       // dropping one key leaves another's read alone
       const other = cache.load("sub1", callOf(1));
       cache.dropKey("t1");
       answer(picture(1));
-      expect((await other).picture?.url, end).toBe("blob:2");
+      expect((await other).picture?.url, end).toBe("blob:1");
       expect(cache.size, end).toBe(1);
     }
   });

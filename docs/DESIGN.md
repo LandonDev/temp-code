@@ -538,6 +538,7 @@ under them is the section's one scroller.
   stays followed while it works and for five seconds after its last call
   (`followedSession`): two sessions taking turns never swap the rows or
   the picture after every call; then the look goes to the one at work.
+  The running lines keep that order too: the followed session's first.
 - **The viewport**: a box at the pane's width less 24px in the picture's
   shape, at most `min(400px, 45cqh)` of the section (a tall pane gives
   the window room to be read; a short one keeps its list), on the `card` fill
@@ -556,8 +557,10 @@ under them is the section's one scroller.
   kept nothing and an older picture of its session stands in (another
   window's is named: "Inbox in Mail, as it was at 2:03 PM"); and
   "Couldn't read the picture" with Retry when the read failed, which is
-  never said as nothing kept. A preview that ended keeps the stand-in's
-  words in its own line ("The window closed. As it was at 2:03 PM"). The
+  never said as nothing kept. Under a preview that ended a kept picture
+  is a still beneath a live session's row, so its line always says when
+  it was ("The window closed. As it was at 2:03 PM"), and a failed read
+  sits beside the end's words with its own Retry. The
   box fades in once, when the viewport arrives; a change of face moves
   nothing.
 - **A step row** is on the transcript's step grid (`STEP_LINE`,

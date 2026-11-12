@@ -94,13 +94,17 @@ export class StepMediaCache {
     const held = this.peek(key, call);
     if (held) return Promise.resolve(held);
     const id = StepMediaCache.id(key, call.n);
-    const flight = `${id}\n${call.rev}`;
+    const began = this.stamp(key);
+    // a read is its history's: one asked for before the key was dropped is never handed to a call of the history
+    // that began after
+    const flight = `${id}\n${call.rev}\n${began}`;
     const pending = this.loading.get(flight);
     if (pending) return pending;
-    const began = this.stamp(key);
     const load = this.opts
       .read(key, call.n)
       .then(async (answer) => {
+        // its key was dropped, or the cache cleared, while it was out: nothing of it is kept, shown or said
+        if (this.stamp(key) !== began) return { rev: call.rev };
         const media: StepMedia = { rev: call.rev };
         if (answer.picture) {
           const { data, mimeType, width, height, at } = answer.picture;
@@ -109,7 +113,7 @@ export class StepMediaCache {
         } else if (call.picture && !("none" in call.picture)) this.opts.onPictureGone?.(key, call.n);
         if (answer.text !== undefined) media.text = answer.text;
         if (this.stamp(key) !== began) {
-          // its key was dropped, or the cache cleared, while it was out: nothing of it is kept or shown
+          // dropped while the picture decoded
           if (media.picture) this.revokeUrl(media.picture.url);
           return { rev: call.rev };
         }

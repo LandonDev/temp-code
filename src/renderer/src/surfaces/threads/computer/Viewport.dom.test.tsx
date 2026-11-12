@@ -217,6 +217,37 @@ describe("the live viewport", () => {
     expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
   });
 
+  it("waits for a window to preview: no start before the thread's first read, one when the row names its window", async () => {
+    const view = mount(entry({ apps: [] }));
+    await flush();
+    expect(link.methods()).toEqual([]);
+    // the skeleton stands in the box meanwhile
+    expect(box().querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    view.again({}, entry());
+    await flush();
+    expect(link.methods()).toEqual(["computer.preview.start"]);
+  });
+
+  it("a start that failed tries again when the row's window changes, and not before", async () => {
+    link.answer = async () => {
+      throw new Error("No computer window to preview");
+    };
+    const view = mount(entry({ apps: [{ name: "TextEdit", bundleId: "com.apple.TextEdit", window: null }] }));
+    await flush();
+    expect(screen.getByText("The preview stopped")).toBeTruthy();
+    // the row is told again with the same window: nothing is asked twice
+    view.again({}, entry({ apps: [{ name: "TextEdit", bundleId: "com.apple.TextEdit", window: null }] }));
+    await flush();
+    expect(link.methods().filter((m) => m === "computer.preview.start")).toHaveLength(1);
+    // its first read names the window: the stream starts by itself
+    link.answer = async () => ({ preview: "pv_2", app: "TextEdit", window: "Untitled", width: 960, height: 600 });
+    view.again({}, entry());
+    await flush();
+    expect(link.methods().filter((m) => m === "computer.preview.start")).toHaveLength(2);
+    expect(screen.queryByText("The preview stopped")).toBeNull();
+    expect(box().getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
+  });
+
   it("ignores another preview's frames", async () => {
     mount();
     await flush();

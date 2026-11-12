@@ -310,7 +310,7 @@ whole minutes, 1 to 60, committed as `computer.sessionIdleMs`, then When a
 step needs the app in front, a `ChoiceSelect` of Bring it forward for a moment
 (`brief`) and Wait until I'm away (`away`), saved as `computer.activeApp`
 (docs/computer-protocol.md §26.6), then Keep pictures of the window, a
-`SettingSwitch` with "Kept on this Mac: a thread's newest 400, until 30 days after it last used the computer. Turning it off deletes them, not the steps or what was read." (`keepPictures`, the setting
+`SettingSwitch` with "On this Mac, for 30 days after a thread last used the computer. Off deletes them; the steps and what was read stay." (`keepPictures`, the setting
 `computer.history.pictures`; docs/computer-protocol.md §17.9). Permissions:
 Accessibility and Screen Recording on the `PermissionRow` Appshots shares,
 muted Granted or amber Not granted with Grant… to the System Settings pane;
@@ -527,7 +527,9 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   and Debug for one on a dev build or once "Debug this file" asked for it
   on the thread. The default is Agents when the thread has subagents (live
   or done), else Computer while a session is live, else Activity, else
-  Changes, else Notes; the section the person
+  Changes, else Notes (a panel that showed Computer by default keeps it
+  as the thread's section, so the steps stay up when the turn settles);
+  the section the person
   picks is remembered per thread, and a remembered section that no longer
   exists falls back to the default. The transcript's Watching line opens
   Agents when the thread waits on subagents, else Activity (`watchSection`).

@@ -205,6 +205,26 @@ describe("RightPanel", () => {
     expect(rightPanel.get("s1").section).toBe("notes");
   });
 
+  it("a panel that showed Computer by default keeps it when the turn settles: the steps are still what the person reads", () => {
+    state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
+    state.computer = { exists: true, live: true };
+    rightPanel.open("s1");
+    const view = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getByRole("tab", { name: "Computer" }).getAttribute("aria-selected")).toBe("true");
+    // shown by default, it is now the thread's section
+    expect(rightPanel.get("s1").section).toBe("computer");
+    // the session ends: Activity would be the default again, and the panel stays where it was
+    state.computer = { exists: true, live: false };
+    view.rerender(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getByRole("tab", { name: "Computer" }).getAttribute("aria-selected")).toBe("true");
+    view.unmount();
+    // a closed panel takes nothing: its thread's section is still the person's to pick, or the default's
+    rightPanel.reset();
+    state.computer = { exists: true, live: true };
+    render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(rightPanel.get("s1").section).toBeNull();
+  });
+
   it("no Computer section for a thread that never used the Mac", () => {
     rightPanel.open("s1");
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);

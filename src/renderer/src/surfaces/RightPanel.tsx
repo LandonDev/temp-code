@@ -203,6 +203,11 @@ export function RightPanel(props: RightPanelProps) {
   // The title bar's agents cue reads what is drawn, not what was asked for.
   const drawn = state.open && props.motion !== "leave" ? section : null;
   useEffect(() => rightPanel.setShown(pane, drawn), [pane, drawn]);
+  // Computer shown as the default (a session is live) becomes the thread's section: when the turn settles the
+  // person is still reading its steps, and a panel that changed section by itself would take them away.
+  useEffect(() => {
+    if (drawn === "computer" && state.section === null) rightPanel.set(pane, { section: "computer" });
+  }, [drawn, pane, state.section]);
   useEffect(() => () => rightPanel.setShown(pane, null), [pane]);
 
   const resize = useDragResize({

@@ -69,7 +69,20 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
   const box = opts.box;
   const host = entry.previewHost;
   const key = entry.previewKey;
-  const run = opts.run && entry.previewable && !!host && !!key && edge !== null;
+  // The host previews the window the thread last read: before its first read there is none, and a start would be
+  // refused for good. The stream starts when the row names a window, and one that failed tries again when that
+  // window changes.
+  const target = entry.row.apps[0] ? `${entry.row.apps[0].name}\n${entry.row.apps[0].window ?? ""}` : "";
+  const run = opts.run && entry.previewable && !!host && !!key && edge !== null && target !== "";
+  const failedAt = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.status !== "failed") failedAt.current = null;
+    else if (failedAt.current === null) failedAt.current = target;
+    else if (failedAt.current !== target) {
+      failedAt.current = null;
+      setAttempt((n) => n + 1);
+    }
+  }, [state.status, target]);
 
   useLayoutEffect(() => {
     onClick.current = opts.onClick;

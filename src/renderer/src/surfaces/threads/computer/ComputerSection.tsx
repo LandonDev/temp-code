@@ -146,9 +146,7 @@ export function viewportOf(v: {
   /** the end's line, with what else there is to say of the picture under it: an older step's stand-in still says whose window and when */
   // (with Screen Recording off the read text is the look there is: its line says what to turn on, and no more
   // unless the text is another window's)
-  const noRecording = state?.status === "ended" && state.reason === "permission";
-  const endedLine = (also?: string | null): ReactNode =>
-    endedWords ? <ViewportLine words={also && (!noRecording || v.another) ? `${endedWords}. ${also}` : endedWords} onRetry={endedRetry} /> : null;
+  const endedLine = (also?: string | null): ReactNode => (endedWords ? <ViewportLine words={also ? `${endedWords}. ${also}` : endedWords} onRetry={endedRetry} /> : null);
   const ended = endedLine();
   if (!shown) return ended ? { face: null, label: "", line: ended } : null;
   const { call } = shown;
@@ -163,12 +161,21 @@ export function viewportOf(v: {
   // window it is where that is not the newest step's
   const asItWords = v.asOf ? (pinned ? "As it was after this step" : v.another ? `${windowIn(call)}, as it was at ${clockTime(at)}` : `As it was at ${clockTime(at)}`) : null;
   const asIt = asItWords ? <ViewportLine words={asItWords} /> : null;
+  // Under a preview that ended, a kept picture is a still under a live session's row: it always says when it was.
+  // With Screen Recording off the read text is the look there is, and says its time only when it is not the
+  // open step's own.
+  const noRecording = state?.status === "ended" && state.reason === "permission";
+  const stoodIn = endedWords && !noRecording ? (asItWords ?? `As it was at ${clockTime(at)}`) : asItWords;
   // Nothing to put in a box. A pinned step keeps the box's place, so stepping through rows moves nothing; else the line alone.
   const nothing = (line: ReactNode): ViewportProps | null =>
     pinned && keptHeight ? { ...base, size: null, face: { kind: "none" }, line: line ?? <ViewportLine words="No picture was kept" /> } : line ? { face: null, label, line } : null;
   if (!here) {
     // The read failed: that is not "nothing was kept". The line says so, with Retry, in the box's place.
-    if (media.failed) return nothing(ended ?? <ViewportLine words={kept ? "Couldn't read the picture" : "Couldn't read the text"} onRetry={media.retry} />);
+    // (an ended preview keeps its words beside it; Retry is this read's, the nearer thing to mend)
+    if (media.failed) {
+      const failed = kept ? "Couldn't read the picture" : "Couldn't read the text";
+      return nothing(<ViewportLine words={endedWords ? `${endedWords}. ${failed}` : failed} onRetry={media.retry} />);
+    }
     // on its way: the picture before it stays, under its own name, dimmed once that has taken a moment; a first
     // picture is a skeleton
     const before = media.landed?.media.picture;
@@ -184,11 +191,11 @@ export function viewportOf(v: {
       pinned && call.steps.length > 1 && shown.index < call.steps.length - 1 ? (
         <ViewportLine words={call.steps.every((step) => step.state === "ok") ? `After all ${call.steps.length} steps` : "After the steps that ran"} />
       ) : null;
-    return { ...base, size: { width: here.picture.width, height: here.picture.height }, face: { kind: "picture", src: url, onOpen: (from) => v.onOpen(label, url, from) }, line: endedLine(asItWords) ?? after ?? asIt };
+    return { ...base, size: { width: here.picture.width, height: here.picture.height }, face: { kind: "picture", src: url, onOpen: (from) => v.onOpen(label, url, from) }, line: endedLine(stoodIn) ?? after ?? asIt };
   }
   // no picture: what the model read stands in its place, and why there is none where that is worth a line
   const none = call.picture && "none" in call.picture ? NO_PICTURE_WORDS[call.picture.none] : undefined;
-  const why = endedLine(here.text ? asItWords : null) ?? (none ? <ViewportLine words={none} /> : null);
+  const why = endedLine(here.text ? stoodIn : null) ?? (none ? <ViewportLine words={none} /> : null);
   if (here.text) return { ...base, size: null, face: { kind: "text", text: here.text }, line: why ?? asIt };
   return nothing(why);
 }
@@ -355,7 +362,12 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
         .map((e) => ({ id: sessionId(e), label: computerLabel(e), stopping: stopping.has(sessionId(e)) })),
     [data.entries, leadId, stopping],
   );
-  const running = useMemo(() => runningLines(data.entries, list), [data.entries, list]);
+  // The running lines keep their order as the sessions take turns: the followed session's first, next to the box,
+  // then the others as they began.
+  const running = useMemo(
+    () => runningLines([...data.entries].sort((a, b) => Number(sessionId(b) === leadId) - Number(sessionId(a) === leadId) || a.row.since - b.row.since), list),
+    [data.entries, leadId, list],
+  );
 
   // ── the journal's own state ──
   const keysId = data.keys.map((k) => k.key).join("\n");

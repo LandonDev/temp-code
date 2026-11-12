@@ -365,7 +365,7 @@ const fixtures: ComputerFixture[] = [
   },
   {
     name: "18a. The preview ended: the window closed, over the newest step's kept picture",
-    props: base({ sessions: [live], viewport: kept("textedit", "save-sheet", TEXTEDIT, "2:03 PM", { line: <ViewportLine words="The window closed" /> }), ...listOf(own(run)) }),
+    props: base({ sessions: [live], viewport: kept("textedit", "save-sheet", TEXTEDIT, "2:03 PM", { line: <ViewportLine words="The window closed. As it was at 2:03 PM" /> }), ...listOf(own(run)) }),
   },
   {
     name: "18b. The preview stopped with no step kept: the line alone, with Retry; two sessions",
@@ -396,10 +396,10 @@ const fixtures: ComputerFixture[] = [
     kept: { 260: 198, 480: 240 },
   },
   {
-    name: "21. A password typed: its length only",
+    name: "21. A password typed: neither the text nor its length",
     props: base({
       viewport: kept("chrome", "form", CHROME, "2:03 PM", { label: "Sign in in Google Chrome at 2:03 PM" }),
-      ...listOf(own([call(AT - MIN, [step("type", "Typed", "into Password", { target: "20 characters" }, "Google Chrome")], { app: "Google Chrome", window: "Sign in", read: "Read 1 change", picture: { ...CHROME, at: AT } })])),
+      ...listOf(own([call(AT - MIN, [step("type", "Typed", "into Password", { target: "a password" }, "Google Chrome")], { app: "Google Chrome", window: "Sign in", read: "Read 1 change", picture: { ...CHROME, at: AT } })])),
     }),
   },
   {

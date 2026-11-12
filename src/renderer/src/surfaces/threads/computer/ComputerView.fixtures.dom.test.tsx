@@ -50,7 +50,7 @@ describe("the Computer section's fixtures", () => {
     expect(pinned.querySelector('[data-slot="computer-section"]')!.hasAttribute("data-following")).toBe(false);
     cleanup();
     const password = draw("21.");
-    expect(password.querySelector('[data-slot="step-detail"]')!.textContent).toContain("20 characters");
+    expect(password.querySelector('[data-slot="step-detail"]')!.textContent).toContain("a password");
     cleanup();
     const short = draw("23.");
     expect(short.querySelectorAll('[data-slot="computer-section"]')).toHaveLength(1);

@@ -102,12 +102,13 @@ describe('the secret rule', () => {
     expect(target({ action: 'paste', text: 'pasted', element: 33 })).toBe('"pasted"')
     expect(target({ action: 'set_value', value: 'Hi', element: 33 })).toBe('"Hi"')
     // a password field, a named target, no target, an index the book lacks, no book: the length alone
-    expect(target(type({ element: 12 }))).toBe('15 characters')
+    // into a field the book knows is a password field, not even its length
+    expect(target(type({ element: 12 }))).toBe('a password')
     expect(target(type({ named: 'Subject' }))).toBe('15 characters')
     expect(target(type({}))).toBe('15 characters')
     expect(target(type({ element: 99 }))).toBe('15 characters')
     expect(bookless(type({ element: 33 }))).toBe('15 characters')
-    expect(target({ action: 'set_value', value: 'x', element: 12 })).toBe('1 character')
+    expect(target({ action: 'set_value', value: 'x', element: 12 })).toBe('a password')
   })
 
   it('text after an earlier step that sent input is a length, whatever it names', () => {

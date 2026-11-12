@@ -176,14 +176,16 @@ export function stepTargetWords(actions: readonly ComputerAction[], k: number, b
   const index = a.element ?? resolved?.index
   const element = (): string | undefined =>
     index !== undefined ? elementFact(resolved?.index === index ? resolved : (book?.brief(index) ?? null), book?.path(index) ?? []) : undefined
+  // into a field the book knows is a password field, even how long the text was is the person's to keep
+  const secret = (): string | undefined => (index !== undefined && isPasswordLine((resolved?.index === index ? resolved : book?.brief(index))?.line) ? 'a password' : undefined)
   switch (a.action) {
     case 'type':
     case 'paste':
-      return textFact(a.text ?? '', mayQuoteText(actions, k, book))
+      return secret() ?? textFact(a.text ?? '', mayQuoteText(actions, k, book))
     case 'select_text':
-      return a.text !== undefined ? textFact(a.text, mayQuoteText(actions, k, book)) : element()
+      return a.text !== undefined ? (secret() ?? textFact(a.text, mayQuoteText(actions, k, book))) : element()
     case 'set_value':
-      return textFact(a.value ?? '', mayQuoteText(actions, k, book))
+      return secret() ?? textFact(a.value ?? '', mayQuoteText(actions, k, book))
     case 'scroll':
       return `${a.scroll_direction} ${a.scroll_amount}`
     case 'left_click_drag':

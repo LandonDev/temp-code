@@ -12,7 +12,7 @@ import type { ComputerEntry } from "../../../lib/computerSessions";
 /**
  * The Computer section's viewport (docs/DESIGN.md "Panels"): the window as
  * it is or as it was, in one box at the pane's width less its insets, in the
- * picture's shape and at most `min(240px, 45%)` of the section's height. It
+ * picture's shape and at most `min(400px, 45cqh)` of the section's height. It
  * has four faces and never two at once: the live stream on a canvas with the
  * agent's click ringed for a moment; a kept picture, which opens the
  * lightbox; the text the model read, where there is no picture; a skeleton
