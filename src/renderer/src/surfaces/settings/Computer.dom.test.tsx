@@ -264,6 +264,53 @@ describe("Settings › Computer use", () => {
   });
 });
 
+describe("Keep pictures of the window", () => {
+  const toggle = (): HTMLElement => screen.getByRole("switch", { name: "Keep pictures of the window" });
+
+  it("is one row with a switch that reads the setting and says what off does", async () => {
+    render(<ComputerPage />);
+    await settle();
+    const row = toggle().closest("[data-slot=page-row]") as HTMLElement;
+    expect(row.textContent).toContain("Keep pictures of the window");
+    expect(row.textContent).toContain("After each action, on this Mac, for 30 days. Turning it off deletes them.");
+    expect(toggle().getAttribute("aria-checked")).toBe("true");
+    // one control in the row, and it sits in the first section, under the two settings before it
+    expect(within(row).getAllByRole("switch")).toHaveLength(1);
+    expect(firstSection().contains(row)).toBe(true);
+  });
+
+  it("saves the flip and follows the host's answer and its push", async () => {
+    host.handlers["computer.settings.set"] = async (params) => ({ ...SETTINGS, ...(params as object) });
+    render(<ComputerPage />);
+    await settle();
+    await act(async () => fireEvent.click(toggle()));
+    expect(calls("computer.settings.set").at(-1)![1]).toEqual({ keepPictures: false });
+    expect(toggle().getAttribute("aria-checked")).toBe("false");
+    // another window turned it back on
+    act(() => host.pushes.forEach((fn) => fn({ push: "computer-settings", settings: { ...SETTINGS, keepPictures: true } })));
+    expect(toggle().getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("a refused save slides the switch back and says the host's line under the row", async () => {
+    host.handlers["computer.settings.set"] = async () => {
+      throw new Error("the host is not connected");
+    };
+    render(<ComputerPage />);
+    await settle();
+    await act(async () => fireEvent.click(toggle()));
+    await settle();
+    expect(toggle().getAttribute("aria-checked")).toBe("true");
+    expect(within(toggle().closest("[data-slot=page-row]") as HTMLElement).getByText("the host is not connected")).toBeTruthy();
+  });
+
+  it("reads off from a host that has it off", async () => {
+    host.handlers["computer.settings.get"] = answer({ ...SETTINGS, keepPictures: false });
+    render(<ComputerPage />);
+    await settle();
+    expect(toggle().getAttribute("aria-checked")).toBe("false");
+  });
+});
+
 describe("When a step needs the app in front (§26.6)", () => {
   it("reads the setting, saves a pick and says the host's refusal", async () => {
     let refuse = false;

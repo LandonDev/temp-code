@@ -4,6 +4,7 @@ import type { ActiveAppMode } from "@server/shared/computer/scheduleRules";
 import { verdictWords } from "@server/shared/computer/words";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark, computerServiceMarkOf } from "../../components/ui/status";
@@ -38,7 +39,9 @@ const ACTIVE_APP_CHOICES: { value: ActiveAppMode; label: string }[] = [
 /**
  * Settings › Computer use, on this Mac's own host: the service and how long
  * the person must be away before a thread may take the pointer and keyboard,
- * the two macOS grants, and every app TempCode learned with Forget.
+ * whether a picture of the window is kept after each action (the Computer
+ * section's history), the two macOS grants, and every app TempCode learned
+ * with Forget.
  */
 export function ComputerPage() {
   const link = registry.primary();
@@ -48,6 +51,7 @@ export function ComputerPage() {
   const perms = useComputerPermissions(link, service);
   const [idleError, setIdleError] = useState<string | null>(null);
   const [activeError, setActiveError] = useState<string | null>(null);
+  const [picturesError, setPicturesError] = useState<string | null>(null);
 
   useEffect(() => onComputerSettings(link, set), [link, set]);
 
@@ -69,6 +73,18 @@ export function ComputerPage() {
       setActiveError(null);
     } catch (err) {
       setActiveError(message(err));
+    }
+  };
+
+  /** Off also deletes the kept pictures on the host; a refusal slides the switch back and says the host's line. */
+  const keepPictures = async (keep: boolean): Promise<boolean> => {
+    try {
+      set(await setComputerSettings(link, { keepPictures: keep }));
+      setPicturesError(null);
+      return true;
+    } catch (err) {
+      setPicturesError(message(err));
+      return false;
     }
   };
 
@@ -96,7 +112,7 @@ export function ComputerPage() {
         ) : settings.error ? (
           <PageError action={retryRead}>{settings.error}</PageError>
         ) : (
-          <PageRowsSkeleton rows={[{ description: true, control: "number" }, { control: "select" }]} />
+          <PageRowsSkeleton rows={[{ description: true, control: "number" }, { control: "select" }, { description: true, control: "switch" }]} />
         )}
         {settings.value ? (
           <PageRow title="When a step needs the app in front" error={activeError}>
@@ -106,6 +122,11 @@ export function ComputerPage() {
               options={ACTIVE_APP_CHOICES}
               onChange={(choice) => void chooseActiveApp(choice)}
             />
+          </PageRow>
+        ) : null}
+        {settings.value ? (
+          <PageRow title="Keep pictures of the window" description="After each action, on this Mac, for 30 days. Turning it off deletes them." error={picturesError}>
+            <SettingSwitch label="Keep pictures of the window" on={settings.value.keepPictures} onChange={keepPictures} />
           </PageRow>
         ) : null}
       </PageSection>
