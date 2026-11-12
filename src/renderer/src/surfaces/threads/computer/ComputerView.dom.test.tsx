@@ -951,6 +951,34 @@ describe("the kept pictures' cache", () => {
     expect(gone).toHaveLength(3);
   });
 
+  it("a picture is decoded before it lands, so it never takes the old one's place as a blank box", async () => {
+    let settle: () => void = () => {};
+    const decode = vi.fn(() => new Promise<void>((resolve) => (settle = resolve)));
+    vi.stubGlobal(
+      "Image",
+      class {
+        src = "";
+        decode = decode;
+      },
+    );
+    try {
+      const { cache } = make();
+      let landed = false;
+      const loading = cache.load("t1", callOf(1)).then(() => (landed = true));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(decode).toHaveBeenCalledTimes(1);
+      expect(landed).toBe(false);
+      settle();
+      await loading;
+      expect(landed).toBe(true);
+      // a picture that will not decode still lands: the box shows it as it loads
+      decode.mockImplementationOnce(() => Promise.reject(new Error("bad jpeg")));
+      await expect(cache.load("t1", callOf(2))).resolves.toMatchObject({ picture: { url: "blob:2" } });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("says when the host no longer has a picture it listed", async () => {
     const onPictureGone = vi.fn();
     const cache = new StepMediaCache({ read: async () => ({ text: "only the text" }), onPictureGone, createUrl: () => "blob:x", revokeUrl: () => undefined });

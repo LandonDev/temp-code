@@ -1,6 +1,6 @@
 import { forwardRef, type Ref } from "react";
 import { Button } from "@renderer/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { TruncateTip } from "@renderer/components/tip";
 import { Square, SquareMousePointer } from "../../../chrome/icons";
 import type { StepGroup } from "../../../lib/computerHistory";
@@ -58,21 +58,25 @@ function SessionRow({ session, first, pinned, onFollow, onStop }: { session: Liv
       <TruncateTip text={session.label}>
         <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-foreground">{session.label}</span>
       </TruncateTip>
-      {/* Go live belongs to the session the viewport follows, and only while a row is pinned. */}
-      {first && pinned ? (
+      {/* Neighbours share one provider: the second tooltip opens at once, its label moving instead of reopening. */}
+      <TooltipProvider>
+        {/* Go live belongs to the session the viewport follows, and only while a row is pinned. */}
+        {first && pinned ? (
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="xs" data-slot="go-live" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={onFollow} />}>Go live</TooltipTrigger>
+            <TooltipContent>Follow the live window</TooltipContent>
+          </Tooltip>
+        ) : null}
         <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="xs" data-slot="go-live" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={onFollow} />}>Go live</TooltipTrigger>
-          <TooltipContent>Follow the live window</TooltipContent>
+          <TooltipTrigger
+            // hung 8px out, so its 10px square ends on the viewport's edge under it
+            render={<Button variant="ghost" size="icon-xs" className="-me-2 shrink-0 text-muted-foreground hover:text-foreground" aria-label="Stop" disabled={session.stopping} onClick={onStop} />}
+          >
+            <Square className="size-2.5 fill-current" />
+          </TooltipTrigger>
+          <TooltipContent>Stop</TooltipContent>
         </Tooltip>
-      ) : null}
-      <Tooltip>
-        <TooltipTrigger
-          render={<Button variant="ghost" size="icon-xs" className="-me-1 shrink-0 text-muted-foreground hover:text-foreground" aria-label="Stop" disabled={session.stopping} onClick={onStop} />}
-        >
-          <Square className="size-2.5 fill-current" />
-        </TooltipTrigger>
-        <TooltipContent>Stop</TooltipContent>
-      </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }

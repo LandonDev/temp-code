@@ -158,7 +158,6 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, line, 
         <img
           src={face.src}
           alt=""
-          decoding="async"
           draggable={false}
           data-dim={face.dim || undefined}
           // The old picture dims while the next is on its way; nothing else about a picture moves.

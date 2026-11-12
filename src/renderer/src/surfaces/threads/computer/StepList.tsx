@@ -192,7 +192,8 @@ function StepDetail({ row, read, onToggleRead }: { row: StepRow; read: ReadFold;
               aria-expanded={read.open}
               onClick={onToggleRead}
               // the words and the chevron lift to foreground at once, with no fill; the turn is the one thing that moves
-              className="group/read flex max-w-full items-center gap-1 rounded-sm text-start text-muted-foreground hover:text-foreground focus-visible:text-foreground"
+              // (a 24px target on a 16px line: its box hangs 4px over the lines above and below)
+              className="-my-1 flex max-w-full items-center gap-1 rounded-sm py-1 text-start text-muted-foreground hover:text-foreground focus-visible:text-foreground"
             >
               <span className="min-w-0 truncate">{reads}</span>
               <ChevronRight className={cn("ms-1 size-3 shrink-0", DISCLOSURE_CHEVRON, read.open && "rotate-90")} />

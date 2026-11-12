@@ -29,6 +29,20 @@ function pictureBlob(data: string, type: string): Blob {
   return new Blob([bytes], { type });
 }
 
+/**
+ * A picture ready to paint: decoded before it takes the old one's place, so a
+ * step by key swaps one finished picture for another and never shows a blank
+ * box between them. Where decoding cannot be awaited the picture is shown as
+ * it loads.
+ */
+async function decoded(url: string): Promise<void> {
+  if (typeof Image === "undefined") return;
+  const img = new Image();
+  img.src = url;
+  if (typeof img.decode !== "function") return;
+  await img.decode().catch(() => undefined);
+}
+
 export interface StepMediaCacheOptions {
   read: (key: string, n: number) => Promise<ComputerHistoryStepAnswer>;
   limit?: number;
@@ -80,11 +94,12 @@ export class StepMediaCache {
     if (pending) return pending;
     const load = this.opts
       .read(key, call.n)
-      .then((answer) => {
+      .then(async (answer) => {
         const media: StepMedia = { rev: call.rev };
         if (answer.picture) {
           const { data, mimeType, width, height, at } = answer.picture;
           media.picture = { url: this.createUrl(pictureBlob(data, mimeType)), width, height, at };
+          await decoded(media.picture.url);
         } else if (call.picture && !("none" in call.picture)) this.opts.onPictureGone?.(key, call.n);
         if (answer.text !== undefined) media.text = answer.text;
         this.put(id, media);
