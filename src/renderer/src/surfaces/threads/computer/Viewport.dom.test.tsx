@@ -363,7 +363,7 @@ describe("the live viewport", () => {
   it("says why it ended, with Retry only where retrying can help", async () => {
     const cases: [string, string, boolean][] = [
       ["window-closed", "The window closed", false],
-      ["minimized", "The window is minimized", false],
+      ["minimized", "The window is minimized", true],
       ["permission", "Turn on Screen Recording for TempCode in System Settings", false],
       ["restarted", "The preview stopped", true],
       ["error", "The preview stopped", true],
@@ -391,7 +391,8 @@ describe("the live viewport", () => {
     mount();
     await flush();
     expect(screen.getByText("The window is minimized")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    // nothing tells the host when the window is restored: Retry is how the picture comes back
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   it("keeps measuring once the box goes, so Retry starts again at the width it had", async () => {

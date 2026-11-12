@@ -1452,7 +1452,7 @@ describe("when the preview ends", () => {
   it("the newest step's kept picture with today's line under it; Retry only where retrying can help", async () => {
     const cases: [PreviewState, string, boolean][] = [
       [{ status: "ended", reason: "window-closed" }, "The window closed", false],
-      [{ status: "ended", reason: "minimized" }, "The window is minimized", false],
+      [{ status: "ended", reason: "minimized" }, "The window is minimized", true],
       [{ status: "ended", reason: "error" }, "The preview stopped", true],
       [{ status: "failed", message: "x" }, "The preview stopped", true],
     ];

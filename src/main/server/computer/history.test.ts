@@ -487,6 +487,51 @@ describe('removal, the switch and the prune', () => {
   })
 })
 
+describe('a sweep keeps the order of the folder it works in', () => {
+  it('a call that starts as the prune reads the disk keeps its history: the sweep checks again in the key’s own order', async () => {
+    const j = journal()
+    await j.history.begin('old', start()).end(end())
+    await j.history.close()
+    const longAgo = new Date(Date.now() - HISTORY_KEEP_MS - 60_000)
+    utimesSync(join(j.dir('old'), 'log.jsonl'), longAgo, longAgo)
+    for (let round = 0; round < 5; round++) {
+      // a host with nothing loaded: the call installs the state (its load and its start queued) as the sweep begins
+      const again = journal({ root: j.root })
+      const entry = again.history.begin('old', start())
+      const sweep = again.history.prune(Date.now())
+      await entry.end(end())
+      await sweep
+      expect(again.changes.some((c) => 'gone' in c), `round ${round}`).toBe(false)
+      expect((await again.calls('old')).calls.map((c) => [c.n, c.state])).toEqual(Array.from({ length: round + 2 }, (_, i) => [i + 1, 'done']))
+      await again.history.close()
+      utimesSync(join(j.dir('old'), 'log.jsonl'), longAgo, longAgo)
+    }
+  })
+
+  it('a history loaded while the pictures switch sweeps has no picture left that its readers were not told of', async () => {
+    const j = journal({ pictures: () => true })
+    const entry = j.history.begin('t1', start())
+    await entry.end(end({ read: 'Read 3 changes', text: 'app "TextEdit" · window "Untitled"\n[1] window "Untitled"' }))
+    await entry.picture(j.shot)
+    await j.history.close()
+    for (let round = 0; round < 5; round++) {
+      writeFileSync(join(j.dir('t1'), 'steps', '1.jpg'), JPEG)
+      const again = journal({ root: j.root, pictures: () => true })
+      // the sweep is reading the folder list as a panel opens the thread's history
+      const sweep = again.history.dropPictures()
+      const read = again.calls('t1')
+      await Promise.all([sweep, read])
+      expect(readdirSync(join(j.dir('t1'), 'steps')), `round ${round}`).toEqual(['1.txt'])
+      // whichever came first, what a reader has now says the picture is gone
+      const first = (await read).calls[0]
+      const told = again.changes.some((c) => 'call' in c && c.call.n === 1 && c.call.picture !== undefined && 'none' in c.call.picture && c.call.picture.none === 'gone')
+      expect('none' in (first.picture ?? {}) || told, `round ${round}`).toBe(true)
+      expect((await again.calls('t1')).calls[0]).toMatchObject({ picture: { none: 'gone' }, text: true })
+      await again.history.close()
+    }
+  })
+})
+
 describe('a key never escapes its directory', () => {
   it('any key lands in one directory right under the root', async () => {
     const j = journal()

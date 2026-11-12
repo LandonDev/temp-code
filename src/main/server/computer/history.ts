@@ -246,6 +246,8 @@ const isRecord = (v: unknown): v is HistoryRecord => {
 
 export class ComputerHistory {
   private readonly states = new Map<string, KeyState>()
+  /** folders a sweep is working in with no state loaded, each with the work's end */
+  private readonly sweeps = new Map<string, Promise<void>>()
   private readonly listeners = new Set<(change: HistoryChange) => void>()
   private readonly now: () => number
   private warned = false
@@ -428,17 +430,18 @@ export class ComputerHistory {
 
   /** The switch went off: every kept picture goes; the lines and the read texts stay. */
   async dropPictures(): Promise<void> {
-    const loaded = new Map([...this.states.values()].map((s) => [s.dir, s]))
     for (const name of await readdir(this.opts.root).catch(() => [] as string[])) {
       const dir = join(this.opts.root, name)
-      const state = loaded.get(dir)
       const drop = async (): Promise<string[]> => {
         const steps = join(dir, 'steps')
         const names = (await readdir(steps).catch(() => [] as string[])).filter((f) => f.endsWith('.jpg'))
         await Promise.all(names.map((f) => rm(join(steps, f), { force: true })))
         return names
       }
-      if (!state) await drop().catch((e) => void this.failed(e))
+      // looked up now, not before the folder list was read: a history loaded meanwhile has readers to tell, and one
+      // loaded while an unloaded folder is swept waits for the sweep
+      const state = this.loadedAt(dir)
+      if (!state) await this.swept(dir, drop)
       else
         await this.run(state, async () => {
           for (const file of await drop()) {
@@ -451,15 +454,30 @@ export class ComputerHistory {
 
   /** Histories whose log was last written 30 days ago go; one with a call in flight stays. */
   async prune(now = this.now()): Promise<void> {
-    const loaded = new Map([...this.states.values()].map((s) => [s.dir, s]))
+    const old = async (dir: string): Promise<boolean> => {
+      const info = (await stat(join(dir, 'log.jsonl')).catch(() => null)) ?? (await stat(dir).catch(() => null))
+      return info !== null && now - info.mtimeMs > HISTORY_KEEP_MS
+    }
     for (const name of await readdir(this.opts.root).catch(() => [] as string[])) {
       const dir = join(this.opts.root, name)
-      const info = (await stat(join(dir, 'log.jsonl')).catch(() => null)) ?? (await stat(dir).catch(() => null))
-      if (!info || now - info.mtimeMs <= HISTORY_KEEP_MS) continue
-      const state = loaded.get(dir)
-      if (state?.open.size) continue
-      if (state) await this.remove(state.key)
-      else await rm(dir, { recursive: true, force: true }).catch((e) => void this.failed(e))
+      if (!(await old(dir))) continue
+      // looked up now, after the disk was read: a history loaded meanwhile is a loaded one
+      const state = this.loadedAt(dir)
+      if (!state) {
+        await this.swept(dir, () => rm(dir, { recursive: true, force: true }))
+        continue
+      }
+      // In the key's own order, and checked again there: a call that started while the sweep read the disk has
+      // written its start by now, and its history stays.
+      let gone = false
+      await this.run(state, async () => {
+        if (state.open.size || !(await old(dir))) return
+        state.dead = true
+        if (this.states.get(state.key) === state) this.states.delete(state.key)
+        await rm(dir, { recursive: true, force: true })
+        gone = true
+      })
+      if (gone) this.emit({ key: state.key, gone: true })
     }
   }
 
@@ -506,9 +524,31 @@ export class ComputerHistory {
       chain: Promise.resolve()
     }
     const loading = state
-    state.chain = this.ready(loading)
+    // a sweep at work in this folder with no state loaded (prune, the pictures switch) finishes first: the load
+    // reads the folder as the sweep left it
+    state.chain = (this.sweeps.get(state.dir) ?? Promise.resolve()).then(() => this.ready(loading))
     this.states.set(key, state)
     return state
+  }
+
+  /** The loaded state whose folder this is, looked up when it is needed: one loaded a moment ago counts. */
+  private loadedAt(dir: string): KeyState | undefined {
+    for (const state of this.states.values()) if (state.dir === dir) return state
+    return undefined
+  }
+
+  /** A sweep's work in a folder no state is loaded for: a first load of that folder waits for it (`stateOf`). */
+  private swept(dir: string, job: () => Promise<unknown>): Promise<void> {
+    const done: Promise<void> = job()
+      .then(
+        () => undefined,
+        (e) => void this.failed(e)
+      )
+      .finally(() => {
+        if (this.sweeps.get(dir) === done) this.sweeps.delete(dir)
+      })
+    this.sweeps.set(dir, done)
+    return done
   }
 
   /** The key's state for a reader: a key with nothing on disk is not loaded, so a thread that never used the computer keeps nothing here. */

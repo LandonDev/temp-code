@@ -40,8 +40,11 @@ export const ENDED_WORDS: Record<ComputerPreviewEndReason, string> = {
   restarted: "The preview stopped",
   error: "The preview stopped",
 };
-/** The ends the person can retry; the rest name what to do instead. */
-export const RETRY_ENDS: ReadonlySet<ComputerPreviewEndReason> = new Set(["restarted", "error"]);
+/**
+ * The ends the person can retry; the rest name what to do instead. A minimized window is one: nothing tells the
+ * host when it is restored, so once the person has done what the line says, Retry is how the picture comes back.
+ */
+export const RETRY_ENDS: ReadonlySet<ComputerPreviewEndReason> = new Set(["restarted", "error", "minimized"]);
 
 /** Why a step kept no picture, where that is worth a line: nothing for a switch that was off, a call with no read, or a capture that failed. */
 export const NO_PICTURE_WORDS: Partial<Record<HistoryPictureNone, string>> = {
