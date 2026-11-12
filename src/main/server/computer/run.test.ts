@@ -1789,6 +1789,32 @@ describe('the journal (history.ts): one start and one end per call', () => {
     const kept = readFileSync(join(h.dataDir, 'history', 't1', 'steps', `${call.n}.txt`), 'utf8')
     expect(kept).not.toContain('Untitled')
     expect(kept).toContain('‹8 characters›')
+    // nor does the call's end say it in the window's title, in the record or in what a reader gets
+    expect(call.window).toBe('‹8 characters›')
+    const end = (await records(h)).find((r) => r.r === 'end' && r.n === call.n)!
+    expect(JSON.stringify(end)).not.toContain('Untitled')
+  })
+
+  it('a closing read the service answers with an error is said on the last step that ran', async () => {
+    const h = make({ env: { FAKE_SECRET_NO_OBS: '1' }, history: { pictures: () => false } })
+    await h.run('computer_observe', { app: 'Secret' })
+    const o = await h.run('computer_act', { app: 'Secret', action: 'type', text: 'ana', element: 11 })
+    expect(h.text(o)).toContain('observation failed: ')
+    const call = (await calls(h)).at(-1)!
+    expect(call.steps).toMatchObject([{ verb: 'Typed', state: 'ok' }])
+    expect(call.steps[0].facts?.at(-1)).toMatch(/^the window was not read after it: /)
+    expect(call.read).toBeUndefined()
+  })
+
+  it('an app a launch brought forward is a fact of its call: the apps call, and a read that launched it', async () => {
+    const h = make({ env: { FAKE_LAUNCH_STEAL: '1' }, history: { pictures: () => false } })
+    await h.run('computer_apps', { launch: 'Preview' })
+    expect((await calls(h)).at(-1)!.steps).toMatchObject([{ verb: 'Launched', object: 'Preview', state: 'ok', facts: ['Preview came to the front and TextEdit was put back'] }])
+    const other = make({ env: { FAKE_LAUNCH_STEAL: '1' }, history: { pictures: () => false } })
+    await other.run('computer_observe', { app: 'Preview' })
+    const read = (await calls(other)).at(-1)!.steps[0]
+    expect(read).toMatchObject({ verb: 'Read', state: 'ok' })
+    expect(read.facts).toContain('Preview came to the front and TextEdit was put back')
   })
 
   it('a field named by index that is no password field keeps its text, until the book says otherwise', async () => {

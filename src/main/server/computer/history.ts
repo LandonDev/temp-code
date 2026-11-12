@@ -1,7 +1,7 @@
 import { appendFile, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ComputerHistoryCall, ComputerHistoryPicture, ComputerHistoryStep, HistoryPictureNone } from '@shared/contract-computer'
-import { cutReadText } from '@shared/computer/historyWords'
+import { cutReadText, scrubReadText } from '@shared/computer/historyWords'
 import type { Shot } from '@shared/computer/protocol'
 import { ComputerRpcError } from './connection'
 import type { Clock, ComputerService } from './service'
@@ -142,6 +142,11 @@ export interface HistoryStart {
   steps: StartStep[]
   plan?: string[]
   token?: string
+  /**
+   * The texts the call's steps hold back (historyWords.ts `maskedTexts`). They are never written: every string of
+   * the call's start, its end and its read text goes through `held` with them before it is folded, pushed or kept.
+   */
+  masked?: readonly string[]
 }
 export interface HistoryEnd {
   app: string
@@ -185,6 +190,28 @@ export interface ComputerHistoryOptions {
 }
 
 /** A file or folder that is simply not there (no such entry, or a path through something that is no folder). */
+/** A record's keys that are the journal's own structure: never a thing a window, an app or the model said. */
+const STRUCTURAL: ReadonlySet<string> = new Set(['r', 'kind', 'state', 'tier', 'token', 'none'])
+
+/**
+ * The one place a held-back text leaves the journal (docs/computer-protocol.md §17.9 "No secret in a record"):
+ * every string a record holds but its structure, however deep, is scrubbed here, before the record is folded,
+ * pushed or written, so no caller has to remember which of its strings a window could have echoed. A field added
+ * to a record later is scrubbed too, unless it is named structural above.
+ */
+export function held<T>(value: T, masked: readonly string[]): T {
+  if (!masked.length) return value
+  const walk = (v: unknown): unknown =>
+    typeof v === 'string'
+      ? scrubReadText(v, masked)
+      : Array.isArray(v)
+        ? v.map(walk)
+        : v && typeof v === 'object'
+          ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, STRUCTURAL.has(k) ? x : walk(x)]))
+          : v
+  return walk(value) as T
+}
+
 const isAbsent = (e: NodeJS.ErrnoException | undefined): boolean => e?.code === 'ENOENT' || e?.code === 'ENOTDIR'
 
 const isRecord = (v: unknown): v is HistoryRecord => {
@@ -228,6 +255,7 @@ export class ComputerHistory {
   begin(key: string, start: HistoryStart): HistoryEntry {
     const state = this.stateOf(key)
     const at = this.now()
+    const masked = start.masked ?? []
     let n: number | null = null
     const started = this.run(state, async () => {
       const fresh = start.token !== undefined ? start.token !== state.token : state.newTurn
@@ -236,18 +264,21 @@ export class ComputerHistory {
       if (fresh || state.turn === 0) state.turn += 1
       n = state.n += 1
       state.open.add(n)
-      const record: StartRecord = {
-        v: 1,
-        r: 'start',
-        n,
-        turn: state.turn,
-        ...(start.token !== undefined ? { token: start.token } : {}),
-        at,
-        app: start.app,
-        window: start.window,
-        steps: start.steps,
-        ...(start.plan?.length ? { plan: start.plan } : {})
-      }
+      const record: StartRecord = held(
+        {
+          v: 1,
+          r: 'start',
+          n,
+          turn: state.turn,
+          ...(start.token !== undefined ? { token: start.token } : {}),
+          at,
+          app: start.app,
+          window: start.window,
+          steps: start.steps,
+          ...(start.plan?.length ? { plan: start.plan } : {})
+        },
+        masked
+      )
       if (!state.born) state.born = at
       this.fold(state, record)
       this.changed(state, n)
@@ -262,19 +293,22 @@ export class ComputerHistory {
         this.run(state, async () => {
           if (n === null) return
           state.open.delete(n)
-          const text = end.text !== undefined ? cutReadText(end.text) : undefined
+          const text = end.text !== undefined ? cutReadText(held(end.text, masked)) : undefined
           const kept = text !== undefined && (await this.writeStep(state, `${n}.txt`, text))
-          const record: EndRecord = {
-            v: 1,
-            r: 'end',
-            n,
-            at: this.now(),
-            app: end.app,
-            window: end.window,
-            steps: end.steps,
-            ...(end.read ? { read: end.read } : {}),
-            ...(kept ? { text: true as const } : {})
-          }
+          const record: EndRecord = held(
+            {
+              v: 1,
+              r: 'end',
+              n,
+              at: this.now(),
+              app: end.app,
+              window: end.window,
+              steps: end.steps,
+              ...(end.read ? { read: end.read } : {}),
+              ...(kept ? { text: true as const } : {})
+            },
+            masked
+          )
           this.fold(state, record)
           this.changed(state, n)
           await this.append(state, record)

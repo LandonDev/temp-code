@@ -50,6 +50,24 @@ export function clockTime(ts: number, locale?: string): string {
   return clock.format(ts);
 }
 
+const days = new Map<string, Intl.DateTimeFormat>();
+
+/** A clock time that names its day when that is not today: "2:02 PM" today, "Mon 2:02 PM" within the last six
+ *  days, "Nov 3, 2:02 PM" before that. `now` and `locale` for a test. */
+export function dayTime(ts: number, now = Date.now(), locale?: string): string {
+  const day = (t: number): number => new Date(t).setHours(0, 0, 0, 0);
+  const ago = Math.round((day(now) - day(ts)) / 86_400_000);
+  if (ago === 0) return clockTime(ts, locale);
+  const near = ago > 0 && ago < 7;
+  const key = `${locale ?? ""}:${near}`;
+  let fmt = days.get(key);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat(locale, near ? { weekday: "short" } : { month: "short", day: "numeric" });
+    days.set(key, fmt);
+  }
+  return near ? `${fmt.format(ts)} ${clockTime(ts, locale)}` : `${fmt.format(ts)}, ${clockTime(ts, locale)}`;
+}
+
 /** Epoch ms on the shared second hand while `active` and the pane is on screen; a still 0 otherwise. */
 export function useNow(active: boolean): number {
   // Both hooks run every render: `active &&` would skip the second one.

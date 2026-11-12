@@ -17,8 +17,8 @@ const TEXTEDIT = { width: 1206, height: 1010 };
 const CHROME = { width: 930, height: 1280 };
 const FINDER = { width: 1200, height: 800 };
 
-/** 2:04 PM on the day the fixtures were written, in whatever zone renders them. */
-const AT = new Date(2026, 10, 11, 14, 4, 0).getTime();
+/** 2:04 PM today, in whatever zone renders them: a step of another day would name its day (`dayTime`). */
+const AT = new Date().setHours(14, 4, 0, 0);
 const MIN = 60_000;
 
 const noop = (): void => {};

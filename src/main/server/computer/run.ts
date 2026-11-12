@@ -24,7 +24,7 @@ import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, mayRunAtAx, type Acti
 import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type AppsOutcome, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
-import { maskedTexts, planWords, plannedSteps, readSummary, scrubReadText, settledSteps, type PlannedStep } from '@shared/computer/historyWords'
+import { maskedTexts, planWords, plannedSteps, readSummary, settledSteps, type PlannedStep } from '@shared/computer/historyWords'
 import { approvalLine } from '@shared/approvalLine'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
@@ -187,6 +187,8 @@ interface CallNote {
   error?: ComputerError
   /** the call threw: its end belongs to the first step with no answer, whatever ran before it */
   threw?: boolean
+  /** the closing read failed after the steps answered: the service's own error, which the model is told too */
+  unread?: ComputerError
   /** computer_apps: what the launch did */
   launched?: AppsOutcome
   /** why the tier gate refused a step, by the step's index: the journal words a Skip, a locked screen, a sleeping Mac as what they were */
@@ -305,19 +307,19 @@ export async function runComputerTool(
   const note: CallNote = {}
   const words = { app: known?.name ?? args.app ?? '', ...(known ? { book: known.book } : {}) }
   let planned: PlannedStep[] = []
-  let masked: string[] = []
   let entry: HistoryEntry | null = null
   if (host.history) {
     try {
       planned = plannedSteps(tool, args, words)
-      masked = maskedTexts(tool, args, words)
       const plan = planWords(tool, planned)
       entry = host.history.begin(t.threadId, {
         app: words.app,
         window: args.window ?? known?.window?.title ?? null,
         steps: planned.map(({ done: _done, ...step }) => step),
         ...(plan ? { plan } : {}),
-        ...(ctx.turn !== undefined ? { token: ctx.turn } : {})
+        ...(ctx.turn !== undefined ? { token: ctx.turn } : {}),
+        // the texts the steps hold back: the journal takes them out of every string of the call it keeps
+        masked: maskedTexts(tool, args, words)
       })
     } catch (e) {
       host.log(`computer history: the start of a call was not written: ${(e as Error).message}`)
@@ -352,13 +354,14 @@ export async function runComputerTool(
             : {}),
           ...(note.error ? { error: note.error } : {}),
           ...(note.threw ? { threw: true } : {}),
+          ...(note.unread ? { unread: note.unread } : {}),
+          ...(obs?.selectedTab !== undefined ? { selectedTab: obs.selectedTab } : {}),
           ...(abort ? { abort } : {}),
           ...(note.launched ? { launched: note.launched } : {}),
           ...(note.gate ? { gate: note.gate } : {})
         }),
         ...(read ? { read: read.words } : {}),
-        // a text the steps held back is held back here too
-        ...(read?.more ? { text: scrubReadText(obs!.text, masked) } : {})
+        ...(read?.more ? { text: obs!.text } : {})
       })
     } catch (e) {
       host.log(`computer history: the end of a call was not worded: ${(e as Error).message}`)
@@ -668,6 +671,8 @@ async function runChecked(
 
     const shots: LandedShot[] = []
     const notes: string[] = []
+    // a launch on the way to the target may have brought the app forward: the journal's fact, as the model's line
+    if (pin.front) note.front = pin.front
     const pinFront = pin.front ? frontLine(pin.app.name, pin.front, person) : null
     if (pinFront) notes.push(pinFront)
     const land = async (shot: NonNullable<Observation['shot']>, label: string, where: LandedShot['where']): Promise<void> => {
@@ -760,7 +765,8 @@ async function runChecked(
         if (gate) note.gate = gate
       }
     })
-    if (result.front) note.front = result.front
+    if (result.front) note.front = mergeFront(note.front, result.front)
+    if (result.observationError) note.unread = result.observationError
     if (result.menusLeftOpen?.length) note.menusLeftOpen = result.menusLeftOpen
     for (const s of result.steps) if (s.status === 'failed') noteMissing(s.error)
     for (const [i, s] of result.steps.entries()) if (s.status === 'ok' && s.shot) await land(s.shot, `step ${i + 1}`, i + 1)
@@ -823,6 +829,7 @@ async function runApps(
   const r = launch ? await call('apps.launch', { app: launch, ...(open.length ? { open } : {}), session, refuse: [...REFUSED_LAUNCH_BUNDLES] }) : null
   // the launch is the journal's from its answer: a list that fails after it does not unsay it
   if (r) note.launched = { launched: r.launched, opened: open.length > 0 }
+  if (r?.front) note.front = r.front
   const { apps } = await call('apps.list', { windows: true })
   t.listedApps = apps
   const app = r ? apps.find((a) => a.pid === r.pid) : undefined
@@ -832,6 +839,7 @@ async function runApps(
     delete note.launched
     return refusalOf(offLimits)
   }
+  if (r) note.person = apps.find((a) => a.active && a.pid !== r.pid)?.name ?? null
   const launched: LaunchReport | undefined =
     r && launch
       ? {

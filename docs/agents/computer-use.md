@@ -106,8 +106,12 @@ why and the measured headline.
   secret reaches a record: typed, pasted, set and selected text is quoted
   only for a field the step names by index that is no password field,
   with no input before it in the call (`mayQuoteText`); else its length,
-  and such a text is taken out of the read text the journal keeps
-  (`scrubReadText`). After each call that ended with a read, the thread's queue takes
+  and such a text is taken out of every string of the call's records
+  and of the read text the journal keeps, at one place (`held` in
+  history.ts, by `scrubReadText`). What the model's answer says of a
+  call and where the journal says it is one table (docs/computer-protocol.md
+  §17.9 "The answer and the journal"), a host-level case per row
+  (run.journal.test.ts). After each call that ended with a read, the thread's queue takes
   one picture of the window (`capturePicture`: one `capture.screenshot` by
   window id over the whole coordinate space, 960px, JPEG, 2 s at most), so
   the model never waits for it. No picture with Screen Recording off, the

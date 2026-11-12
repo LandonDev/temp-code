@@ -176,7 +176,10 @@ beside a 13px name (a Changes row, a board's change row, a pass row), 12px on a
 time has one form, `clockTime` (lib/duration.ts): the locale's hour and
 minute, 12-hour with AM/PM where it writes it so ("Landed 12:08 PM",
 "Finished 2:02 PM"), never a hand-padded "14:02"; `tabular-nums` where it
-sits in a column.
+sits in a column. Where a time can be another day's (the Computer
+section's group headings and its "As it was at" lines: the journal keeps
+30 days) it names its day, `dayTime`: "2:02 PM" today, "Mon 2:02 PM"
+within the week, "Nov 3, 2:02 PM" before.
 
 ### Spacing
 
@@ -591,8 +594,9 @@ is out of reach.
   (red for a failed step, the one red; foreground for a stopped or
   unfinished one; muted "Not run"); a facts line (the tier's
   words, what it acted on, how it went, the clock time, as one comma
-  sentence that wraps as text does, the time kept whole, so a narrow
-  panel never puts a short fact on a line of its own); and a read line
+  sentence that wraps as text does, a long unbroken word too, the time
+  kept whole, so a narrow panel never puts a short fact on a line of its
+  own); and a read line
   ("46 elements" after a read row, "Read 3 changes" after an act; a
   batch's read sits on the last step that was tried) whose
   chevron trails its words and opens the text in a `CONSOLE` capped at
@@ -608,8 +612,9 @@ is out of reach.
   picture and the stream stops. The list is one tab stop: ↑ newer, ↓
   older, Home the live end, End the oldest loaded. Rows that land above a
   pinned row do not move it. Following, a list at its top stays there as
-  steps land (where the list's own reveal of a failed step left it
-  counts as its top: the next call is followed); one the person scrolled
+  steps land and as a call's running line starts (where the list's own
+  reveal of a failed step left it counts as its top: the next call is
+  followed); one the person scrolled
   keeps its place, and so does a page of earlier steps they asked for.
 - **Loading and failure**: skeleton rows in the rows' shape while the
   first read is out; one red line, "Couldn't read the steps", with Retry,

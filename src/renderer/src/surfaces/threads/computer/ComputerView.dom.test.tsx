@@ -45,14 +45,14 @@ vi.mock("../../../lib/computerHistory", async (original) => ({
 }));
 
 import { COMPUTER_TIER_WORDS } from "@server/shared/statusWords";
-import { clockTime } from "../../../lib/duration";
+import { clockTime, dayTime } from "../../../lib/duration";
 import { ComputerSectionBody, FOLLOW_HOLD_MS, followedSession, runningLines } from "./ComputerSection";
 import { PICTURE_DIM_MS, STEP_MEDIA_LIMIT, StepMediaCache } from "./stepMedia";
 import { rowsOf } from "../../../lib/computerHistory";
 
 // ── what the tests build ──
 
-const AT = new Date(2026, 10, 11, 14, 4).getTime();
+const AT = new Date(2026, 10, 3, 14, 4).getTime();
 const step = (verb: string, object = "", over: Partial<ComputerHistoryStep> = {}): ComputerHistoryStep => ({
   kind: "click",
   verb,
@@ -486,7 +486,7 @@ describe("pinning", () => {
     expect(words(openRow())).toBe("ClickedStep 1 in TextEdit");
     // the picture as it was: a button named for the window and the time, not the stream
     expect(box()!.tagName).toBe("BUTTON");
-    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${clockTime(AT + 1400)}`);
+    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 1400)}`);
     expect(box()!.querySelector("img")!.getAttribute("src")).toMatch(/^blob:/);
     expect(h.readStep).toHaveBeenCalledWith("t1", 1);
     // the stream stops: the Mac stops capturing for it
@@ -706,7 +706,7 @@ describe("pinning", () => {
     mount(data([call(1, { window: "First" }), call(2, { window: "Second" })]));
     await flush();
     await reads.answer(2);
-    const second = `Second in TextEdit at ${clockTime(AT + 2450)}`;
+    const second = `Second in TextEdit at ${dayTime(AT + 2450)}`;
     expect(box()!.getAttribute("aria-label")).toBe(second);
     const shown = box()!.querySelector("img")!.getAttribute("src");
     fireEvent.click(rowButton("t1:1:0"));
@@ -716,7 +716,7 @@ describe("pinning", () => {
     expect(box()!.getAttribute("aria-label")).toBe(second);
     await reads.answer(1);
     expect(box()!.querySelector("img")!.getAttribute("src")).not.toBe(shown);
-    expect(box()!.getAttribute("aria-label")).toBe(`First in TextEdit at ${clockTime(AT + 1450)}`);
+    expect(box()!.getAttribute("aria-label")).toBe(`First in TextEdit at ${dayTime(AT + 1450)}`);
   });
 
   it("a kept picture opens the lightbox from the box, and the live box does not", async () => {
@@ -730,7 +730,7 @@ describe("pinning", () => {
     fireEvent.click(box()!);
     expect(h.openLightbox).toHaveBeenCalledTimes(1);
     const [items, index] = h.openLightbox.mock.calls[0];
-    expect(items).toEqual([{ environmentId: "local", name: `Untitled in TextEdit at ${clockTime(AT + 1400)}`, src: expect.stringMatching(/^blob:/) }]);
+    expect(items).toEqual([{ environmentId: "local", name: `Untitled in TextEdit at ${dayTime(AT + 1400)}`, src: expect.stringMatching(/^blob:/) }]);
     expect(index).toBe(0);
   });
 
@@ -749,7 +749,7 @@ describe("pinning", () => {
     expect(shown).toMatch(/^blob:/);
     await reads.answer(1);
     expect(box()!.querySelector("img")!.getAttribute("src")).toBe(shown);
-    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${clockTime(AT + 4400)}`);
+    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 4400)}`);
   });
 
   it("a first picture on its way is a skeleton; the next dims the old one only once it has taken more than 150 ms", async () => {
@@ -840,6 +840,22 @@ describe("pinning", () => {
       expect(lineUnder(), JSON.stringify(none)).toBe(said);
       cleanup();
     }
+  });
+
+  it("a batch's earlier step over the call's read text says After all 3 steps: the read came after them all", async () => {
+    h.preview.state = live();
+    h.readStep.mockImplementation(async () => ({ text: 'app "Mail" · window "New Message"\n[1] window "New Message"' }));
+    const batch = call(1, { picture: { none: "off" }, text: true, read: "Read 3 changes", steps: [step("Clicked", "To"), step("Typed", "into Subject", { kind: "type" }), step("Pressed", "⌘Return", { kind: "key" })] });
+    mount(data([batch, call(2)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(box()!.tagName).toBe("PRE");
+    expect(lineUnder()).toBe("After all 3 steps");
+    // its last step is the one the read came after
+    fireEvent.click(rowButton("t1:1:2"));
+    await flush();
+    expect(lineUnder()).toBe("As it was after this step");
   });
 
   it("a step whose picture is no longer kept and that read nothing is its line alone", async () => {
@@ -1159,7 +1175,7 @@ describe("once the turn settled", () => {
     expect(words(openRow())).toBe("ClickedStep 2");
     expect(box()!.tagName).toBe("BUTTON");
     // the picture's own time: it is taken after the call's answer
-    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${clockTime(AT + 2450)}`);
+    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 2450)}`);
     expect(lineUnder()).toBe("");
     expect(h.readStep).toHaveBeenCalledWith("t1", 2);
     // nothing is live, so nothing is asked of the Mac
@@ -1186,7 +1202,7 @@ describe("once the turn settled", () => {
     mount(d);
     await flush();
     const groups = [...document.querySelectorAll('[data-slot="step-group"]')];
-    expect(groups.map((g) => g.querySelector('[data-slot="step-heading"]')?.textContent ?? null)).toEqual([null, `Fill in the form${clockTime(AT + 300_000)}`, clockTime(AT + 1000)]);
+    expect(groups.map((g) => g.querySelector('[data-slot="step-heading"]')?.textContent ?? null)).toEqual([null, `Fill in the form${dayTime(AT + 300_000)}`, dayTime(AT + 1000)]);
     expect(groups.map((g) => g.className)).toEqual(["", "mt-4", "mt-4"]);
     expect(groups[1].querySelector('[data-slot="step-heading"]')!.className.split(/\s+/)).toEqual(expect.arrayContaining(["text-xs", "font-medium", "text-muted-foreground"]));
     // apps are named only where they change, and by the oldest row of each group
@@ -1200,8 +1216,8 @@ describe("once the turn settled", () => {
     await flush();
     expect(words(openRow())).toBe("ClickSave");
     expect(box()!.tagName).toBe("BUTTON");
-    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${clockTime(AT + 1450)}`);
-    expect(lineUnder()).toBe(`As it was at ${clockTime(AT + 1450)}`);
+    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 1450)}`);
+    expect(lineUnder()).toBe(`As it was at ${dayTime(AT + 1450)}`);
     expect(h.readStep).toHaveBeenCalledWith("t1", 1);
     cleanup();
     // with nothing kept anywhere there is no box at all
@@ -1231,13 +1247,13 @@ describe("once the turn settled", () => {
     await flush();
     expect(words(openRow())).toContain("ClickSave");
     expect(box()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
-    expect(lineUnder()).toBe(`As it was at ${clockTime(AT + 1450)}`);
+    expect(lineUnder()).toBe(`As it was at ${dayTime(AT + 1450)}`);
     expect(h.readStep).toHaveBeenCalledWith("t1", 1);
     // with nothing kept in its own session, another window's picture stands in and is named
     view.again({ ...d, histories: { ...d.histories, t1: { born: 1, calls: [call(3, { picture: { none: "no-read" }, steps: [step("Click", "Save", { state: "stopped", tier: undefined, reason: "Stopped" })] })], more: false, status: "ready" } } });
     await flush();
     expect(box()!.getAttribute("aria-label")).toMatch(/^Inbox in Mail at /);
-    expect(lineUnder()).toBe(`Inbox in Mail, as it was at ${clockTime(AT + 2450)}`);
+    expect(lineUnder()).toBe(`Inbox in Mail, as it was at ${dayTime(AT + 2450)}`);
   });
 
   it("a run with no pictures: the read text in the viewport, and why", async () => {
@@ -1272,7 +1288,7 @@ describe("when the preview ends", () => {
       await flush();
       expect(box()!.querySelector("img")!.getAttribute("src"), said).toMatch(/^blob:/);
       // a kept picture under a live session's row is a still: the end's line says when it was
-      expect(lineUnder().replace("Retry", "")).toBe(`${said}. As it was at ${clockTime(AT + 2450)}`);
+      expect(lineUnder().replace("Retry", "")).toBe(`${said}. As it was at ${dayTime(AT + 2450)}`);
       expect(!!screen.queryByRole("button", { name: "Retry" }), said).toBe(retry);
       if (retry) {
         fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -1300,17 +1316,17 @@ describe("when the preview ends", () => {
     mount(d);
     await flush();
     expect(box()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
-    expect(lineUnder()).toBe(`The window closed. Untitled in TextEdit, as it was at ${clockTime(AT + 1450)}`);
+    expect(lineUnder()).toBe(`The window closed. Untitled in TextEdit, as it was at ${dayTime(AT + 1450)}`);
     cleanup();
     // its own older picture needs only its time; its newest step's own picture needs nothing more
     mount(data([call(1), call(2, { picture: { none: "no-read" } })], [entry()]));
     await flush();
-    expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 1450)}`);
+    expect(lineUnder()).toBe(`The window closed. As it was at ${dayTime(AT + 1450)}`);
     cleanup();
     // its newest step's own picture is a still under a live session's row too: it says when it was
     mount(data([call(1), call(2)], [entry()]));
     await flush();
-    expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 2450)}`);
+    expect(lineUnder()).toBe(`The window closed. As it was at ${dayTime(AT + 2450)}`);
     cleanup();
     // a kept picture that cannot be read says so beside the end, and Retry is that read's
     h.readStep.mockRejectedValue(new Error("the socket dropped"));
@@ -1321,7 +1337,7 @@ describe("when the preview ends", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await flush();
     expect(box()!.querySelector("img")).toBeTruthy();
-    expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 2450)}`);
+    expect(lineUnder()).toBe(`The window closed. As it was at ${dayTime(AT + 2450)}`);
   });
 
   it("under a session whose preview ended, the picture is that session's own, though another session's step is the newest", async () => {
@@ -1344,14 +1360,14 @@ describe("when the preview ends", () => {
     expect(words(openRow())).toContain("Step 9");
     expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("Untitled in TextEdit");
     expect(box()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
-    expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 1450)}`);
+    expect(lineUnder()).toBe(`The window closed. As it was at ${dayTime(AT + 1450)}`);
     expect(h.readStep).toHaveBeenCalledWith("t1", 1);
     expect(h.readStep).not.toHaveBeenCalledWith("sub1", 9);
     // with nothing of its own kept, the other session's picture stands in, and the line names its window
     view.again(d([call(1, { picture: { none: "no-read" } })]));
     await flush();
     expect(box()!.getAttribute("aria-label")).toMatch(/^Inbox in Mail at /);
-    expect(lineUnder()).toBe(`The window closed. Inbox in Mail, as it was at ${clockTime(AT + 9450)}`);
+    expect(lineUnder()).toBe(`The window closed. Inbox in Mail, as it was at ${dayTime(AT + 9450)}`);
   });
 
   it("a still of another window of the same session is named too: the session's row says the window it is in now", async () => {
@@ -1362,7 +1378,7 @@ describe("when the preview ends", () => {
     await flush();
     expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("B in TextEdit");
     expect(box()!.getAttribute("aria-label")).toMatch(/^A in TextEdit at /);
-    expect(lineUnder()).toBe(`The window closed. A in TextEdit, as it was at ${clockTime(AT + 1450)}`);
+    expect(lineUnder()).toBe(`The window closed. A in TextEdit, as it was at ${dayTime(AT + 1450)}`);
   });
 
   it("with no step kept it is the line alone", async () => {
@@ -1381,7 +1397,7 @@ describe("when the preview ends", () => {
     expect(box()!.tagName).toBe("PRE");
     expect(box()!.textContent).toBe("the newest read");
     // the text is an older step's than the open row: it says when it was read
-    expect(lineUnder()).toBe(`Turn on Screen Recording for TempCode in System Settings. As it was at ${clockTime(AT + 1400)}`);
+    expect(lineUnder()).toBe(`Turn on Screen Recording for TempCode in System Settings. As it was at ${dayTime(AT + 1400)}`);
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     // the open row is still the newest step
     expect(words(openRow())).toBe("ClickedStep 2");
@@ -1482,7 +1498,16 @@ describe("loading, failing and older steps", () => {
     await flush();
     expect(openRow()!.getAttribute("data-step")).toBe("t1:2:1");
     expect(stepList().scrollTop).toBe(200);
-    // the model goes on: its next step lands at the live end, and the list is there to show it
+    // the list keeps its own place: the browser's scroll anchoring is off, or it would move the list for a line above
+    expect(stepList().className.split(/\s+/)).toContain("[overflow-anchor:none]");
+    // the model goes on: its next call's line is drawn at the top, and the list goes there for it
+    view.again(data([call(1), batch, running(3)], [entry({ running: { tool: "computer_act", words: "Clicking Send", startedAt: AT + 9000 } })]));
+    await flush();
+    expect(runningRows()).toHaveLength(1);
+    expect(stepList().scrollTop).toBe(0);
+    // (back where the reveal left it, as a browser would be had the line not come)
+    stepList().scrollTop = 200;
+    // its step lands at the live end, and the list is there to show it
     view.again(data([call(1), batch, call(3)], [entry()]));
     await flush();
     expect(stepList().scrollTop).toBe(0);

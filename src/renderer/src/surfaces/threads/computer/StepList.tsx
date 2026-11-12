@@ -12,7 +12,7 @@ import { TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
 import { AppWindow, Camera, ChevronRight, Hourglass, Keyboard, Minus, MousePointerClick, MoveVertical, ScanText, TextCursor, type IconComponent } from "../../../chrome/icons";
 import type { StepGroup, StepRow } from "../../../lib/computerHistory";
-import { clockTime } from "../../../lib/duration";
+import { clockTime, dayTime } from "../../../lib/duration";
 import { STAGGER } from "../../../lib/ease";
 import { SwapIcon } from "../../../motion/IconSwap";
 import { GLYPH_SLOT, STEP_LINE } from "../../transcript/stepLine";
@@ -198,7 +198,7 @@ function StepFacts({ parts }: { parts: readonly ReactNode[] }) {
   const shown = parts.filter((part) => part !== null && part !== undefined && part !== false && part !== "");
   if (!shown.length) return null;
   return (
-    <p data-slot="facts" className="m-0 text-muted-foreground tabular-nums">
+    <p data-slot="facts" className="m-0 text-muted-foreground tabular-nums [overflow-wrap:anywhere]">
       {shown.map((part, i) => (
         <Fragment key={i}>
           {i > 0 ? ", " : null}
@@ -448,6 +448,7 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
   const scroller = useRef<HTMLDivElement>(null);
   const ids = groups.flatMap((g) => g.rows.map((r) => r.id));
   const idsKey = ids.join("|");
+  const runningKey = running.map((line) => line.id).join("|");
 
   // Rows that land in one commit fade in one after another, STAGGER.stepMs apart, the fourth and later together.
   // The map holds the rows on screen and each one's place; a row never lands (its place is -1) when it was there at
@@ -501,7 +502,8 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
       revealed.current = null;
     }
     wasPinned.current = pinned;
-  }, [idsKey, pinned]);
+    // (a call that starts draws its line at the top too: a following list goes there for it)
+  }, [idsKey, pinned, runningKey]);
 
   // Following, the open row is in view: after a batch that failed with a long tail of steps that never ran, the
   // step that failed is what the person came to see. The newest row is the top, where the list already is.
@@ -531,7 +533,8 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
         atTop.current = top <= AT_TOP || top === revealed.current;
         if (!atTop.current) revealed.current = null;
       }}
-      className="relative min-h-16 flex-1 overflow-x-hidden overflow-y-auto px-1 pb-3"
+      // the list keeps its own place as rows land (the effects above): the browser's scroll anchoring would add to it
+      className="relative min-h-16 flex-1 overflow-x-hidden overflow-y-auto px-1 pb-3 [overflow-anchor:none]"
     >
       {status === "failed" ? <FailedLine onRetry={onRetry} className="px-2 pb-2" /> : null}
       {running.map((line) => (
@@ -545,7 +548,7 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
             <h3 data-slot="step-heading" className={cn(ROW_INSET, "m-0 flex min-w-0 items-baseline gap-1 pb-1 text-xs leading-4 font-medium text-muted-foreground")}>
               {group.heading.title ? <span className="min-w-0 truncate">{group.heading.title}</span> : null}
               {/* beside a title the time is the lighter of the two facts */}
-              <span className={cn("shrink-0 tabular-nums", group.heading.title && "font-normal")}>{clockTime(group.heading.at)}</span>
+              <span className={cn("shrink-0 tabular-nums", group.heading.title && "font-normal")}>{dayTime(group.heading.at)}</span>
             </h3>
           ) : null}
           {group.rows.map((row) => {
@@ -578,4 +581,4 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
   );
 }
 
-const groupName = (heading: { at: number; title?: string }): string => (heading.title ? `${heading.title}, ${clockTime(heading.at)}` : `Steps from ${clockTime(heading.at)}`);
+const groupName = (heading: { at: number; title?: string }): string => (heading.title ? `${heading.title}, ${dayTime(heading.at)}` : `Steps from ${dayTime(heading.at)}`);

@@ -20,7 +20,7 @@ import {
 import { useComputerSection, type ComputerSectionData } from "../../../lib/computerSection";
 import { stopComputer, type ComputerEntry } from "../../../lib/computerSessions";
 import { LOCAL_ENVIRONMENT_ID } from "../../../lib/connection/registry";
-import { clockTime } from "../../../lib/duration";
+import { dayTime } from "../../../lib/duration";
 import { useSessionTitles } from "../../../lib/tcserver/store";
 import { ComputerView, type LiveSession } from "./ComputerView";
 import { rowWords, type RunningLine } from "./StepList";
@@ -76,7 +76,7 @@ const windowIn = (call: Pick<ComputerHistoryCall, "app" | "window">): string => 
 /** When a call's kept picture was taken (after its answer), else when the call ended. */
 const shownAt = (call: ComputerHistoryCall): number => (call.picture && !("none" in call.picture) ? call.picture.at : (call.endedAt ?? call.at));
 /** What a kept face is, as its accessible name: "Untitled in TextEdit at 2:04 PM". */
-const keptLabel = (call: ComputerHistoryCall): string => `${windowIn(call)} at ${clockTime(shownAt(call))}`;
+const keptLabel = (call: ComputerHistoryCall): string => `${windowIn(call)} at ${dayTime(shownAt(call))}`;
 /**
  * A step's media as the section asks for it. Its id carries the history's
  * birth: a history removed and begun again counts its calls from 1 again,
@@ -167,13 +167,13 @@ export function viewportOf(v: {
   const base = { label, size, height: pinned ? keptHeight : null };
   // a pinned row's own facts carry its time; an older step standing in for the newest says when it was, and whose
   // window it is where that is not the newest step's
-  const asItWords = v.asOf ? (pinned ? "As it was after this step" : v.another ? `${windowIn(call)}, as it was at ${clockTime(at)}` : `As it was at ${clockTime(at)}`) : null;
+  const asItWords = v.asOf ? (pinned ? "As it was after this step" : v.another ? `${windowIn(call)}, as it was at ${dayTime(at)}` : `As it was at ${dayTime(at)}`) : null;
   const asIt = asItWords ? <ViewportLine words={asItWords} /> : null;
   // Under a preview that ended, a kept picture is a still under a live session's row: it always says when it was.
   // With Screen Recording off the read text is the look there is, and says its time only when it is not the
   // open step's own.
   const noRecording = state?.status === "ended" && state.reason === "permission";
-  const stoodIn = endedWords && !noRecording ? (asItWords ?? `As it was at ${clockTime(at)}`) : asItWords;
+  const stoodIn = endedWords && !noRecording ? (asItWords ?? `As it was at ${dayTime(at)}`) : asItWords;
   // Nothing to put in a box. A pinned step keeps the box's place, so stepping through rows moves nothing; else the line alone.
   const nothing = (line: ReactNode): ViewportProps | null =>
     pinned && keptHeight ? { ...base, size: null, face: { kind: "none" }, line: line ?? <ViewportLine words="No picture was kept" /> } : line ? { face: null, label, line } : null;
@@ -192,20 +192,20 @@ export function viewportOf(v: {
     }
     return keepsMedia(call) ? { ...base, face: { kind: "skeleton" }, line: ended } : nothing(ended);
   }
+  // one picture and one read per call: a batch's earlier step, or one that never ran, shows the window (or the
+  // read) after every step that ran, and says so
+  const after =
+    pinned && call.steps.length > 1 && (shown.index < call.steps.length - 1 || shown.step.state === "not-run") ? (
+      <ViewportLine words={call.steps.every((step) => step.state === "ok") ? `After all ${call.steps.length} steps` : "After the steps that ran"} />
+    ) : null;
   if (here.picture) {
     const url = here.picture.url;
-    // one picture per call: a batch's earlier step, or one that never ran, shows the window after every step that
-    // ran, and says so
-    const after =
-      pinned && call.steps.length > 1 && (shown.index < call.steps.length - 1 || shown.step.state === "not-run") ? (
-        <ViewportLine words={call.steps.every((step) => step.state === "ok") ? `After all ${call.steps.length} steps` : "After the steps that ran"} />
-      ) : null;
     return { ...base, size: { width: here.picture.width, height: here.picture.height }, face: { kind: "picture", src: url, onOpen: (from) => v.onOpen(label, url, from) }, line: endedLine(stoodIn) ?? after ?? asIt };
   }
   // no picture: what the model read stands in its place, and why there is none where that is worth a line
   const none = call.picture && "none" in call.picture ? NO_PICTURE_WORDS[call.picture.none] : undefined;
   const why = endedLine(here.text ? stoodIn : null) ?? (none ? <ViewportLine words={none} /> : null);
-  if (here.text) return { ...base, size: null, face: { kind: "text", text: here.text }, line: why ?? asIt };
+  if (here.text) return { ...base, size: null, face: { kind: "text", text: here.text }, line: why ?? after ?? asIt };
   return nothing(why);
 }
 

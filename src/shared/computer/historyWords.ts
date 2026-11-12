@@ -40,6 +40,7 @@ import {
   type StepResult,
   type WaitReport
 } from './protocol'
+import type { SessionTierRefusal } from './scheduleRules'
 import { diskWords, menuPathSegments, type ComputerToolName } from './tools'
 import { computerPhrase, isPasswordLine, quoteShort as quoted, type AppsOutcome, type ComputerPhrase } from './words'
 
@@ -414,6 +415,10 @@ export interface SettleInput {
   error?: ComputerError
   /** the call threw (a host error, a service that went): `refused` ends the first step with no answer, whatever ran before */
   threw?: boolean
+  /** the closing read failed with the service's own error after the steps answered */
+  unread?: ComputerError
+  /** the browser tab the host selected for the call, as the read that followed names it */
+  selectedTab?: string
   /** the call's signal fired: its reason (`stopped`, `interrupt`, `paused`, …) */
   abort?: string
   /** computer_apps: what the launch did */
@@ -426,16 +431,23 @@ export interface SettleInput {
 const ABORTED_AS: ReadonlySet<ComputerError['kind']> = new Set<ComputerError['kind']>(['cancelled', 'needs_tier', 'clipboard_busy'])
 const isTextStep = (a: ComputerAction): boolean => a.action === 'type' || a.action === 'paste' || a.action === 'set_value' || a.action === 'select_text'
 
-/** Why the tier gate would not run a step, where that is a fact about the Mac. */
-const GATE_WHY: Readonly<Record<string, string>> = {
-  'screen-locked': 'The screen was locked',
-  asleep: 'The Mac was asleep'
+/**
+ * How a step the tier gate refused ended, by the gate's own reason. Every reason the gate has is here (a new one
+ * fails the typecheck), so no refusal of the gate's leaves a step without its why: a card not taken and a call
+ * given up are stops; a locked screen, a sleeping Mac and a host with nothing to schedule the step are failures.
+ */
+const GATE_END: Readonly<Record<SessionTierRefusal, Pick<ComputerHistoryStep, 'state' | 'reason'>>> = {
+  skipped: { state: 'stopped', reason: COMPUTER_SKIPPED_WORDS },
+  'skipped-earlier': { state: 'stopped', reason: COMPUTER_SKIPPED_WORDS },
+  cancelled: { state: 'stopped', reason: COMPUTER_REFUSAL_WORDS.cancelled },
+  'screen-locked': { state: 'failed', reason: 'The screen was locked' },
+  asleep: { state: 'failed', reason: 'The Mac was asleep' },
+  'no-scheduler': { state: 'failed', reason: COMPUTER_FAILURE_WORDS.needs_tier }
 }
 
-/** How a step the gate refused ended, from the gate's own reason; null where the step's error says it as well. */
+/** How a step the gate refused ended; null for a step the gate did not refuse. */
 function gateEnd(reason: string | undefined): Pick<ComputerHistoryStep, 'state' | 'reason'> | null {
-  if (reason === 'skipped' || reason === 'skipped-earlier') return { state: 'stopped', reason: COMPUTER_SKIPPED_WORDS }
-  return reason && GATE_WHY[reason] ? { state: 'failed', reason: GATE_WHY[reason] } : null
+  return reason !== undefined && Object.hasOwn(GATE_END, reason) ? GATE_END[reason as SessionTierRefusal] : null
 }
 
 /** The refusals that are the person's own doing or the thread's: a stop, not a failure, so never the red. */
@@ -449,6 +461,9 @@ function callEnd(s: SettleInput): Pick<ComputerHistoryStep, 'state' | 'reason'> 
   return null
 }
 
+/** The browser tab the host selected for the call (§25): it changed what the person's window shows. */
+const tabFact = (tab: string | undefined): string | null => (tab !== undefined ? `selected the tab ${JSON.stringify(tab)}` : null)
+
 /** The fact on a launch whose call ended before the apps were listed. */
 const APPS_UNLISTED = 'the list of apps could not be read after it'
 
@@ -461,11 +476,15 @@ const APPS_UNLISTED = 'the list of apps could not be read after it'
 export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
   const end = callEnd(s)
   if (s.tool !== 'computer_act' && s.tool !== 'computer_batch') {
+    // an app the call's launch brought forward came forward whatever the call did after
+    const front = frontFact(s.ctx.app || (typeof s.args.launch === 'string' ? s.args.launch : '') || 'The app', s.front, s.person)
     // a launch or an open the service answered happened, whatever the list after it did: only the list is lost
-    if (end && s.tool === 'computer_apps' && (s.launched?.launched || s.launched?.opened)) return [{ ...wholeStep(s.tool, s.args, s.ctx, 'done', s.launched), state: 'ok', facts: [APPS_UNLISTED] }]
+    if (end && s.tool === 'computer_apps' && (s.launched?.launched || s.launched?.opened))
+      return [{ ...wholeStep(s.tool, s.args, s.ctx, 'done', s.launched), state: 'ok', facts: [...(front ? [front] : []), APPS_UNLISTED] }]
     const step = wholeStep(s.tool, s.args, s.ctx, end ? 'asked' : 'done', s.launched)
-    const w = s.tool === 'computer_observe' ? waitFact(s.waited) : null
-    return [{ ...step, ...(end ?? { state: 'ok' as const }), ...(!end && w ? { facts: [w] } : {}) }]
+    const w = !end && s.tool === 'computer_observe' ? waitFact(s.waited) : null
+    const facts = [tabFact(s.selectedTab), w, front].filter((f): f is string => f !== null)
+    return [{ ...step, ...(end ?? { state: 'ok' as const }), ...(facts.length ? { facts } : {}) }]
   }
   const actions = callActions(s.tool, s.args)
   const ran = s.results?.some((r) => r.status !== 'not-run') === true
@@ -521,8 +540,11 @@ export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
   if (last >= 0) {
     // every step answered and the call still failed (the service went during the closing read): the steps ran, and
     // the end the model was told has no step of its own to stand on
-    const unread = end && !ended && !s.abort && (s.threw || s.error) && end.reason ? `the window was not read after it: ${end.reason.charAt(0).toLowerCase()}${end.reason.slice(1)}` : null
+    // (or the service answered the closing read with an error of its own, which the model was told)
+    const why = s.unread ? failureWords(s.unread, { app: s.ctx.app || undefined }) : end && !ended && !s.abort && (s.threw || s.error) ? end.reason : undefined
+    const unread = why ? `the window was not read after it: ${why.charAt(0).toLowerCase()}${why.slice(1)}` : null
     const extra = [
+      tabFact(s.selectedTab),
       waitFact(s.waited),
       frontFact(s.ctx.app || 'The app', s.front, s.person),
       s.menusLeftOpen?.length ? `left the menu ${s.menusLeftOpen.join(', ')} open` : null,

@@ -754,3 +754,63 @@ describe('the kept picture', () => {
     expect(shots(plain)).toHaveLength(0)
   })
 })
+
+describe('a held-back text leaves the journal at one place (held)', () => {
+  const TOKEN = 'hunter2-token'
+  const MARK = '‹13 characters›'
+  /** the token in every string a record can hold */
+  const all = (verb: string, state?: ComputerHistoryStep['state']): ComputerHistoryStep => ({
+    kind: 'type',
+    verb: `${verb} ${TOKEN}`,
+    object: `into ${TOKEN}`,
+    inApp: `into ${TOKEN} in ${TOKEN}`,
+    target: `a field named ${TOKEN}`,
+    facts: [`opened "${TOKEN}"`, `saved ~/${TOKEN}.txt`],
+    reason: `No element is named ${TOKEN}`,
+    asked: { verb: `Type ${TOKEN}`, object: `into ${TOKEN}`, inApp: `into ${TOKEN} in ${TOKEN}` },
+    ...(state ? { state, tier: 'ax' as const } : {})
+  })
+
+  it('no string of a call says it: not the log, not what is pushed or read, not the kept text', async () => {
+    const j = journal()
+    const entry = j.history.begin('t1', { app: `${TOKEN} Notes`, window: `${TOKEN} — Notes`, steps: [all('Typing')], plan: [`Type ${TOKEN}`, 'Press Return'], masked: [TOKEN] })
+    await entry.end({ app: `${TOKEN} Notes`, window: `${TOKEN} — Notes`, steps: [all('Typed', 'failed')], read: `Read ${TOKEN}`, text: `app "Notes" · window "${TOKEN} — Notes"\n[1] input "Name" = "${TOKEN}"` })
+    await entry.picture({ none: 'permission' })
+    const read = await j.calls('t1')
+    const log = readFileSync(join(j.dir('t1'), 'log.jsonl'), 'utf8')
+    const text = readFileSync(join(j.dir('t1'), 'steps', '1.txt'), 'utf8')
+    for (const [where, said] of [['the log', log], ['the pushes', JSON.stringify(j.changes)], ['the read', JSON.stringify(read)], ['the kept text', text], ['the step read', JSON.stringify(await j.history.step('t1', 1))]] as const)
+      expect(said, where).not.toContain(TOKEN)
+    // every place it stood says how long it was instead
+    const call = read.calls[0]
+    expect(call.window).toBe(`${MARK} — Notes`)
+    expect(call.steps[0]).toMatchObject({ object: `into ${MARK}`, target: `a field named ${MARK}`, facts: [`opened "${MARK}"`, `saved ~/${MARK}.txt`], reason: `No element is named ${MARK}` })
+    expect(text).toContain(`= "${MARK}"`)
+    // the start was scrubbed before it was pushed, not only the end: the running call's plan and words
+    const running = j.changes[0] as { call: { plan?: string[]; steps: ComputerHistoryStep[] } }
+    expect(running.call.plan).toEqual([`Type ${MARK}`, 'Press Return'])
+    expect(running.call.steps[0].asked).toEqual({ verb: `Type ${MARK}`, object: `into ${MARK}`, inApp: `into ${MARK} in ${MARK}` })
+  })
+
+  it('leaves the record’s own structure alone, whatever was typed', async () => {
+    const j = journal()
+    // texts that are also words of the journal's structure
+    const entry = j.history.begin('t1', { ...start(), token: 'turn-click', masked: ['click', 'failed', 'start', 'permission', 'turn-click'] })
+    await entry.end(end({ steps: [step('Clicked', 'Save', { state: 'failed', tier: 'process', reason: 'It failed' })] }))
+    await entry.picture({ none: 'permission' })
+    const lines = j.lines('t1')
+    expect(lines.map((l) => l.r)).toEqual(['start', 'end', 'picture'])
+    expect(lines[0].token).toBe('turn-click')
+    expect(lines[1].steps[0]).toMatchObject({ kind: 'click', state: 'failed', tier: 'process', reason: 'It ‹6 characters›' })
+    expect(lines[2].none).toBe('permission')
+    // and it still folds into a call a reader can take
+    expect((await j.calls('t1')).calls[0]).toMatchObject({ state: 'done', picture: { none: 'permission' } })
+  })
+
+  it('a call with nothing held back is written as it was given', async () => {
+    const j = journal()
+    const entry = j.history.begin('t1', start())
+    await entry.end(end())
+    expect(j.lines('t1')[1].steps).toEqual(end().steps)
+  })
+})

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockTime, minuteAge } from "./duration";
+import { clockTime, dayTime, minuteAge } from "./duration";
 
 describe("minuteAge", () => {
   it("writes an age in whole minutes, never seconds", () => {
@@ -29,5 +29,22 @@ describe("clockTime", () => {
 
   it("follows a 24-hour locale", () => {
     expect(clockTime(afternoon, "en-GB")).toBe("14:02");
+  });
+});
+
+describe("dayTime", () => {
+  const now = new Date(2026, 10, 11, 10, 0).getTime();
+  const plain = (t: number) => dayTime(t, now, "en-US").replace(/\u202f/g, " ");
+
+  it("is the clock time today, and names the day of any other", () => {
+    expect(plain(new Date(2026, 10, 11, 9, 5).getTime())).toBe("9:05 AM");
+    // later today is still today: a time is never read as another day's for being ahead of now
+    expect(plain(new Date(2026, 10, 11, 14, 2).getTime())).toBe("2:02 PM");
+    // yesterday afternoon would read as later than now without its day
+    expect(plain(new Date(2026, 10, 10, 14, 2).getTime())).toBe("Tue 2:02 PM");
+    expect(plain(new Date(2026, 10, 5, 14, 2).getTime())).toBe("Thu 2:02 PM");
+    // a week or more back, a weekday would name the wrong day
+    expect(plain(new Date(2026, 10, 4, 14, 2).getTime())).toBe("Nov 4, 2:02 PM");
+    expect(plain(new Date(2026, 9, 20, 9, 5).getTime())).toBe("Oct 20, 9:05 AM");
   });
 });
