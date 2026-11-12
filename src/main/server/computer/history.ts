@@ -521,7 +521,8 @@ export class ComputerHistory {
   async close(): Promise<void> {
     if (this.pruneTimer) clearInterval(this.pruneTimer)
     this.pruneTimer = null
-    await Promise.all([...this.states.values()].map((s) => s.chain))
+    // (a folder's mark covers a state that left the map with its removal still queued)
+    await Promise.all([...[...this.states.values()].map((s) => s.chain), ...this.sweeps.values()])
   }
 
   // ── one key ───────────────────────────────────────────────────────────
