@@ -280,14 +280,14 @@ const fixtures: ComputerFixture[] = [
   {
     name: "12a. Stopped by the person's touch: what was asked, and the last picture kept, with its time",
     props: base({
-      viewport: kept("textedit", "typed", TEXTEDIT, "2:02 PM", { line: <ViewportLine words="As it was at 2:02 PM" /> }),
+      viewport: kept("textedit", "typed", TEXTEDIT, "2:02 PM", { line: <ViewportLine words={"As it was at 2:02\u00a0PM"} /> }),
       ...listOf(own([...run.slice(0, 3), call(AT - 40_000, [step("click", "Click", "Save", { state: "stopped", tier: undefined, reason: "Stopped when you used the mouse or keyboard", target: 'a button in the "save" sheet' })], { picture: { none: "no-read" } })])),
     }),
   },
   {
     name: "12b. Stopped by Stop; a call that didn't finish; one the person did not allow; one the host refused",
     props: base({
-      viewport: kept("textedit", "typed", TEXTEDIT, "2:02 PM", { line: <ViewportLine words="As it was at 2:02 PM" /> }),
+      viewport: kept("textedit", "typed", TEXTEDIT, "2:02 PM", { line: <ViewportLine words={"As it was at 2:02\u00a0PM"} /> }),
       ...listOf(
         own([
           ...run.slice(0, 2),
@@ -365,7 +365,7 @@ const fixtures: ComputerFixture[] = [
   },
   {
     name: "18a. The preview ended: the window closed, over the newest step's kept picture",
-    props: base({ sessions: [live], viewport: kept("textedit", "save-sheet", TEXTEDIT, "2:03 PM", { line: <ViewportLine words="The window closed. As it was at 2:03 PM" /> }), ...listOf(own(run)) }),
+    props: base({ sessions: [live], viewport: kept("textedit", "save-sheet", TEXTEDIT, "2:03 PM", { line: <ViewportLine words={"The window closed. As it was at 2:03\u00a0PM"} /> }), ...listOf(own(run)) }),
   },
   {
     name: "18b. The preview stopped with no step kept: the line alone, with Retry; two sessions",
