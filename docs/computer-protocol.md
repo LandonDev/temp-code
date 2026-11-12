@@ -617,15 +617,21 @@ path on a line a person reads at a glance.
     (`CLICK_MARK`), placed by the click's own frame size; it is drawn on
     the live picture alone. For a pinned step the box shows the picture
     the journal kept after that step's call, else the text the model read,
-    else nothing but one line saying why ("Screen Recording was off", "The
-    window was minimized", "The window was not drawn", "This picture is no
-    longer kept"). The box is the pane's width in the picture's shape, at
-    most 240px or 45% of the section's height. One line under it says why
-    a preview ended (the window closed or is minimized, Screen Recording
-    is off, or it stopped, with Retry) and, for a step of a batch that is
-    not its last, "After all 3 steps": the journal keeps one picture a
-    call. The stream runs only while the section is shown, the window is
-    visible and no step is pinned.
+    else one line saying why ("Screen Recording was off", "The window was
+    minimized", "The window was not drawn", "This picture is no longer
+    kept"), inside the box, which keeps its place while a step is pinned.
+    The box is the pane's width in the picture's shape, at most 240px or
+    45% of the section's height. One line under it says why a preview
+    ended (the window closed or is minimized, Screen Recording is off, or
+    it stopped, with Retry); for a step of a batch that is not its last,
+    "After all 3 steps", or "After the steps that ran" when the batch
+    stopped part way (the journal keeps one picture a call); "As it was
+    after this step" for a step pinned while a session is live, so a still
+    is never taken for the window now; and "As it was at 2:03 PM" where
+    the newest step kept nothing (a call stopped in flight, a refusal, a
+    list of apps) and the newest kept picture stands in. The stream runs
+    only while the section is shown, the window is visible and no step is
+    pinned.
   - **The steps**, newest first, one 28px row each in `computerPhrase`'s
     words with the step's kind as its glyph. The running call is one line
     at the top ("Clicking Save"; a batch's planned steps under it; a held
@@ -635,15 +641,21 @@ path on a line a person reads at a glance.
     the "Save As" sheet`), how it went when that is not the plain case
     ("nothing changed", `through the menu File › Save…`), the clock time,
     and what the model read ("Read 46 elements", "Read 3 changes"),
-    opening onto the text with the acted element's lines marked. A failed
-    step says why in red ("The element was gone"); a stopped one and one
-    that did not finish say so; later steps of its batch read "Not run".
+    opening onto the text with the acted element's lines marked; opening
+    it pins the row. A row's verb is in the past only for a step that ran:
+    one that failed, was stopped, was refused or never ran reads as what
+    was asked ("Click Save"). A failed step says why in red ("The element
+    was gone"); a stopped one and one that did not finish say so, never in
+    red (the person's own no, a pause and a cancel are stops); later steps
+    of its batch wear a dash and read "Not run".
     Steps of one turn of one session are a group under the turn's time; a
     subagent's group leads with its title.
   - **Following and pinning.** With nothing chosen the section follows:
     the stream, the newest finished step open, the list at its top. A
     click or an arrow key pins a step; Go live, Home or the running row
-    follows again.
+    follows again. A list the person scrolled keeps its place as steps
+    land. A history read that failed says so above the steps, with Retry,
+    and keeps the section there.
 - **The cue** in the title bar beside the agents cue (`chrome/ComputerCue.tsx`),
   while such a session is live: "Using TextEdit", "Needs you" while a card
   waits, "Waiting for the Mac" while a step is held. A click opens the
@@ -1369,20 +1381,22 @@ The host that runs the service keeps what each computer call did (`history.ts`, 
 - **Where.** `<dataDir>/computer/history/<serviceSessionId(key)>/log.jsonl`, with `steps/<n>.jpg` and `steps/<n>.txt`. `fsMedia` (`setMediaDenied`) and the remote path fence refuse every path under the history root, whatever roots a workspace adds, so the one way to a picture is the `local` read below.
 - **Records**, append-only, one JSON line each (`v: 1`, the kind in `r`):
   - `start { n, turn, token?, at, app, window, steps: [{ kind, verb, object, inApp, target? }], plan? }` before the call's checks, so a call refused early (computer use off, stopped, paused) has its record too: its steps as planned, present tense, and for a batch its planned steps in the card's words. A call whose arguments fail the schema has no record.
-  - `end { n, at, app, window, steps: [{ kind, verb, object, inApp, state, tier?, target?, facts?, reason?, element? }], read?, text? }` when it answers: one step per action, past tense, `state` one of `ok`, `failed`, `not-run`, `stopped`. A call refused, failed whole or stopped marks its first step without an answer.
+  - `end { n, at, app, window, steps: [{ kind, verb, object, inApp, state, tier?, target?, facts?, reason?, element? }], read?, text? }` when it answers: one step per action, `state` one of `ok`, `failed`, `not-run`, `stopped`. A step that ran is in the past tense ("Clicked Save"); every other reads as what was asked ("Click Save"), so no record says a thing was done that was not. A call refused, failed whole or stopped marks its first step without an answer; a refusal that is the person's or the thread's own doing (`denied`, `away`, `paused`, `cancelled`, `stopped`) is `stopped`, the host's own (`service_unavailable`, `refused_app`, …) `failed`.
+  - Each start step also holds `asked`, its row as what was asked: a call whose end never came (`unfinished`) reads by it. A step's words are made before the call, from the book the model acted on (`plannedSteps`: the row while it runs, as asked and as done), so a button the click renames reads by the name it had; a step named by `named` takes its element from the result.
   - `picture { n, at, width, height }`, or `picture { n, none }` with `none` one of `permission`, `minimized`, `not-drawn`, `off`, `no-read`, `failed`.
 - **Counters.** `n` counts per key. `turn` goes up at the first call after `beginTurn` for this host's threads, and when the box's turn token changes for a bridged one (the token is in the record, so an idle close inside one turn does not split it). After a restart both go on from the highest value in the log; the first call of a process starts a new turn. `born` is the first record's time: a renderer drops what it holds for a key whose history was removed and begun again.
 - **A call** as a reader gets it (`ComputerHistoryCallSchema`): the fold of its records, `state` `running`, `done` or `unfinished` (a start with no end that is not the call in flight), and `rev`, which goes up with every record and when a kept file goes, so a later read or push replaces an older one and never the reverse.
-- **No secret in a record.** Typed, pasted and set text is written only when the step names its field by index, the thread's element book says the field is no password field, and no input came before it in the call (`mayQuoteText` in `src/shared/computer/historyWords.ts`); anything else is a length ("20 characters"). A bare printable key is "a key". One function serves the start, the end and the plan, so a later refusal has nothing to take back. The read text is the service's own, which never prints a password field's value, cut at 12,000 bytes on a line with the count of lines left out.
+- **No secret in a record.** Typed, pasted, set and selected text is written only when the step names its field by index, the thread's element book says the field is no password field, and no input came before it in the call (`mayQuoteText` in `src/shared/computer/historyWords.ts`); anything else is a length ("20 characters"). A bare printable key is "a key". One function serves the start, the end and the plan, so a later refusal has nothing to take back. The read text is the service's own, which never prints a password field's value; the texts the rule held back in the call are taken out of it wherever they stand, as typed or as the observation escapes them (`scrubReadText`: "‹12 characters›"; a text of three characters or fewer is left, since any window holds it), and it is cut at 12,000 bytes on a line with the count of lines left out. A kept picture is the window as it was: what the window showed, the picture shows, and the switch below is how a person keeps none.
+- **What the model read** (`readSummary`): "Read 46 elements", "Read 3 changes", "Read no changes"; "Looked at the picture" only for a thin tree whose picture did reach the model (the outcome carries a shot), else the few elements it read.
 - **Words** are made once, on the host, by pure functions in `historyWords.ts` (`plannedSteps`, `settledSteps`, `stepTargetWords`, `resultFacts`, `readSummary`, `failureWords`, `refusalWords`) over `computerPhrase`, `actionWords` and `parseObservation`; the tables (`COMPUTER_ROUTE_WORDS`, `COMPUTER_EFFECT_FACTS`, `COMPUTER_FAILURE_WORDS`, `COMPUTER_REFUSAL_WORDS`, `COMPUTER_ABORT_WORDS`) are in `src/shared/statusWords.ts`. `ElementBook.path(index)` gives an element's ancestors for "a button in the "Save As" sheet".
 - **The journal changes no answer.** Every write is best effort: a failed append is logged once and dropped. Each key has one write chain; removal and the switch run on it, so nothing lands after them.
 - **The picture.** One `capture.screenshot` per call that ended with an observation: `{ session, app: { pid }, window: { id }, region: [0, 0, space.width, space.height], maxEdge: 960, format: 'jpeg' }`, with the pid, the window id, the space and the epoch as the call's closing observation gave them. It names a region so the shot is the whole window in one known shape whatever the model last asked for, and the window by its id, never a title, so no tab is ever selected for a picture and the bound window stays as the call left it. It runs on the thread's own queue after the call's answer has been handed back: the model never waits for it; the thread's next call does, if it comes inside it, so the picture is the window as that call left it. It is bounded at 2 s, then cancelled. Stop, the thread's end and the idle close already wait for the queue.
 - **Never a picture** when Screen Recording is off (read from the service's state; the journal never prompts), when the switch is off, when the thread was stopped or ended, when the service's epoch has moved or the service is not up (the journal never opens a session or starts a service), or when the call had no closing read (`no-read`). A minimized window, a blank shot, a refusal or an error is a `none` record and nothing else.
-- **The switch.** `computer.history.pictures` (Settings → Computer use, "Keep pictures of the window", on by default; `ComputerSettings.keepPictures`). Off stops new pictures and deletes the kept ones; the lines stay.
+- **The switch.** `computer.history.pictures` (Settings → Computer use, "Keep pictures of the window", on by default; `ComputerSettings.keepPictures`). Off stops new pictures and deletes the kept ones; the lines and the read texts stay, and the row says so. A switch found off at boot deletes again, in case a quit cut the first delete short.
 - **The seam.** No picture under `TEMP_CODE_COMPUTER_HISTORY=0`, nor in an instance started with `TEMP_CODE_E2E_STATUS=1` unless `TEMP_CODE_COMPUTER_HISTORY=1`, so the gate's Mac rows send the service no new request. `scripts/lib/computerRig.ts` sets `=0` before it starts the real server.
-- **Limits.** The newest 400 calls of a key keep their picture and text; the lines stay. A history whose log has not been written for 30 days goes at boot and once a day. A Mac thread's history goes when the thread is removed (`registry.onRemoved`); an idle close keeps it. A box thread's history on the Mac goes by the 30 days alone. At 960px a picture of an ordinary window is about 30 to 80 KB.
+- **Limits.** The newest 400 calls of a key keep their picture and text. A log found past 2,000 calls when it is loaded is written again with its newest 2,000 (`HISTORY_KEEP_LINES`; beside itself, then swapped in; `born` moves, which tells a reader to drop what went), so a thread that uses the computer for months never loads more. A reader's key with nothing on disk is not loaded at all. A history whose log has not been written for 30 days goes at boot and once a day. A Mac thread's history goes when the thread is removed (`registry.onRemoved`); an idle close keeps it. A box thread's history on the Mac goes by the 30 days alone. At 960px a picture of an ordinary window is about 30 to 80 KB.
 - **The wire** (`contract-computer.ts`, `historyRpc.ts`), all `local`, so this desktop's own socket alone:
-  - `computer.history.read { keys (1 to 64), before? }` answers `{ sessions: [{ key, born, calls, more }] }`: each key's newest 200 calls, or with one key and `before` the 200 under that `n`. The socket then hears those keys until it closes.
+  - `computer.history.read { keys (1 to 64), before? }` answers `{ sessions: [{ key, born, calls, more }] }`: each key's newest 200 calls, or with one key and `before` the 200 under that `n`. The socket then hears those keys until it closes. A host without computer use keeps no journal and answers each key with nothing, which is not a failure; the renderer marks a read failed only when the request fails on an open socket (one cut off by a dropped socket is read again when it opens).
   - `computer.history.step { key, n }` answers `{ picture?: { data, mimeType, width, height, at }, text? }`.
   - The push `computer-history { key, call }` on every record that changes a call, and `{ key, gone: true }` when the history is removed, to the sockets that read the key. It is not in the phone's subset.
   - `ComputerSessionRow.asking` is now also set by a host for its own thread's card, so the section and the cue can say "Needs you" with the card's question.

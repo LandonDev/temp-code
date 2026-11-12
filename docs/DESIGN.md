@@ -423,7 +423,10 @@ when that is not the plain case (`COMPUTER_EFFECT_FACTS`: "nothing
 changed", "on screen only, not on disk"), why it failed
 (`COMPUTER_FAILURE_WORDS`: "The element was gone") and why it never ran
 (`COMPUTER_REFUSAL_WORDS`: "You didn't allow it"). A step's row never
-shows the service's error kind or the model's own text.
+shows the service's error kind or the model's own text. A row's verb is in
+the past only for a step that ran ("Clicked Save"); one that failed, was
+stopped, was refused or never ran reads as what was asked ("Click Save"),
+so no row says a thing was done that was not.
 
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
 would only say "nothing is happening" is noise. Two places draw done's
@@ -530,21 +533,30 @@ under them is the section's one scroller.
   edge, a `Skeleton` in its shape until the first picture. It shows the
   live stream, or a pinned step's kept picture (a click opens the
   lightbox), or the text the model read in a `CONSOLE` of the box's
-  shape, or nothing. While a step is pinned the box keeps its height and
-  a picture of another shape sits centred inside it. One 12px muted line
-  sits 4px under the box only when it has something to say.
+  shape, or nothing. While a step is pinned the box keeps its height: a
+  picture of another shape sits centred inside it, and a step that kept
+  nothing holds the box with its line inside ("This picture is no longer
+  kept"), so stepping through rows moves nothing. One 12px muted line
+  sits 4px under the box only when it has something to say: why a preview
+  ended; "After all 3 steps" (or "After the steps that ran") for a
+  batch's earlier step; "As it was after this step" for a step pinned
+  while a session is live; "As it was at 2:03 PM" where the newest step
+  kept nothing and an older picture stands in. The box fades in once,
+  when the viewport arrives; a change of face moves nothing.
 - **A step row** is on the transcript's step grid (`STEP_LINE`,
   `GLYPH_SLOT`; 28px): a 14px glyph for the step's kind (click, type,
   key, scroll, read, look, wait, app), uncoloured, the verb muted, the
   object in foreground. A state takes the glyph's place by `SwapIcon`:
   working's still dot on the running row, the amber mark while a card
   waits, the dashed ring while held, the red mark on a failed step, the
-  square on a stopped one. A step that did not run is muted whole. A row
+  square on a stopped one (the person's own no, a pause and a cancel are
+  stops, never the red), a dash on one that never ran, which is also
+  muted whole. A row
   names its app only when the step before it was in another app. Hover
   and press are `ROW_PRESS`.
-- **The running row** is one line; a batch's planned steps and what a
-  held step waits for sit under it in 12px muted, and a held line or a
-  card's question wraps whole, never truncates.
+- **The running row** is one line; a batch's planned steps, one a line,
+  and what a held step waits for sit under it in 12px muted, and a held
+  line or a card's question wraps whole, never truncates.
 - **The open row** is the `muted` fill behind the row and what opens
   under it (8px radius, `aria-current`), with no height animation. Under
   the words: a 12px line saying why, for a step that did not end well
@@ -553,7 +565,9 @@ under them is the section's one scroller.
   words, what it acted on, how it went, the clock time); and a read line
   ("46 elements" after a read row, "Read 3 changes" after an act) whose
   chevron trails its words and opens the text in a `CONSOLE` capped at
-  240px, the acted element's lines in foreground.
+  240px, the acted element's lines in foreground. Opening it pins the
+  row, so the text stays while more steps land; where the viewport
+  already shows that text, the line says what was read and opens nothing.
 - **Groups**: one turn of one session, 16px apart under a 12px medium
   muted heading, the clock time of the turn's first call. The newest group has
   no heading unless it is a subagent's, whose title says whose steps
@@ -562,9 +576,12 @@ under them is the section's one scroller.
   live end. A click or a key pins a row: the viewport shows that step's
   picture and the stream stops. The list is one tab stop: ↑ newer, ↓
   older, Home the live end, End the oldest loaded. Rows that land above a
-  pinned row do not move it.
+  pinned row do not move it. Following, a list at its top stays there as
+  steps land; one the person scrolled keeps its place, and so does a page
+  of earlier steps they asked for.
 - **Loading and failure**: skeleton rows in the rows' shape while the
-  first read is out; one red line, "Couldn't read the steps", with Retry.
+  first read is out; one red line, "Couldn't read the steps", with Retry,
+  above whatever steps are there.
 
 The panel's other
 logs (Build, the Debug console) keep the console's 20px lines. It yields to the thread, which never
@@ -800,9 +817,9 @@ being produced shimmers (`WorkingText`); nothing else does.
 | The slot above the composer emptying | — | the outgoing row stays, inert, and fades `--dur-fast` `--ease-out`; the 28px stays | at once |
 | Switch (a setting's `Switch`, the rail's Away row) | the thumb slides on its clip-path, `--dur-slow` `--ease-out`, and grows 5px toward the other side on the track's hover; the track's fill changes over `--dur-fast`; the row around the Away track never moves | the same | snaps |
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
-| The Computer section's viewport: its first picture | the box fades in over `--dur-fast` (`FADE_IN`, `@starting-style`) | at once | the same fade |
+| The Computer section's viewport arriving | fades in over `--dur-fast` (`FADE_IN`, `@starting-style`, on its wrapper, which stays through every change of face: a pin, Go live and a step by key fade nothing) | at once | the same fade |
 | A frame, or a kept picture, replacing another in the viewport | none: the old picture stays until the new one has decoded, and dims to 40% over `--dur-fast` only when that takes more than 150 ms | — | the same |
-| A step landing at the top of the Computer section while it follows; a batch settling into its steps | `.step-land` (fade and rise 4px, `--dur-base`), `--stagger-step` apart; never at mount, while a row is pinned or on a key | — | fade only |
+| A step landing at the top of the Computer section while it follows; a batch settling into its steps | `.step-land` (fade and rise 4px, `--dur-base`), `--stagger-step` apart; never at mount, for the first read's rows, for a page of earlier steps, while a row is pinned or on a key | — | fade only |
 | A row chosen in the Computer section, its facts opening, the running row's words changing | none | none | none |
 | A step's read text opening | `Collapsible` (`--dur-slow` open, `--dur-base` close) | the same | opacity |
 | The computer cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`FADE_IN`); its words morph (`MorphText`) | at once | the fade |

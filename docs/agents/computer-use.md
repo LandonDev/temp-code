@@ -100,10 +100,14 @@ why and the measured headline.
   `steps/<n>.txt`. `runComputerTool` writes `start` (the planned steps, an
   early refusal's too) and `end` in its `finally`; the words are made once,
   on the host (src/shared/computer/historyWords.ts, the tables in
-  src/shared/statusWords.ts). No secret reaches a record: typed text is
-  quoted only for a field the step names by index that is no password
-  field, with no input before it in the call (`mayQuoteText`); else its
-  length. After each call that ended with a read, the thread's queue takes
+  src/shared/statusWords.ts), before the call, from the book the model
+  acted on: in the past for a step that ran, as what was asked ("Click
+  Save") for one that failed, was stopped, was refused or never ran. No
+  secret reaches a record: typed, pasted, set and selected text is quoted
+  only for a field the step names by index that is no password field,
+  with no input before it in the call (`mayQuoteText`); else its length,
+  and such a text is taken out of the read text the journal keeps
+  (`scrubReadText`). After each call that ended with a read, the thread's queue takes
   one picture of the window (`capturePicture`: one `capture.screenshot` by
   window id over the whole coordinate space, 960px, JPEG, 2 s at most), so
   the model never waits for it. No picture with Screen Recording off, the
@@ -111,8 +115,9 @@ why and the measured headline.
   pictures of the window"; off deletes the kept ones), a stopped or ended
   thread, or a moved epoch. A write that fails is logged once and dropped:
   the journal changes no answer. The newest 400 calls of a thread keep
-  their picture and text; a history not written for 30 days goes at boot
-  and daily; a Mac thread's goes when the thread is removed. `fsMedia` and
+  their picture and text; a log past 2,000 calls is written again with
+  its newest when it is loaded; a history not written for 30 days goes at
+  boot and daily; a Mac thread's goes when the thread is removed. `fsMedia` and
   the path fence refuse every path under the history root, so the one way
   to a picture is the `local` read: `computer.history.read`,
   `computer.history.step` and the `computer-history` push to the sockets

@@ -388,7 +388,7 @@ const fixtures: ComputerFixture[] = [
     props: base({
       sessions: [live],
       pinned: true,
-      viewport: kept("chrome", "form", CHROME, "1:58 PM", { label: "Computer fixture form in Google Chrome at 1:58 PM" }),
+      viewport: kept("chrome", "form", CHROME, "1:58 PM", { label: "Computer fixture form in Google Chrome at 1:58 PM", line: <ViewportLine words="As it was after this step" /> }),
       ...listOf(own([call(AT - 6 * MIN, [step("type", "Typed", "into Name", { target: '"Ana"' }, "Google Chrome")], { n: 0, app: "Google Chrome", window: "Computer fixture form", picture: { ...CHROME, at: AT } }), ...run]), (ids) => ids[ids.length - 1]),
     }),
     // the live TextEdit box measured 198px at 260 and 240px at 480 when the pin began

@@ -310,8 +310,7 @@ whole minutes, 1 to 60, committed as `computer.sessionIdleMs`, then When a
 step needs the app in front, a `ChoiceSelect` of Bring it forward for a moment
 (`brief`) and Wait until I'm away (`away`), saved as `computer.activeApp`
 (docs/computer-protocol.md §26.6), then Keep pictures of the window, a
-`SettingSwitch` with "After each action, on this Mac, for 30 days. Turning
-it off deletes them." (`keepPictures`, the setting
+`SettingSwitch` with "One after each step or batch, kept on this Mac: a thread's newest 400, until it has not used the computer for 30 days. Turning it off deletes them and keeps the steps and the text read." (`keepPictures`, the setting
 `computer.history.pictures`; docs/computer-protocol.md §17.9). Permissions:
 Accessibility and Screen Recording on the `PermissionRow` Appshots shares,
 muted Granted or amber Not granted with Grant… to the System Settings pane;
@@ -568,7 +567,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   its one scroller. The body is a size container, so the viewport takes at
   most 45% of a short panel and the list keeps the rest. The live stream
   runs only while the section is shown, the window visible and no step
-  pinned. A session this desktop cannot draw (a box thread on another Mac,
+  pinned. The section is also there for a history read that failed, so
+  its Retry can be reached (`useComputerSection`'s `exists`). A session this desktop cannot draw (a box thread on another Mac,
   the browser /ui) is one Activity row (`lib/computerSessions.ts` over
   every host's `computer` push; the window in its app, the tier in
   `COMPUTER_TIER_WORDS`, the age, Stop) that opens only for a card waiting
