@@ -7,8 +7,11 @@
  * low effort in full access reads TC Probe's window, waits, clicks Ping, takes a screenshot and waits
  * again; over CDP (bun's global WebSocket):
  *
- *  - the right panel's Activity section shows the Computer row with its words; opened, its canvas draws
- *    at least 3 frames (`[role=img][data-frames]`) and a click mark (`data-marks`)
+ *  - the title bar shows the computer cue, and the right panel's Computer section (its default while the
+ *    session is live; the cue opens it otherwise) shows the session's row with its words, its live window
+ *    drawing at least 3 frames (`[role=img][data-frames]`) and a click mark (`data-marks`), and the
+ *    thread's steps as they land (`[data-slot="step"]`). The instance runs with the proof statuses on,
+ *    so the journal keeps no pictures here (computer/history.ts `historyPicturesFromEnv`)
  *  - the transcript has the screenshot row (`[data-slot="computer-shot"] img`, naturalWidth > 0)
  *  - `Page.captureScreenshot` of the pane and the row, dark and light, under /tmp/tc-preview-reports
  *  - `computer.proofHold { on: true }`: the banner window appears (a CDP target reading "TempCode is
@@ -240,7 +243,7 @@ async function run(): Promise<void> {
     ].join('\n')
   })
 
-  // ── the Computer row and the preview ──────────────────────────────────
+  // ── the Computer section: the cue, the session's row, the live window, the steps ──
   const until = async <T>(what: string, ms: number, fn: () => Promise<T | null | false | undefined>): Promise<T | null> => {
     for (const end = Date.now() + ms; Date.now() < end; ) {
       const v = await fn().catch(() => null)
@@ -250,26 +253,35 @@ async function run(): Promise<void> {
     log(`no ${what} within ${ms / 1000} s`)
     return null
   }
-  const rowText = await until('Computer row', 240_000, () => cdp.eval<string | null>(`document.querySelector('[data-kind="computer"]')?.textContent ?? null`))
+  const cueText = await until('computer cue', 240_000, () => cdp.eval<string | null>(`document.querySelector('[data-computer-cue]')?.textContent ?? null`))
+  check('the title bar shows the computer cue', !!cueText, cueText ?? 'none')
+  // An open panel on its default section goes to Computer while the session is live; the cue opens it otherwise.
+  await until('Computer section', 15_000, async () => {
+    if (await cdp.eval<boolean>(`!!document.querySelector('[data-slot="computer-section"]')`)) return true
+    await cdp.eval(`document.querySelector('[data-computer-cue]')?.click()`)
+    return false
+  })
+  const rowText = await until('session row', 30_000, () => cdp.eval<string | null>(`document.querySelector('[data-slot="computer-session"]')?.textContent ?? null`))
   report.row = rowText
-  check('the Activity section shows the Computer row with its words', !!rowText && rowText.includes(APP), rowText ?? 'none')
+  check("the Computer section shows the session's row with its words", !!rowText && rowText.includes(APP), rowText ?? 'none')
   if (rowText) {
-    await cdp.eval(`document.querySelector('[data-kind="computer"] [data-row-open]')?.click()`)
     const drawn = await until('3 frames and a mark', 60_000, () =>
       cdp.eval<{ frames: number; marks: number } | null>(`(() => { const el = document.querySelector('[role=img][data-frames]'); if (!el) return null; const f = Number(el.dataset.frames), m = Number(el.dataset.marks); return f >= 3 && m >= 1 ? { frames: f, marks: m } : null })()`)
     )
     const seen = await cdp.eval<{ frames: number; marks: number; label: string } | null>(`(() => { const el = document.querySelector('[role=img][data-frames]'); return el ? { frames: Number(el.dataset.frames), marks: Number(el.dataset.marks), label: el.getAttribute('aria-label') } : null })()`)
     report.preview = seen ? { frames: seen.frames, marks: seen.marks } : null
-    check('opened, the preview draws at least 3 frames', (seen?.frames ?? 0) >= 3, seen ? `${seen.frames} frames, "${seen.label}"` : 'no preview')
+    check('the live window draws at least 3 frames', (seen?.frames ?? 0) >= 3, seen ? `${seen.frames} frames, "${seen.label}"` : 'no live window')
     check('and a click mark', (seen?.marks ?? 0) >= 1 && !!drawn, `${seen?.marks ?? 0} marks`)
-    const live = await cdp.eval<boolean>(`!!document.querySelector('[data-slot="computer-row"] [role=img]')`)
+    const steps = await until('a finished step', 30_000, () => cdp.eval<number | null>(`document.querySelectorAll('[data-slot="computer-steps"] [data-slot="step"]').length || null`))
+    check('the section lists the steps as they land', (steps ?? 0) >= 1, `${steps ?? 0} steps`)
+    const live = await cdp.eval<boolean>(`!!document.querySelector('[data-slot="computer-section"] [role=img][data-frames]')`)
     if (live) {
-      const dark = await shot(cdp, '[data-slot="computer-row"]', 'preview-pane-dark')
+      const dark = await shot(cdp, '[data-slot="computer-section"]', 'preview-pane-dark')
       await setTheme(cdp, true)
-      const light = await shot(cdp, '[data-slot="computer-row"]', 'preview-pane-light')
+      const light = await shot(cdp, '[data-slot="computer-section"]', 'preview-pane-light')
       await setTheme(cdp, false)
       check('the pane captured dark and light', !!dark && !!light)
-    } else check('the pane captured dark and light', false, 'the preview had gone before the capture')
+    } else check('the pane captured dark and light', false, 'the live window had gone before the capture')
   }
 
   // ── the turn ends; the screenshot row ─────────────────────────────────
