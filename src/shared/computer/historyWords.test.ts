@@ -416,7 +416,19 @@ describe('settledSteps', () => {
     // with no abort the same refusals are what they say
     expect(settledSteps({ tool: 'computer_act', args: one, ctx, results: [failed('left_click', { kind: 'needs_tier', needed: 'session' })] })[0]).toMatchObject({ state: 'failed', reason: 'It needed your pointer and keyboard' })
     // Skip on the Run-now card is the person's own no
-    expect(settledSteps({ tool: 'computer_act', args: one, ctx, skipped: [0], results: [failed('left_click', { kind: 'needs_tier', needed: 'session' })] })[0]).toMatchObject({ state: 'stopped', reason: 'You chose Skip' })
+    const refusedBy = (reason: string) => settledSteps({ tool: 'computer_act', args: one, ctx, gate: { 0: reason }, results: [failed('left_click', { kind: 'needs_tier', needed: 'session' })] })[0]
+    expect(refusedBy('skipped')).toMatchObject({ verb: 'Click', state: 'stopped', reason: 'You chose Skip' })
+    expect(refusedBy('skipped-earlier')).toMatchObject({ state: 'stopped', reason: 'You chose Skip' })
+    // the gate's reason is said as what it was: a locked screen, a sleeping Mac, are not "it needed your pointer"
+    expect(refusedBy('screen-locked')).toMatchObject({ state: 'failed', reason: 'The screen was locked' })
+    expect(refusedBy('asleep')).toMatchObject({ state: 'failed', reason: 'The Mac was asleep' })
+    expect(refusedBy('no-scheduler')).toMatchObject({ state: 'failed', reason: 'It needed your pointer and keyboard' })
+    // a step the gate refused before anything of it ran (the browser tab's hold) has no result of its own
+    const batch2 = { app: 'TextEdit', actions: [{ action: 'left_click', element: 44 }, { action: 'key', text: 'super+s' }] }
+    const tab = settledSteps({ tool: 'computer_batch', args: batch2, ctx, gate: { 1: 'skipped' }, results: [ok('left_click')], refused: { line: 'x' } })
+    expect(tab.map((x) => [x.verb, x.state, x.reason])).toEqual([['Clicked', 'ok', undefined], ['Press', 'stopped', 'You chose Skip']])
+    const alone = settledSteps({ tool: 'computer_act', args: one, ctx, gate: { 0: 'screen-locked' }, refused: { line: 'needs the session tier' } })
+    expect(alone[0]).toMatchObject({ state: 'failed', reason: 'The screen was locked' })
     // an abort that came after every step answered marks nothing
     const late = settledSteps({ tool: 'computer_act', args: { app: 'TextEdit', action: 'left_click', element: 44 }, ctx, abort: 'stopped', results: [ok('left_click')] })
     expect(late[0].state).toBe('ok')

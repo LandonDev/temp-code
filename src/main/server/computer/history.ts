@@ -129,6 +129,8 @@ interface KeyState {
   made: boolean
   /** the log ends in a torn line (a crash mid-write): the next record starts on a line of its own */
   torn: boolean
+  /** the log could not be read (anything but its absence): nothing is journaled or answered for the key until a load succeeds */
+  broken: boolean
   /** removed: every job still queued does nothing */
   dead: boolean
   chain: Promise<void>
@@ -181,6 +183,9 @@ export interface ComputerHistoryOptions {
   /** whether pictures are kept now (the env seam and the Settings switch); default on */
   pictures?: () => boolean
 }
+
+/** A file or folder that is simply not there (no such entry, or a path through something that is no folder). */
+const isAbsent = (e: NodeJS.ErrnoException | undefined): boolean => e?.code === 'ENOENT' || e?.code === 'ENOTDIR'
 
 const isRecord = (v: unknown): v is HistoryRecord => {
   if (!v || typeof v !== 'object') return false
@@ -310,6 +315,9 @@ export class ComputerHistory {
         continue
       }
       await state.chain
+      // a log that could not be read is tried once more, on the key's chain, and then said: it is not "no history"
+      if (state.broken && !state.dead) await (state.chain = state.chain.then(() => (state.broken && !state.dead ? this.ready(state) : undefined)))
+      if (state.broken && !state.dead) throw new Error('The computer history could not be read')
       // removed while this read waited: what the state still holds is no history
       if (state.dead) {
         out.push({ key, born: 0, calls: [], more: false })
@@ -328,6 +336,7 @@ export class ComputerHistory {
     const state = await this.kept(key)
     if (!state) return {}
     await state.chain
+    if (state.broken && !state.dead) throw new Error('The computer history could not be read')
     const fold = state.dead ? undefined : state.calls.get(n)
     if (!fold) return {}
     const out: HistoryStep = {}
@@ -435,11 +444,12 @@ export class ComputerHistory {
       files: new Set(),
       made: false,
       torn: false,
+      broken: false,
       dead: false,
       chain: Promise.resolve()
     }
     const loading = state
-    state.chain = this.load(loading).catch((e) => void this.failed(e))
+    state.chain = this.ready(loading)
     this.states.set(key, state)
     return state
   }
@@ -448,13 +458,45 @@ export class ComputerHistory {
   private async kept(key: string): Promise<KeyState | null> {
     const state = this.states.get(key)
     if (state) return state
-    if (!(await stat(this.dirOf(key)).catch(() => null))) return this.states.get(key) ?? null
+    const there = await stat(this.dirOf(key)).then(
+      () => true,
+      // only a folder that is not there is no history: one that cannot be looked at is loaded, and says so
+      (e: NodeJS.ErrnoException) => !isAbsent(e)
+    )
+    if (!there) return this.states.get(key) ?? null
     return this.stateOf(key)
   }
 
-  /** The log's records as they stand on disk: a torn or foreign line is skipped. */
+  /**
+   * The state loaded from its log, tried again if the last try failed. A
+   * log that cannot be read is not an empty history: its numbers and files
+   * are still on disk, and a call journaled over them as call 1 would
+   * replace the thread's first. So while the load fails the key journals
+   * nothing and a read of it fails (the section says so, with Retry); the
+   * next job or read tries the load again.
+   */
+  private async ready(state: KeyState): Promise<void> {
+    try {
+      state.calls.clear()
+      state.files.clear()
+      state.born = 0
+      state.n = 0
+      state.turn = 0
+      state.token = undefined
+      await this.load(state)
+      state.broken = false
+    } catch (e) {
+      state.broken = true
+      this.failed(e)
+    }
+  }
+
+  /** The log's records as they stand on disk: a torn or foreign line is skipped. No log is no records; a log that cannot be read is thrown. */
   private async records(state: KeyState): Promise<HistoryRecord[]> {
-    const text = await readFile(join(state.dir, 'log.jsonl'), 'utf8').catch(() => '')
+    const text = await readFile(join(state.dir, 'log.jsonl'), 'utf8').catch((e: NodeJS.ErrnoException) => {
+      if (isAbsent(e)) return ''
+      throw e
+    })
     // a last line with no newline was cut off mid-write: what is appended next must not join it
     state.torn = text !== '' && !text.endsWith('\n')
     const records: HistoryRecord[] = []
@@ -620,7 +662,7 @@ export class ComputerHistory {
     try {
       return await readFile(join(state.dir, 'steps', name))
     } catch (e) {
-      if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') throw e
+      if (!isAbsent(e as NodeJS.ErrnoException)) throw e
       state.files.delete(name)
       return null
     }
@@ -630,7 +672,10 @@ export class ComputerHistory {
   private run(state: KeyState, job: () => Promise<void>): Promise<void> {
     state.chain = state.chain
       .then(async () => {
-        if (!state.dead) await job()
+        if (state.dead) return
+        // a log that could not be read is tried again before anything is written over it
+        if (state.broken) await this.ready(state)
+        if (!state.broken) await job()
       })
       .catch((e) => void this.failed(e))
     return state.chain

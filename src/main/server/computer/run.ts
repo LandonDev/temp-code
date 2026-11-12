@@ -187,8 +187,8 @@ interface CallNote {
   error?: ComputerError
   /** computer_apps: what the launch did */
   launched?: AppsOutcome
-  /** the steps the person chose Skip for on the Run-now card: their own no, not a failure */
-  skipped?: number[]
+  /** why the tier gate refused a step, by the step's index: the journal words a Skip, a locked screen, a sleeping Mac as what they were */
+  gate?: Record<number, string>
 }
 
 /** A finished call's journal entry and the window to picture, handed to the thread's queue (sessions.ts). */
@@ -349,7 +349,7 @@ export async function runComputerTool(
           ...(note.error ? { error: note.error } : {}),
           ...(abort ? { abort } : {}),
           ...(note.launched ? { launched: note.launched } : {}),
-          ...(note.skipped ? { skipped: note.skipped } : {})
+          ...(note.gate ? { gate: note.gate } : {})
         }),
         ...(read ? { read: read.words } : {}),
         // a text the steps held back is held back here too
@@ -750,7 +750,7 @@ async function runChecked(
       callKey: `${threadId}:${++callSeq}`
     })
     note.results = result.steps
-    if (result.skipped?.length) note.skipped = result.skipped
+    if (result.gate) note.gate = result.gate
     if (result.front) note.front = result.front
     if (result.menusLeftOpen?.length) note.menusLeftOpen = result.menusLeftOpen
     for (const s of result.steps) if (s.status === 'failed') noteMissing(s.error)
@@ -940,7 +940,7 @@ let callSeq = 0
  * retry drops the first run's closing observation, so that app's next read is
  * full.
  */
-async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult & { hostLines: Map<number, string>; requestLine?: string; skipped?: number[] }> {
+async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult & { hostLines: Map<number, string>; requestLine?: string; gate?: Record<number, string> }> {
   const { actions, signal, gateCtx } = run
   const gate = host.gate()
   const bundleOf = (): string | null => run.appOf()?.bundleId ?? null
@@ -952,8 +952,9 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   const tiersOf = (a: ComputerAction, i: number): Tier[] => override.get(i) ?? host.verdicts.tiersFor(bundleOf(), a, admitted)
   const steps: StepResult[] = actions.map((a, index) => ({ index, action: a.action, status: 'not-run' }))
   const hostLines = new Map<number, string>()
-  /** the steps whose gate refusal was the person's Skip */
-  const skipped: number[] = []
+  /** why the gate refused each step it refused */
+  const gateWhy: Record<number, string> = {}
+  const gateNote = (): { gate?: Record<number, string> } => (Object.keys(gateWhy).length ? { gate: gateWhy } : {})
   /** a step that waited before it ran: the line said before its own */
   const heldLines = new Map<number, string>()
   let observation: Observation | undefined
@@ -968,7 +969,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   /** steps trying `ax` alone before the gate, under a `session` verdict */
   const axFirst = new Set<number>()
   const refuse = (i: number, decision: Extract<TierDecision, { admit: false }>, menu?: string[], needed: 'front' | 'session' = 'session'): void => {
-    if (decision.reason === 'skipped' || decision.reason === 'skipped-earlier') skipped.push(i)
+    gateWhy[i] = decision.reason
     const message =
       decision.reason === 'cancelled'
         ? (abortedLine(signal) ?? sessionRefusedLine('cancelled'))
@@ -1087,7 +1088,11 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
         if (!(e instanceof ComputerRpcError && e.data?.kind === 'tab_in_use') || !actions.some(sendsInput)) throw e
         // Request errors run no steps. Reads never come here; this act takes the same hold as a session step.
         const decision = await gate.request({ ...stepCtx(at), words: `select tab ${JSON.stringify(run.args.window ?? '')} and ${run.wordsOf(actions[at])}` })
-        if (!decision.admit) return { steps: steps.filter((s) => s.status !== 'not-run'), hostLines, requestLine: decision.message, ...(skipped.length ? { skipped } : {}) }
+        if (!decision.admit) {
+          // the refusal is this step's: the journal says a Skip or a locked screen as it does for any held step
+          gateWhy[at] = decision.reason
+          return { steps: steps.filter((s) => s.status !== 'not-run'), hostLines, requestLine: decision.message, ...gateNote() }
+        }
         const line = decision.via && decision.waitedMs !== undefined ? formatHeldLine({ waitedMs: decision.waitedMs, via: decision.via }) : null
         if (line) heldLines.set(at, line)
         tabsAny = true
@@ -1195,7 +1200,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     }
   }
   for (const [i, line] of heldLines) if (steps[i].status !== 'not-run') hostLines.set(i, `${line}\n${hostLines.get(i) ?? formatStepLine(steps[i], actions[i])}`)
-  return { steps, observation, observationError, hostLines, ...(front ? { front } : {}), ...(menusLeftOpen.length ? { menusLeftOpen } : {}), ...(skipped.length ? { skipped } : {}) }
+  return { steps, observation, observationError, hostLines, ...(front ? { front } : {}), ...(menusLeftOpen.length ? { menusLeftOpen } : {}), ...gateNote() }
 }
 
 /** One acting request, through the gate: it may take `session` out of the tiers, holds the Mac for it and puts it back after. */

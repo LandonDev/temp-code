@@ -291,6 +291,37 @@ describe('n, turn and born', () => {
     expect((await third.history.step('t1', 8)).text).toBe('the read')
   })
 
+  it('a log that cannot be read is not an empty history: the read fails, nothing is journaled over it, and it is read again when it can be', async () => {
+    const j = journal()
+    for (let i = 0; i < 3; i++) await j.history.begin('t1', start()).end(end({ read: 'Read 3 changes', text: `read ${i + 1}` }))
+    await j.history.close()
+    const log = join(j.dir('t1'), 'log.jsonl')
+    const bytes = readFileSync(log)
+    // the log's place holds something that cannot be read as a file: an error that is not "no such file"
+    rmSync(log)
+    mkdirSync(log)
+    const lines: string[] = []
+    const again = journal({ root: j.root, log: (line) => lines.push(line) })
+    await expect(again.history.read(['t1'])).rejects.toThrow('could not be read')
+    await expect(again.history.step('t1', 1)).rejects.toThrow('could not be read')
+    // a call made meanwhile answers as ever and journals nothing: it must not become call 1 over the thread's first
+    const lost = again.history.begin('t1', start())
+    expect(await lost.n()).toBeNull()
+    await lost.end(end({ read: 'Read 1 change', text: 'never kept' }))
+    expect(readFileSync(join(j.dir('t1'), 'steps', '1.txt'), 'utf8')).toBe('read 1')
+    expect(lines.some((l) => l.includes('a write failed'))).toBe(true)
+    // the log can be read again: the history is whole, and the next call goes on from its numbers
+    rmSync(log, { recursive: true })
+    writeFileSync(log, bytes)
+    const read = (await again.history.read(['t1']))[0]
+    expect(read.calls.map((c) => c.n)).toEqual([1, 2, 3])
+    const next = again.history.begin('t1', start())
+    expect(await next.n()).toBe(4)
+    expect((await again.history.step('t1', 1)).text).toBe('read 1')
+    // a key with no folder at all is still simply no history
+    expect(await again.history.read(['nobody'])).toEqual([{ key: 'nobody', born: 0, calls: [], more: false }])
+  })
+
   it('a kept file that cannot be read just now is not said gone: the read fails and may be asked again; one that is gone is gone', async () => {
     const j = journal()
     const entry = j.history.begin('t1', start())

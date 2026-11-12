@@ -416,13 +416,25 @@ export interface SettleInput {
   abort?: string
   /** computer_apps: what the launch did */
   launched?: AppsOutcome
-  /** the steps the person chose Skip for on the Run-now card */
-  skipped?: readonly number[]
+  /** why the tier gate refused a step, by the step's index (scheduleRules.ts `SESSION_REFUSALS`) */
+  gate?: Readonly<Record<number, string>>
 }
 
 /** How a step that was waiting (for the Mac, for the clipboard) or running answers when its call is aborted. */
 const ABORTED_AS: ReadonlySet<ComputerError['kind']> = new Set<ComputerError['kind']>(['cancelled', 'needs_tier', 'clipboard_busy'])
 const isTextStep = (a: ComputerAction): boolean => a.action === 'type' || a.action === 'paste' || a.action === 'set_value' || a.action === 'select_text'
+
+/** Why the tier gate would not run a step, where that is a fact about the Mac. */
+const GATE_WHY: Readonly<Record<string, string>> = {
+  'screen-locked': 'The screen was locked',
+  asleep: 'The Mac was asleep'
+}
+
+/** How a step the gate refused ended, from the gate's own reason; null where the step's error says it as well. */
+function gateEnd(reason: string | undefined): Pick<ComputerHistoryStep, 'state' | 'reason'> | null {
+  if (reason === 'skipped' || reason === 'skipped-earlier') return { state: 'stopped', reason: COMPUTER_SKIPPED_WORDS }
+  return reason && GATE_WHY[reason] ? { state: 'failed', reason: GATE_WHY[reason] } : null
+}
 
 /** The refusals that are the person's own doing or the thread's: a stop, not a failure, so never the red. */
 const STOPPED_REFUSALS: ReadonlySet<HostErrorKind> = new Set<HostErrorKind>(['stopped', 'paused', 'cancelled', 'denied', 'away'])
@@ -476,12 +488,19 @@ export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
       // which a step still held for the Mac or the clipboard answers as the hold's own refusal
       if (r.error.kind === 'interrupted') return { ...base, ...passwordTarget(r.error.focused), state: 'stopped', reason: COMPUTER_FAILURE_WORDS.interrupted }
       if (s.abort && ABORTED_AS.has(r.error.kind)) return { ...base, state: 'stopped', reason: COMPUTER_ABORT_WORDS[s.abort] ?? COMPUTER_REFUSAL_WORDS.cancelled }
-      // Skip on the Run-now card is the person's own no
-      if (s.skipped?.includes(k)) return { ...base, state: 'stopped', reason: COMPUTER_SKIPPED_WORDS }
+      // a step the gate refused says why the gate did: Skip is the person's own no, a locked screen is a locked screen
+      const gated = gateEnd(s.gate?.[k])
+      if (gated) return { ...base, ...gated }
       return { ...base, ...passwordTarget(r.error.focused), state: 'failed', reason: failureWords(r.error, { app: s.ctx.app || undefined, action: a, step: true }) }
     }
     // nothing answered for this step: the call's own end is said once, on the first of them. A refusal or a failed
     // request is the call's end only when no step ran; a stop ends it wherever it was
+    // (a step the gate refused before anything of it ran, the browser tab's hold, says the gate's own reason)
+    const gated = !ended && !s.abort ? gateEnd(s.gate?.[k]) : null
+    if (gated) {
+      ended = true
+      return { ...base, ...gated }
+    }
     if (!ended && end && (!ran || s.abort)) {
       ended = true
       return { ...base, ...end }

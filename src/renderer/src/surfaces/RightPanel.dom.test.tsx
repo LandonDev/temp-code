@@ -36,6 +36,22 @@ vi.mock("./threads/fleet/FleetPanel", () => ({
 }));
 vi.mock("./threads/ActivitySection", () => ({ ActivitySection: (p: { threadId: string }) => <div data-testid="activity-body" data-thread={p.threadId}>activity</div> }));
 vi.mock("./threads/NotesPanel", () => ({ NotesBody: () => <div data-testid="notes-body">notes</div> }));
+// The Computer section's chunk, as a body that says which thread it is for and counts its mounts.
+const computerMounts: string[] = [];
+vi.mock("./threads/computer", async () => {
+  const { useEffect } = await import("react");
+  return {
+    ComputerSection: ({ threadId }: { threadId: string }) => {
+      // once per mount, whatever the thread: a body that merely got a new id says nothing here
+      useEffect(() => {
+        computerMounts.push("mounted");
+        return () => void computerMounts.push("unmounted");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
+      return <div data-testid="computer-body">{threadId}</div>;
+    },
+  };
+});
 vi.mock("../chrome/rail/ChangesPanel", () => ({ ChangesPanel: () => <div data-testid="changes-body">changes</div> }));
 vi.mock("../chrome/rail/BuildPanel", () => ({ BuildPanel: () => <div>build</div> }));
 vi.mock("../chrome/rail/DebugPanel", () => ({ default: () => <div>debug</div> }));
@@ -223,6 +239,20 @@ describe("RightPanel", () => {
     state.computer = { exists: true, live: true };
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     expect(rightPanel.get("s1").section).toBeNull();
+  });
+
+  it("the Computer section starts afresh for another thread in the same pane: its pin, scroll and landing are the thread's", async () => {
+    state.computer = { exists: true, live: true };
+    rightPanel.open("s1");
+    computerMounts.length = 0;
+    const view = render(<RightPanel session={session} paneId="s1" onOpenFile={noop} onOpenDiff={noop} />);
+    expect((await screen.findByTestId("computer-body")).textContent).toBe("s1");
+    // the pane moves to another thread (a master's board, child to child): the same panel, a new section
+    const other = { ...session, id: "s2" } as Session;
+    view.rerender(<RightPanel session={other} paneId="s1" onOpenFile={noop} onOpenDiff={noop} />);
+    expect((await screen.findByTestId("computer-body")).textContent).toBe("s2");
+    // remounted, not merely given a new id
+    expect(computerMounts).toEqual(["mounted", "unmounted", "mounted"]);
   });
 
   it("no Computer section for a thread that never used the Mac", () => {

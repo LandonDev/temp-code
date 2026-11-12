@@ -342,7 +342,9 @@ function SectionBody({
         />
       );
     case "computer":
-      return <ComputerSection threadId={session.id} />;
+      // keyed by the thread: a pane that moves to another thread (a master's board, child to child) starts the
+      // section afresh, so nothing of the last thread's pin, scroll or landing carries over
+      return <ComputerSection key={session.id} threadId={session.id} />;
     case "notes":
       return <NotesBody session={session} />;
     case "changes":

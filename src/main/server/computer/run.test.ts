@@ -1052,6 +1052,18 @@ describe('web content (§25)', () => {
     expect(count(h, 'action.run')).toBe(1)
   })
 
+  it('the journal says a refused tab switch as what it was: Skip is the person’s own no, a locked screen is a locked screen', async () => {
+    for (const [reason, state, words] of [['skipped', 'stopped', 'You chose Skip'], ['screen-locked', 'failed', 'The screen was locked'], ['asleep', 'failed', 'The Mac was asleep']] as const) {
+      const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: false, reason, message: 'the gate refused this tab switch' }), run: (c, send) => send(c.tiers) }
+      const h = make({ gate, env: { FAKE_WEB_ACTIVE: '1' }, history: { pictures: () => false } })
+      // the tool's answer is as it was
+      expect(await h.run('computer_act', { app: 'Webby', window: 'Web report', action: 'key', text: 'Tab' })).toMatchObject({ isError: true, body: 'the gate refused this tab switch' })
+      await h.sessions.drained('t1')
+      const call = (await h.history!.read(['t1']))[0].calls.at(-1)!
+      expect(call.steps.map((s) => [s.verb, s.state, s.reason]), reason).toEqual([['Press', state, words]])
+    }
+  })
+
   it('a lost gate admission never sends tabs any', async () => {
     const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers.filter((tier) => tier !== 'session')) }
     const h = make({ gate, env: { FAKE_WEB_ACTIVE: '1' } })
