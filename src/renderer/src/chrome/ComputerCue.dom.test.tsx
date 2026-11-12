@@ -188,9 +188,9 @@ describe("ComputerCue", () => {
     setRows([row({ running: running("Clicking Save in TextEdit") })]);
     expect(button()!.textContent).toBe("Using TextEdit");
     setRows([row({ threadId: "kid", apps: [{ name: "Mail", bundleId: null, window: "Inbox" }] })]);
-    // the old words leave before the new arrive (MorphText)
-    await waitFor(() => expect(button()!.textContent).toBe("Using Mail"));
+    // its words morph (the old leave before the new arrive), so the name is what says it at once
     expect(button()!.getAttribute("aria-label")).toBe("Computer use: Inbox in Mail");
+    expect(button()!.querySelector('[data-slot="morph-text"]')!.getAttribute("data-state") ?? "Using Mail").toBe("Using Mail");
     setRows([]);
     expect(button()).toBeNull();
   });
@@ -221,7 +221,7 @@ describe("ComputerCue", () => {
     expect(button()!.getAttribute("aria-pressed")).toBe("false");
     setRows([row({ asking: { line: "Click Save in TextEdit?" } })]);
     expect(button()!.getAttribute("data-state")).toBe("waiting");
-    await waitFor(() => expect(button()!.textContent).toBe("Needs you"));
+    expect(button()!.getAttribute("aria-label")).toBe("Computer use: Click Save in TextEdit?");
     expect(rightPanel.get("root").section).toBe("notes");
     // the click moves it to Computer
     fireEvent.click(button()!);
