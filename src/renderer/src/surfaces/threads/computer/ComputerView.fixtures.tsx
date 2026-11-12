@@ -369,7 +369,8 @@ const fixtures: ComputerFixture[] = [
   },
   {
     name: "18b. The preview stopped with no step kept: the line alone, with Retry; two sessions",
-    props: base({ sessions: [live, { id: "local:sub1", label: "Inbox in Mail" }], viewport: { face: null, label: "", line: <ViewportLine words="The preview stopped" onRetry={noop} /> }, running: [working("Reading", "TextEdit")] }),
+    // the followed session is the last row, right above the line
+    props: base({ sessions: [{ id: "local:sub1", label: "Inbox in Mail" }, live], viewport: { face: null, label: "", line: <ViewportLine words="The preview stopped" onRetry={noop} /> }, running: [working("Reading", "TextEdit")] }),
   },
   {
     name: "19. A batch's first step pinned: the call's picture, After all 3 steps",
@@ -404,7 +405,8 @@ const fixtures: ComputerFixture[] = [
   {
     name: "22. Two live sessions in one tree: the one the viewport follows right above the box, each with its own Stop",
     props: base({
-      sessions: [{ id: "local:sub1", label: "Computer fixture form in Google Chrome" }, live],
+      sessions: [live, { id: "local:sub1", label: "Computer fixture form in Google Chrome" }],
+      followedId: "local:sub1",
       viewport: liveBox("chrome", "form", CHROME, { label: "Live view of Computer fixture form in Google Chrome" }),
       running: [
         { id: "running:local:sub1", state: "working", verb: "Typing", object: "into Name in Google Chrome" },
