@@ -504,6 +504,19 @@ describe('settledSteps', () => {
     expect(settledSteps({ tool: 'computer_apps', args: {}, ctx: { app: '' } })[0]).toMatchObject({ verb: 'Listed', object: 'apps', state: 'ok' })
   })
 
+  it('a launch the service answered stays done when the list after it fails: only the list is lost', () => {
+    const gone = { refused: { kind: 'service_restarted' as const, line: 'x' }, threw: true }
+    expect(settledSteps({ tool: 'computer_apps', args: { launch: 'TextEdit' }, ctx: { app: '' }, launched: { launched: true, opened: false }, ...gone })).toEqual([
+      { kind: 'app', verb: 'Launched', object: 'TextEdit', inApp: 'TextEdit', state: 'ok', facts: ['the list of apps could not be read after it'] }
+    ])
+    const opened = settledSteps({ tool: 'computer_apps', args: { launch: 'Preview', open: ['/tmp/report.pdf'] }, ctx: { app: '' }, launched: { launched: false, opened: true }, ...gone })
+    expect(opened[0]).toMatchObject({ verb: 'Opened', object: 'report.pdf in Preview', state: 'ok', facts: ['the list of apps could not be read after it'] })
+    // an app that was already running and nothing opened: the call did nothing it can be said to have done
+    expect(settledSteps({ tool: 'computer_apps', args: { launch: 'TextEdit' }, ctx: { app: '' }, launched: { launched: false, opened: false }, ...gone })[0]).toMatchObject({ verb: 'Launch', state: 'failed', reason: 'The computer service restarted' })
+    // the launch itself refused: as asked
+    expect(settledSteps({ tool: 'computer_apps', args: { launch: 'TextEdit' }, ctx: { app: '' }, ...gone })[0]).toMatchObject({ verb: 'Launch', state: 'failed' })
+  })
+
   it('a named step takes its resolved element for its target', () => {
     const args = { app: 'TextEdit', action: 'left_click', named: 'Save' }
     const steps = settledSteps({ tool: 'computer_act', args, ctx, planned: plannedSteps('computer_act', args, ctx), results: [ok('left_click', { resolved: 44, element: { index: 44, line: 'button "Save"' } })] })

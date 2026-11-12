@@ -821,12 +821,17 @@ async function runApps(
   const launch = typeof args.launch === 'string' ? args.launch : null
   const open = openOf(args)
   const r = launch ? await call('apps.launch', { app: launch, ...(open.length ? { open } : {}), session, refuse: [...REFUSED_LAUNCH_BUNDLES] }) : null
+  // the launch is the journal's from its answer: a list that fails after it does not unsay it
+  if (r) note.launched = { launched: r.launched, opened: open.length > 0 }
   const { apps } = await call('apps.list', { windows: true })
   t.listedApps = apps
   const app = r ? apps.find((a) => a.pid === r.pid) : undefined
   const offLimits = r ? refusedTarget(app ?? { pid: r.pid, bundleId: null }, open.length ? 'act' : 'read') : null
-  if (offLimits) return refusalOf(offLimits)
-  if (r) note.launched = { launched: r.launched, opened: open.length > 0 }
+  if (offLimits) {
+    // refused as a target: the call's end is the refusal, as it was asked
+    delete note.launched
+    return refusalOf(offLimits)
+  }
   const launched: LaunchReport | undefined =
     r && launch
       ? {

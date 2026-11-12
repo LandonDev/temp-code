@@ -449,6 +449,9 @@ function callEnd(s: SettleInput): Pick<ComputerHistoryStep, 'state' | 'reason'> 
   return null
 }
 
+/** The fact on a launch whose call ended before the apps were listed. */
+const APPS_UNLISTED = 'the list of apps could not be read after it'
+
 /**
  * The call's steps as they ended, one per action: `ok` in the past tense
  * with its tier and facts; `failed` with why, `stopped` or `not-run` as what
@@ -458,6 +461,8 @@ function callEnd(s: SettleInput): Pick<ComputerHistoryStep, 'state' | 'reason'> 
 export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
   const end = callEnd(s)
   if (s.tool !== 'computer_act' && s.tool !== 'computer_batch') {
+    // a launch or an open the service answered happened, whatever the list after it did: only the list is lost
+    if (end && s.tool === 'computer_apps' && (s.launched?.launched || s.launched?.opened)) return [{ ...wholeStep(s.tool, s.args, s.ctx, 'done', s.launched), state: 'ok', facts: [APPS_UNLISTED] }]
     const step = wholeStep(s.tool, s.args, s.ctx, end ? 'asked' : 'done', s.launched)
     const w = s.tool === 'computer_observe' ? waitFact(s.waited) : null
     return [{ ...step, ...(end ?? { state: 'ok' as const }), ...(!end && w ? { facts: [w] } : {}) }]

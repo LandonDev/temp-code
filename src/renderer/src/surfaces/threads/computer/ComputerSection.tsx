@@ -194,9 +194,10 @@ export function viewportOf(v: {
   }
   if (here.picture) {
     const url = here.picture.url;
-    // one picture per call: a batch's earlier step shows the window after every step that ran, and says so
+    // one picture per call: a batch's earlier step, or one that never ran, shows the window after every step that
+    // ran, and says so
     const after =
-      pinned && call.steps.length > 1 && shown.index < call.steps.length - 1 ? (
+      pinned && call.steps.length > 1 && (shown.index < call.steps.length - 1 || shown.step.state === "not-run") ? (
         <ViewportLine words={call.steps.every((step) => step.state === "ok") ? `After all ${call.steps.length} steps` : "After the steps that ran"} />
       ) : null;
     return { ...base, size: { width: here.picture.width, height: here.picture.height }, face: { kind: "picture", src: url, onOpen: (from) => v.onOpen(label, url, from) }, line: endedLine(stoodIn) ?? after ?? asIt };

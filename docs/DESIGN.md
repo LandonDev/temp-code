@@ -525,10 +525,10 @@ Mac or a held step (`ComputerLines`).
 #### The Computer section
 
 A column on the panel's 12px inset with no card, border or header bar of
-its own. The session rows and the viewport do not scroll; the step list
-under them is the section's scroller, and it keeps a 64px floor: with
-more live sessions than a short pane holds, the rows and the box give
-way and scroll above it, so no Stop and no step is out of reach.
+its own. The step list is the section's scroller and keeps a 64px
+floor; only when more live sessions stand than a short pane holds do
+the session rows and the box scroll, above it, so no Stop and no step
+is out of reach.
 
 - **A session row** (36px, one per live session, none once the turn
   settles): the `SquareMousePointer` glyph, the window in its app,
@@ -554,7 +554,7 @@ way and scroll above it, so no Stop and no step is out of reach.
   kept"), so stepping through rows moves nothing. One 12px muted line
   sits 4px under the box only when it has something to say: why a preview
   ended; "After all 3 steps" (or "After the steps that ran") for a
-  batch's earlier step; "As it was after this step" for a step pinned
+  batch's earlier step, or one that never ran; "As it was after this step" for a step pinned
   while a session is live; "As it was at 2:03 PM" where the newest step
   kept nothing and an older picture of its session stands in (another
   window's is named: "Inbox in Mail, as it was at 2:03 PM"); and
@@ -608,8 +608,9 @@ way and scroll above it, so no Stop and no step is out of reach.
   picture and the stream stops. The list is one tab stop: ↑ newer, ↓
   older, Home the live end, End the oldest loaded. Rows that land above a
   pinned row do not move it. Following, a list at its top stays there as
-  steps land; one the person scrolled keeps its place, and so does a page
-  of earlier steps they asked for.
+  steps land (where the list's own reveal of a failed step left it
+  counts as its top: the next call is followed); one the person scrolled
+  keeps its place, and so does a page of earlier steps they asked for.
 - **Loading and failure**: skeleton rows in the rows' shape while the
   first read is out; one red line, "Couldn't read the steps", with Retry,
   above whatever steps are there.
@@ -850,7 +851,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 | The Computer section's viewport arriving | fades in over `--dur-fast` (`FADE_IN`, `@starting-style`, on its wrapper, which stays through every change of face: a pin, Go live and a step by key fade nothing) | at once | the same fade |
 | A frame, or a kept picture, replacing another in the viewport | none: the old picture stays until the new one has decoded, and dims to 40% over `--dur-fast` only when that takes more than 150 ms | — | the same |
-| A step landing at the top of the Computer section while it follows; a batch settling into its steps | `.step-land` (fade and rise 4px, `--dur-base`), `--stagger-step` apart; never at mount, for the first read's rows, for a page of earlier steps, while a row is pinned or on a key | — | none (the class's own rule) |
+| A step landing at the top of the Computer section while it follows; a batch settling into its steps | `.step-land` (fade and rise 4px, `--dur-base`), `--stagger-step` apart; never at mount, for the first read's rows, for a page of earlier steps, while a row is pinned or on a key; the class is the landing commit's own, gone at the next landing, so a group that moves in the list never plays it again | — | none (the class's own rule) |
 | A row chosen in the Computer section, its facts opening, the running row's words changing | none | none | none |
 | A step's read text opening | `Collapsible` (`--dur-slow` open, `--dur-base` close) | the same | opacity |
 | The computer cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`FADE_IN`); its words morph (`MorphText`) | at once | the fade |

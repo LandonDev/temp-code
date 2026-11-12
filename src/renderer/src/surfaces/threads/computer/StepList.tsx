@@ -462,10 +462,9 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
   if (fresh.length > 0 || landed.size > ids.length) {
     const firstHeld = ids.findIndex((id) => landed.has(id));
     const next = new Map<string, number>();
-    for (const id of ids) {
-      const place = landed.get(id);
-      if (place !== undefined) next.set(id, place);
-    }
+    // the landing is the commit's own: a row that landed before is only there now, so a group that moves in the
+    // list (two sessions taking turns) never plays its rows' landing again
+    for (const id of ids) if (landed.has(id)) next.set(id, -1);
     const atTop = fresh.filter((id) => firstHeld < 0 || ids.indexOf(id) < firstHeld);
     // newest first on screen: the first of a batch is its last row, so the batch lands in the order it ran
     atTop.reverse().forEach((id, i) => next.set(id, pinned || !armed ? -1 : Math.min(i, STAGGER.max)));
@@ -491,12 +490,15 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
   // Following, a list at its top stays there as steps land: the live end. One the person scrolled keeps its place
   // (so does a page of earlier steps they asked for); following again, by Go live or Home, goes back to the top.
   const atTop = useRef(true);
+  /** where the list's own reveal of the open row left it: being there is still following, not the person's scroll */
+  const revealed = useRef<number | null>(null);
   const wasPinned = useRef(pinned);
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && !pinned && (wasPinned.current || atTop.current)) {
       el.scrollTop = 0;
       atTop.current = true;
+      revealed.current = null;
     }
     wasPinned.current = pinned;
   }, [idsKey, pinned]);
@@ -508,6 +510,9 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
     if (!el || pinned || !openId || openId === ids[0] || !atTop.current) return;
     const row = el.querySelector<HTMLElement>(`[data-step="${quoted(openId)}"]`);
     row?.scrollIntoView?.({ block: "nearest" });
+    // its scroll event, now or a frame later, finds the list where the reveal left it
+    revealed.current = el.scrollTop;
+    atTop.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId, pinned]);
 
@@ -522,7 +527,9 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
       data-slot="computer-steps"
       onKeyDown={onKeyDown}
       onScroll={(e) => {
-        atTop.current = e.currentTarget.scrollTop <= AT_TOP;
+        const top = e.currentTarget.scrollTop;
+        atTop.current = top <= AT_TOP || top === revealed.current;
+        if (!atTop.current) revealed.current = null;
       }}
       className="relative min-h-16 flex-1 overflow-x-hidden overflow-y-auto px-1 pb-3"
     >

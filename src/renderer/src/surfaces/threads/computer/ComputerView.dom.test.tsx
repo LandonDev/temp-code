@@ -804,6 +804,10 @@ describe("pinning", () => {
     fireEvent.click(rowButton("t1:2:0"));
     await flush();
     expect(lineUnder()).toBe("After the steps that ran");
+    // the call's last step never ran: the picture is not "after this step" either
+    fireEvent.click(rowButton("t1:2:2"));
+    await flush();
+    expect(lineUnder()).toBe("After the steps that ran");
   });
 
   it("a pinned picture with nothing live needs no line: its row says its time", async () => {
@@ -1453,6 +1457,8 @@ describe("loading, failing and older steps", () => {
     view.again(data([call(1), call(2), call(3), call(4)], [entry()]));
     await flush();
     expect(stepList().scrollTop).toBe(120);
+    // the landing is one commit's: the row that landed before is only there now, so nothing can play it again
+    expect(rows().filter((r) => r.classList.contains("step-land")).map(words)).toEqual(["ClickedStep 4"]);
     // back at the top it follows again
     stepList().scrollTop = 0;
     fireEvent.scroll(stepList());
@@ -1460,6 +1466,37 @@ describe("loading, failing and older steps", () => {
     view.again(data([call(1), call(2), call(3), call(4), call(5)], [entry()]));
     await flush();
     expect(stepList().scrollTop).toBe(0);
+  });
+
+  it("the list's own reveal of a failed step is not the person's scroll: the next call is followed", async () => {
+    h.preview.state = live();
+    // the reveal scrolls the list, as a browser does, and the scroll event follows
+    Element.prototype.scrollIntoView = function (this: Element) {
+      stepList().scrollTop = 200;
+      fireEvent.scroll(stepList());
+    };
+    const batch = call(2, {
+      steps: [step("Clicked", "To"), step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), ...Array.from({ length: 6 }, () => step("Press", "Tab", { kind: "key", state: "not-run", tier: undefined }))],
+    });
+    const view = mount(data([call(1), batch], [entry()]));
+    await flush();
+    expect(openRow()!.getAttribute("data-step")).toBe("t1:2:1");
+    expect(stepList().scrollTop).toBe(200);
+    // the model goes on: its next step lands at the live end, and the list is there to show it
+    view.again(data([call(1), batch, call(3)], [entry()]));
+    await flush();
+    expect(stepList().scrollTop).toBe(0);
+    expect(openRow()!.getAttribute("data-step")).toBe("t1:3:0");
+    // a scroll of the person's own from where the reveal left the list is theirs
+    view.again(data([call(1), batch, call(3), { ...batch, n: 4 }], [entry()]));
+    await flush();
+    expect(stepList().scrollTop).toBe(200);
+    stepList().scrollTop = 260;
+    fireEvent.scroll(stepList());
+    view.again(data([call(1), batch, call(3), { ...batch, n: 4 }, call(5)], [entry()]));
+    await flush();
+    expect(stepList().scrollTop).toBe(260);
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 
   it("a pinned row whose history went is no pin: a later call with its number is not chosen for the person", async () => {

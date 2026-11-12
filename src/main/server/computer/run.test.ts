@@ -1806,6 +1806,15 @@ describe('the journal (history.ts): one start and one end per call', () => {
     expect((await calls(h)).map((c) => `${c.steps[0].verb} ${c.steps[0].object}`)).toEqual(['Launched Preview', 'Listed apps', 'Opened report.pdf in Preview'])
   })
 
+  it('a launch the service answered stays in the journal when the list after it fails', async () => {
+    const h = make({ history: { pictures: () => false } })
+    const send = h.service.request.bind(h.service) as (...a: unknown[]) => Promise<unknown>
+    h.service.request = ((method: string, ...rest: unknown[]) =>
+      method === 'apps.list' ? Promise.reject(new ComputerHostError('service_restarted')) : send(method, ...rest)) as typeof h.service.request
+    expect((await h.run('computer_apps', { launch: 'Preview' })).isError).toBe(true)
+    expect((await calls(h)).at(-1)!.steps).toMatchObject([{ verb: 'Launched', object: 'Preview', state: 'ok', facts: ['the list of apps could not be read after it'] }])
+  })
+
   it("the row carries asking while this host's card waits, and not after", async () => {
     const h = make({ history: { pictures: () => false } })
     h.set('t1', { permission: 'safe' })
