@@ -41,8 +41,8 @@ export const ENDED_WORDS: Record<ComputerPreviewEndReason, string> = {
   error: "The preview stopped",
 };
 /**
- * The ends the person can retry; the rest name what to do instead. A minimized window is one: nothing tells the
- * host when it is restored, so once the person has done what the line says, Retry is how the picture comes back.
+ * The ends the person can retry; the rest name what to do instead. A minimized window is one: the host starts the
+ * stream again when the service says the window was restored, and Retry is there for a restore it did not hear.
  */
 export const RETRY_ENDS: ReadonlySet<ComputerPreviewEndReason> = new Set(["restarted", "error", "minimized"]);
 

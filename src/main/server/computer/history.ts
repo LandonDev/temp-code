@@ -124,6 +124,8 @@ interface KeyState {
   newTurn: boolean
   /** calls running in this process */
   open: Set<number>
+  /** calls begun whose start is still queued: a prune that read the disk meanwhile must see them (`open` has them only once the start ran) */
+  starting: number
   /** the names under steps/ */
   files: Set<string>
   made: boolean
@@ -283,6 +285,9 @@ export class ComputerHistory {
     const at = this.now()
     const masked = start.masked ?? []
     let n: number | null = null
+    // reserved at once, not when the queue reaches it: a prune already at work in this key's order leaves it be
+    // (given back below, once the start has run and the call is in `open`, or was dropped)
+    state.starting += 1
     const started = this.run(state, async () => {
       const fresh = start.token !== undefined ? start.token !== state.token : state.newTurn
       state.newTurn = false
@@ -311,6 +316,7 @@ export class ComputerHistory {
       // a thread that drives the Mac for days in one host run keeps its bound too
       if (state.calls.size > HISTORY_KEEP_LINES + HISTORY_COMPACT_SLACK) await this.compact(state, await this.records(state), true)
     })
+    void started.then(() => void (state.starting -= 1))
     return {
       n: () => started.then(() => n),
       end: (end) =>
@@ -471,7 +477,9 @@ export class ComputerHistory {
       // written its start by now, and its history stays.
       let gone = false
       await this.run(state, async () => {
-        if (state.open.size || !(await old(dir))) return
+        if (state.open.size || state.starting || !(await old(dir))) return
+        // a call begun while the disk was read is queued behind this job: its start is reserved, and it stays
+        if (state.starting) return
         state.dead = true
         if (this.states.get(state.key) === state) this.states.delete(state.key)
         await rm(dir, { recursive: true, force: true })
@@ -516,6 +524,7 @@ export class ComputerHistory {
       token: undefined,
       newTurn: true,
       open: new Set(),
+      starting: 0,
       files: new Set(),
       made: false,
       torn: false,
@@ -539,7 +548,10 @@ export class ComputerHistory {
 
   /** A sweep's work in a folder no state is loaded for: a first load of that folder waits for it (`stateOf`). */
   private swept(dir: string, job: () => Promise<unknown>): Promise<void> {
-    const done: Promise<void> = job()
+    // after any sweep already at work there, so the mark a load waits for covers them all: a later sweep that ends
+    // first must not let a load in while an earlier one is still deleting
+    const done: Promise<void> = (this.sweeps.get(dir) ?? Promise.resolve())
+      .then(job)
       .then(
         () => undefined,
         (e) => void this.failed(e)

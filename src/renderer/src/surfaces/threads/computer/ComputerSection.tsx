@@ -76,7 +76,6 @@ export function followedSession(entries: readonly ComputerEntry[], held: string 
 const windowIn = (call: Pick<ComputerHistoryCall, "app" | "window">): string => (call.window ? `${call.window} in ${call.app}` : call.app || "the Mac");
 /** When a call's kept picture was taken (after its answer), else when the call ended. */
 const shownAt = (call: ComputerHistoryCall): number => (call.picture && !("none" in call.picture) ? call.picture.at : (call.endedAt ?? call.at));
-/** What a kept face is, as its accessible name: "Untitled in TextEdit at 2:04 PM". */
 /** A time in the line under the box: its "PM" stays on the time's line where a narrow panel wraps the sentence. */
 const lineTime = (ts: number): string => dayTime(ts).replace(/ (?=[AP]M$)/, "\u00a0");
 /**
@@ -85,6 +84,7 @@ const lineTime = (ts: number): string => dayTime(ts).replace(/ (?=[AP]M$)/, "\u0
  */
 const liveName = (entry: ComputerEntry, state: PreviewState | undefined): string =>
   state?.status === "live" && state.app ? (state.window ? `${state.window} in ${state.app}` : state.app) : computerLabel(entry);
+/** What a kept face is, as its accessible name: "Untitled in TextEdit at 2:04 PM". */
 const keptLabel = (call: ComputerHistoryCall): string => `${windowIn(call)} at ${dayTime(shownAt(call))}`;
 /**
  * A step's media as the section asks for it. Its id carries the history's

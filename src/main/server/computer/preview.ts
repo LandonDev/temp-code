@@ -258,6 +258,14 @@ export class ComputerPreviews {
     return s.queue
   }
   private notification(n: ComputerNotification): void {
+    // A window that was minimized when its stream started is restored: the service says so for every app a session
+    // has read, and the watchers are still there under "The window is minimized".
+    if (n.method === 'window/changed') {
+      if (n.params.change !== 'restored') return
+      const target = `${n.params.pid}:${n.params.windowId}`
+      for (const s of this.streams.values()) if (s.ended === 'minimized' && s.answer.target === target) void this.restart(s)
+      return
+    }
     if (
       n.method !== 'capture/frame' &&
       n.method !== 'capture/click' &&

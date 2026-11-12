@@ -446,7 +446,9 @@ push goes out before any frame of the new stream: a frame the service
 sends before the new stream's start answers waits for it
 (`PreviewGate.hold`). The desktop draws another window by its own first
 frame alone: until then the skeleton, in the new shape, and a frame of
-the old window still decoding is dropped and acked. A preview that ended for want of
+the old window still decoding is dropped and acked. A preview that ended on a
+minimized window starts again when the service's `window/changed` says
+that window was restored. One that ended for want of
 Screen Recording starts again at the service's next epoch (the grant
 restarts it), for the watchers still reading the line that says to turn
 it on. A stream that ended while a start
@@ -634,8 +636,8 @@ path on a line a person reads at a glance.
     The box is the pane's width in the picture's shape, at most 400px or
     45% of the section's height. One line under it says why a preview
     ended (the window closed, Screen Recording is off, or it is minimized
-    or stopped, those two with Retry: nothing tells the host when a
-    window is restored); for a step of a batch that is not its last,
+    or stopped, those two with Retry; a minimized one starts again by
+    itself when the service says the window was restored); for a step of a batch that is not its last,
     or that never ran, "After all 3 steps", or "After the steps that ran"
     when the batch stopped part way (the journal keeps one picture a call); "As it was
     after this step" for a step pinned while a session is live, so a still
@@ -1451,7 +1453,7 @@ Left out of the journal by design (the transcript's tool row keeps the answer wh
 - **Never a picture** when Screen Recording is off (read from the service's state; the journal never prompts), when the switch is off, when the thread was stopped or ended, when the service's epoch has moved or the service is not up (the journal never opens a session or starts a service), or when the call had no closing read (`no-read`). A minimized window, a blank shot, a refusal or an error is a `none` record and nothing else.
 - **The switch.** `computer.history.pictures` (Settings → Computer use, "Keep pictures of the window", on by default; `ComputerSettings.keepPictures`). Off stops new pictures and deletes the kept ones; the lines and the read texts stay, and the row says so. A switch found off at boot deletes again, in case a quit cut the first delete short.
 - **The seam.** No picture under `TEMP_CODE_COMPUTER_HISTORY=0`, nor in an instance started with `TEMP_CODE_E2E_STATUS=1` unless `TEMP_CODE_COMPUTER_HISTORY=1`, so the gate's Mac rows send the service no new request. `scripts/lib/computerRig.ts` sets `=0` before it starts the real server.
-- **Sweeps keep a folder's order.** The daily prune and the pictures switch look a history's state up when they act, not before they read the disk, and work inside that key's write chain, checking again there (a call that started meanwhile has written its start: its history stays); a folder with no state loaded is swept under a mark a first load of it waits for (`swept`), so a history opened during a sweep is read as the sweep left it and its readers are told of every picture that went.
+- **Sweeps keep a folder's order.** The daily prune and the pictures switch look a history's state up when they act, not before they read the disk, and work inside that key's write chain, checking again there (a call that started meanwhile has written its start, and one that begins while the prune makes that last check has its start reserved the moment it begins, `starting`: its history stays); a folder with no state loaded is swept under a mark a first load of it waits for (`swept`), and a second sweep of that folder goes after the first, so a history opened during a sweep is read as the sweeps left it, never written into a folder being removed, and its readers are told of every picture that went.
 - **Limits.** The newest 400 calls of a key keep their picture and text. A log found past 2,000 calls when it is loaded is written again with its newest 2,000 (`HISTORY_KEEP_LINES`; beside itself, then swapped in; `born` moves, which tells a reader to drop what went), and one that passes the bound by 200 inside a host run is written again then too (`born` stays, so its readers keep their rows), so a thread that uses the computer for months never loads more. A reader's key with nothing on disk is not loaded at all. A history whose log has not been written for 30 days goes at boot and once a day. A Mac thread's history goes when the thread is removed (`registry.onRemoved`); an idle close keeps it. A box thread's history on the Mac goes by the 30 days alone. At 960px a picture of an ordinary window is about 30 to 80 KB.
 - **The wire** (`contract-computer.ts`, `historyRpc.ts`), all `local`, so this desktop's own socket alone:
   - `computer.history.read { keys (1 to 64), before? }` answers `{ sessions: [{ key, born, calls, more }] }`: each key's newest 200 calls, or with one key and `before` the 200 under that `n`. The socket then hears those keys until it closes. A host without computer use keeps no journal and answers each key with nothing, which is not a failure; the renderer marks a read failed only when the request fails on an open socket (one cut off by a dropped socket is read again when it opens), keeps what it holds when a thread's list of keys changes (a subagent joining the tree), and drops an answer asked for before a `gone` push. A step's kept media is asked for under its history's `born` as well as its number, so a history that begins again in one read (a host restart, a log written again) has its calls read anew, and a row pinned in the old one is let go.
