@@ -5,6 +5,7 @@ import type { HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap } from "../lib/threadStripModel";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { AgentsCue } from "./AgentsCue";
+import { ComputerCue } from "./ComputerCue";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ProjectPlanChip } from "./ProjectPlanChip";
 import {
@@ -26,7 +27,8 @@ import { useMasterIds } from "../lib/masterThread";
  * delete, the type and the options back to App by thread id. The end group
  * is the project plan's chip when there is one, the live-agents cue while a
  * subagent of the thread on screen is live (chrome/AgentsCue.tsx, its own
- * subscriber), then ⋯, then Panel. The home
+ * subscriber), the computer cue while a computer session this desktop can
+ * draw is live in its tree (chrome/ComputerCue.tsx), then ⋯, then Panel. The home
  * draws no strip: the thread on screen's title, then the same end group.
  */
 
@@ -151,6 +153,7 @@ export function ThreadHeader({
               {standIns}
               <ProjectPlanChip />
               <AgentsCue threadId={model.activeId} room={panelRoom} />
+              <ComputerCue threadId={model.activeId} room={panelRoom} />
               <ThreadMenu
                 host={activeChip ? host.host : null}
                 cost={cost}

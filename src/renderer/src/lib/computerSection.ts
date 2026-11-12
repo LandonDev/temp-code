@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { treeIds } from "./activity";
-import { hasHistory, historyKeys, useComputerHistory, type HistoryKey, type KeyHistory } from "./computerHistory";
+import { hasHistory, historyKeys, nowState, useComputerHistory, type HistoryKey, type KeyHistory } from "./computerHistory";
 import { previewContext, useComputerEntries, type ComputerEntry } from "./computerSessions";
 import { useSessionMeta, useSessionMetas } from "./tcserver/store";
 
@@ -41,4 +41,43 @@ export function useComputerSection(threadId: string): ComputerSectionData {
     () => ({ entries, keys, histories, exists: entries.length > 0 || hasHistory(histories), live: entries.length > 0 }),
     [entries, histories, keys],
   );
+}
+
+/** What the title bar's computer cue says (chrome/ComputerCue.tsx). */
+export interface ComputerCue {
+  /** the loudest of the live sessions: a card waits, a step is held, or it works */
+  state: "working" | "waiting" | "queued";
+  /** the cue's words: "Using TextEdit", "Needs you", "Waiting for the Mac" */
+  label: string;
+  /** the plain form, for its tooltip and name: "Computer use: Clicking Save in TextEdit" */
+  line: string;
+}
+
+const LOUDNESS = { waiting: 2, queued: 1, working: 0 } as const;
+
+/**
+ * The cue for the live sessions this desktop can draw; null with none. One
+ * that waits on the person leads, then one held in line, then the one that
+ * acted last. It reads the live rows alone, so it needs no panel mounted.
+ */
+export function computerCue(entries: readonly ComputerEntry[]): ComputerCue | null {
+  const live = drawable(entries);
+  if (!live.length) return null;
+  const loud = (e: ComputerEntry): number => LOUDNESS[nowState(e.row) ?? "working"];
+  const lead = live.reduce((best, e) => (loud(e) > loud(best) ? e : best));
+  const state = nowState(lead.row) ?? "working";
+  const app = lead.row.apps[0];
+  const using = app ? `Using ${app.name}` : "Using the Mac";
+  // what it does now in the host's words; between calls, the window it is in
+  const doing = lead.row.asking?.line ?? lead.row.running?.words ?? (app ? (app.window ? `${app.window} in ${app.name}` : app.name) : "Starting");
+  return { state, label: state === "waiting" ? "Needs you" : state === "queued" ? "Waiting for the Mac" : using, line: `Computer use: ${doing}` };
+}
+
+/** The cue for the thread a pane shows: its tree's live sessions, live. */
+export function useComputerCue(threadId: string | null): ComputerCue | null {
+  const meta = useSessionMeta(threadId ?? "");
+  const metas = useSessionMetas();
+  const tree = useMemo(() => (threadId ? treeIds(threadId, metas) : new Set<string>()), [metas, threadId]);
+  const entries = useComputerEntries(tree, threadId ? meta?.environmentId : undefined);
+  return useMemo(() => computerCue(entries), [entries]);
 }
