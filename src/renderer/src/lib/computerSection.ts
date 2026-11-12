@@ -1,8 +1,10 @@
 import { useMemo } from "react";
+import { useStore } from "zustand";
 import { treeIds } from "./activity";
 import { hasHistory, historyKeys, nowState, useComputerHistory, type HistoryKey, type KeyHistory } from "./computerHistory";
-import { previewContext, useComputerEntries, type ComputerEntry } from "./computerSessions";
-import { useSessionMeta, useSessionMetas } from "./tcserver/store";
+import { computerSessionsStore, previewContext, useComputerEntries, type ComputerEntry } from "./computerSessions";
+import { useSessionMeta, useSessionMetas, useSessionMetasWhen } from "./tcserver/store";
+import type { SessionMeta } from "./tcserver/types";
 
 /**
  * What the right panel's Computer section reads for a thread (docs/LAYOUT.md
@@ -28,17 +30,24 @@ export function drawable(entries: readonly ComputerEntry[]): ComputerEntry[] {
   return entries.filter((e) => e.previewable).sort((a, b) => b.row.lastCallAt - a.row.lastCallAt);
 }
 
+/** The ids of a thread's tree, the same set while the tree is the same: a push that moves no thread in or out changes nothing downstream. */
+function useTree(threadId: string | null, metas: readonly SessionMeta[]): ReadonlySet<string> {
+  const ids = threadId ? [...treeIds(threadId, metas)].join("\n") : "";
+  return useMemo(() => new Set(ids ? ids.split("\n") : []), [ids]);
+}
+
 export function useComputerSection(threadId: string): ComputerSectionData {
   const meta = useSessionMeta(threadId);
   const metas = useSessionMetas();
   const host = meta?.environmentId;
-  const tree = useMemo(() => treeIds(threadId, metas), [metas, threadId]);
+  const tree = useTree(threadId, metas);
   const all = useComputerEntries(tree, host);
   const entries = useMemo(() => drawable(all), [all]);
   const keys = useMemo(() => (host ? historyKeys(tree, host, previewContext()) : []), [host, tree]);
   const histories = useComputerHistory(keys);
   return useMemo(
-    () => ({ entries, keys, histories, exists: entries.length > 0 || hasHistory(histories), live: entries.length > 0 }),
+    // a read that failed keeps the section there, with its Retry: a failure is not an empty history
+    () => ({ entries, keys, histories, exists: entries.length > 0 || hasHistory(histories) || Object.values(histories).some((h) => h.status === "failed"), live: entries.length > 0 }),
     [entries, histories, keys],
   );
 }
@@ -76,8 +85,11 @@ export function computerCue(entries: readonly ComputerEntry[]): ComputerCue | nu
 /** The cue for the thread a pane shows: its tree's live sessions, live. */
 export function useComputerCue(threadId: string | null): ComputerCue | null {
   const meta = useSessionMeta(threadId ?? "");
-  const metas = useSessionMetas();
-  const tree = useMemo(() => (threadId ? treeIds(threadId, metas) : new Set<string>()), [metas, threadId]);
-  const entries = useComputerEntries(tree, threadId ? meta?.environmentId : undefined);
+  const host = threadId ? meta?.environmentId : undefined;
+  // The cue sits in every thread's title bar: it hears the metas only while its host has a live computer session.
+  const hostLive = useStore(computerSessionsStore, (s) => (host ? (s.byHost[host]?.length ?? 0) > 0 : false));
+  const metas = useSessionMetasWhen(hostLive);
+  const tree = useTree(threadId, metas);
+  const entries = useComputerEntries(tree, host);
   return useMemo(() => computerCue(entries), [entries]);
 }

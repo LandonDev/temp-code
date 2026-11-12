@@ -189,7 +189,7 @@ export function actionWords(action: ComputerAction, ctx: TitleContext): string {
     case 'set_value':
       return `set ${at} to ${textWords(action.value ?? '', action, ctx)}`
     case 'select_text':
-      return `select ${action.text !== undefined ? quoteShort(action.text) : `${action.range?.[0]}..${action.range?.[1]}`} in ${at}`
+      return `select ${action.text !== undefined ? textWords(action.text, action, ctx) : `${action.range?.[0]}..${action.range?.[1]}`} in ${at}`
     case 'perform':
       return `${action.name} ${at}`
     case 'screenshot':
@@ -303,6 +303,8 @@ export interface ComputerPhrase {
 export interface PhraseOptions {
   /** present tense while the call runs, past once it settled */
   live: boolean
+  /** the call did not run to a good end: its words are what was asked of it ("Click Save"), whatever `live` says */
+  asked?: boolean
   /** an element's book line (the host passes its book; the renderer has none while a call runs) */
   brief?: (index: number) => ElementBrief | null
   /** the settled result's text: its step lines name each element and its header the app */
@@ -320,7 +322,10 @@ export interface AppsOutcome {
 }
 
 type Named = { role: string; name: string | null } | null
-type Forms = readonly [live: string, settled: string]
+type Forms = readonly [live: string, settled: string, asked: string]
+/** Which of a verb's forms a row takes: 0 while it runs, 1 once it ran, 2 for a step that was asked and did not end well. */
+type Tense = 0 | 1 | 2
+const tenseOf = (opts: Pick<PhraseOptions, 'live' | 'asked'>): Tense => (opts.asked ? 2 : opts.live ? 0 : 1)
 
 /** Never words a person should not read on a collapsed row: a name that is a URL or a path reads as its role. */
 const LOOKS_LIKE_PATH = /:\/\/|^[/~]|^[A-Za-z]:\\/
@@ -343,11 +348,11 @@ function briefNamed(brief: ElementBrief | null): Named {
 }
 
 const CLICK_FORMS: Partial<Record<ComputerActionName, Forms>> = {
-  left_click: ['Clicking', 'Clicked'],
-  right_click: ['Right-clicking', 'Right-clicked'],
-  middle_click: ['Middle-clicking', 'Middle-clicked'],
-  double_click: ['Double-clicking', 'Double-clicked'],
-  triple_click: ['Triple-clicking', 'Triple-clicked']
+  left_click: ['Clicking', 'Clicked', 'Click'],
+  right_click: ['Right-clicking', 'Right-clicked', 'Right-click'],
+  middle_click: ['Middle-clicking', 'Middle-clicked', 'Middle-click'],
+  double_click: ['Double-clicking', 'Double-clicked', 'Double-click'],
+  triple_click: ['Triple-clicking', 'Triple-clicked', 'Triple-click']
 }
 
 const titleWords = (s: string): string => s.replace(/\b[a-z]/g, (c) => c.toUpperCase())
@@ -366,8 +371,8 @@ function targetNamed(a: StepInput): Named {
 }
 
 /** One action in words, with the element it names (already resolved) in the app; a null app is left out. */
-function stepPhrase(a: StepInput, element: Named, appName: string | null, live: boolean): ComputerPhrase {
-  const f = (forms: Forms): string => forms[live ? 0 : 1]
+function stepPhrase(a: StepInput, element: Named, appName: string | null, tense: Tense): ComputerPhrase {
+  const f = (forms: Forms): string => forms[tense]
   const who = elementWords(element)
   const app = appName ?? ''
   const inApp = appName === null ? '' : `in ${appName}`
@@ -377,41 +382,41 @@ function stepPhrase(a: StepInput, element: Named, appName: string | null, live: 
   if (click) return { verb: f(click), object: on(who) }
   switch (action) {
     case 'type':
-      return { verb: f(['Typing', 'Typed']), object: on(who && `into ${who}`) }
+      return { verb: f(['Typing', 'Typed', 'Type']), object: on(who && `into ${who}`) }
     case 'paste':
-      return { verb: f(['Pasting', 'Pasted']), object: on(who && `into ${who}`) }
+      return { verb: f(['Pasting', 'Pasted', 'Paste']), object: on(who && `into ${who}`) }
     case 'key':
-      return { verb: f(['Pressing', 'Pressed']), object: on(keyWords(a.text) ?? 'a key') }
+      return { verb: f(['Pressing', 'Pressed', 'Press']), object: on(keyWords(a.text) ?? 'a key') }
     case 'hold_key':
-      return { verb: f(['Holding', 'Held']), object: on(keyWords(a.text) ?? 'a key') }
+      return { verb: f(['Holding', 'Held', 'Hold']), object: on(keyWords(a.text) ?? 'a key') }
     case 'scroll':
-      return { verb: f(['Scrolling', 'Scrolled']), object: on(typeof a.scroll_direction === 'string' ? a.scroll_direction : null) }
+      return { verb: f(['Scrolling', 'Scrolled', 'Scroll']), object: on(typeof a.scroll_direction === 'string' ? a.scroll_direction : null) }
     case 'left_click_drag':
-      return { verb: f(['Dragging', 'Dragged']), object: on(null) }
+      return { verb: f(['Dragging', 'Dragged', 'Drag']), object: on(null) }
     case 'mouse_move':
-      return who ? { verb: f(['Pointing at', 'Pointed at']), object: on(who) } : { verb: f(['Moving', 'Moved']), object: on('the pointer') }
+      return who ? { verb: f(['Pointing at', 'Pointed at', 'Point at']), object: on(who) } : { verb: f(['Moving', 'Moved', 'Move']), object: on('the pointer') }
     case 'left_mouse_down':
-      return { verb: f(['Pressing', 'Pressed']), object: on('the mouse button') }
+      return { verb: f(['Pressing', 'Pressed', 'Press']), object: on('the mouse button') }
     case 'left_mouse_up':
-      return { verb: f(['Letting go of', 'Let go of']), object: on('the mouse button') }
+      return { verb: f(['Letting go of', 'Let go of', 'Let go of']), object: on('the mouse button') }
     case 'set_value':
-      return { verb: f(['Setting', 'Set']), object: on(who ?? 'a value') }
+      return { verb: f(['Setting', 'Set', 'Set']), object: on(who ?? 'a value') }
     case 'select_text':
-      return { verb: f(['Selecting', 'Selected']), object: on('text') }
+      return { verb: f(['Selecting', 'Selected', 'Select']), object: on('text') }
     case 'perform': {
       const what = keyWords(a.name)
-      return { verb: f(['Using', 'Used']), object: on([what && titleWords(what), who && `on ${who}`].filter(Boolean).join(' ') || null) }
+      return { verb: f(['Using', 'Used', 'Use']), object: on([what && titleWords(what), who && `on ${who}`].filter(Boolean).join(' ') || null) }
     }
     case 'screenshot':
-      return { verb: f(['Looking at', 'Looked at']), object: app }
+      return { verb: f(['Looking at', 'Looked at', 'Look at']), object: app }
     case 'zoom':
-      return { verb: f(['Zooming into', 'Zoomed into']), object: app }
+      return { verb: f(['Zooming into', 'Zoomed into', 'Zoom into']), object: app }
     case 'wait':
-      return { verb: f(['Waiting on', 'Waited on']), object: app }
+      return { verb: f(['Waiting on', 'Waited on', 'Wait on']), object: app }
     case 'cursor_position':
-      return { verb: f(['Finding', 'Found']), object: on('the pointer') }
+      return { verb: f(['Finding', 'Found', 'Find']), object: on('the pointer') }
     default:
-      return { verb: f(['Using', 'Used']), object: app }
+      return { verb: f(['Using', 'Used', 'Use']), object: app }
   }
 }
 
@@ -454,13 +459,15 @@ function appsOutcomeOf(result: string | undefined): AppsOutcome {
  * the service's to find.
  */
 function appsPhrase(i: Record<string, unknown>, opts: PhraseOptions): ComputerPhrase {
-  const f = (forms: Forms): string => forms[opts.live ? 0 : 1]
+  const f = (forms: Forms): string => forms[tenseOf(opts)]
   const launch = typeof i.launch === 'string' && i.launch.trim() ? launchName(i.launch) : null
   const open = Array.isArray(i.open) ? i.open.filter((o): o is string => typeof o === 'string') : []
-  const did = opts.live ? null : (opts.launched ?? appsOutcomeOf(opts.result))
-  if (launch && open.length && (opts.live || did?.opened)) return { verb: f(['Opening', 'Opened']), object: `${openWords(open)} in ${launch}` }
+  const did = opts.live || opts.asked ? null : (opts.launched ?? appsOutcomeOf(opts.result))
+  if (launch && open.length && (opts.live || opts.asked || did?.opened)) return { verb: f(['Opening', 'Opened', 'Open']), object: `${openWords(open)} in ${launch}` }
+  // what was asked of a bare launch is the launch, whether or not the app was already running
+  if (launch && opts.asked) return { verb: 'Launch', object: launch }
   if (launch && did?.launched) return { verb: 'Launched', object: launch }
-  return { verb: f(['Listing', 'Listed']), object: 'apps' }
+  return { verb: f(['Listing', 'Listed', 'List']), object: 'apps' }
 }
 
 const isAction = (a: unknown): a is StepInput & { action: ComputerActionName } =>
@@ -474,17 +481,18 @@ const isAction = (a: unknown): a is StepInput & { action: ComputerActionName } =
  */
 export function computerPhrase(tool: string, input: unknown, opts: PhraseOptions): ComputerPhrase | null {
   const live = opts.live
-  const f = (forms: Forms): string => forms[live ? 0 : 1]
+  const tense = tenseOf(opts)
+  const f = (forms: Forms): string => forms[tense]
   const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
   if (isComputerResult(tool))
-    return { verb: i.cancel === true ? f(['Cancelling', 'Cancelled']) : f(['Waiting for', 'Waited for']), object: 'the held call' }
+    return { verb: i.cancel === true ? f(['Cancelling', 'Cancelled', 'Cancel']) : f(['Waiting for', 'Waited for', 'Wait for']), object: 'the held call' }
   const of = computerToolOf(tool)
   if (!of) return null
   // null leaves the app out of every object (`app: false`)
   const app = opts.app === false ? null : ((!live ? resultApp(opts.result) : null) ?? opts.app ?? (typeof i.app === 'string' && i.app.trim() ? i.app.trim() : 'an app'))
   const inApp = app === null ? '' : `in ${app}`
   if (of.tool === 'computer_apps') return appsPhrase(i, opts)
-  if (of.tool === 'computer_observe') return { verb: f(['Reading', 'Read']), object: app ?? '' }
+  if (of.tool === 'computer_observe') return { verb: f(['Reading', 'Read', 'Read']), object: app ?? '' }
 
   const actions: (StepInput & { action: ComputerActionName })[] =
     of.tool === 'computer_batch'
@@ -492,7 +500,7 @@ export function computerPhrase(tool: string, input: unknown, opts: PhraseOptions
       : isAction({ ...i, action: of.action ?? i.action })
         ? [{ ...i, action: (of.action ?? i.action) as ComputerActionName }]
         : []
-  if (!actions.length) return of.tool === 'computer_batch' ? { verb: f(['Working', 'Worked']), object: inApp } : { verb: f(['Using', 'Used']), object: app ?? '' }
+  if (!actions.length) return of.tool === 'computer_batch' ? { verb: f(['Working', 'Worked', 'Work']), object: inApp } : { verb: f(['Using', 'Used', 'Use']), object: app ?? '' }
 
   // the settled result's first lines are the step lines, one per action, in order
   const lines = !live && opts.result ? opts.result.split('\n') : []
@@ -505,8 +513,8 @@ export function computerPhrase(tool: string, input: unknown, opts: PhraseOptions
   }
   const acting = actions.flatMap((a, k) => (sendsInput(a) ? [k] : []))
   const one = acting.length === 1 ? acting[0] : actions.length === 1 ? 0 : null
-  if (one !== null) return stepPhrase(actions[one], named(one), app, live)
-  return { verb: f(['Working', 'Worked']), object: inApp, tally: `${actions.length} steps` }
+  if (one !== null) return stepPhrase(actions[one], named(one), app, tense)
+  return { verb: f(['Working', 'Worked', 'Work']), object: inApp, tally: `${actions.length} steps` }
 }
 
 /** The activity line the thread's row, Activity and the working line show while a computer call runs; null for any other tool. */

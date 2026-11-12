@@ -125,7 +125,7 @@ export function ComputerPage() {
           </PageRow>
         ) : null}
         {settings.value ? (
-          <PageRow title="Keep pictures of the window" description="After each action, on this Mac, for 30 days. Turning it off deletes them." error={picturesError}>
+          <PageRow title="Keep pictures of the window" description="One after each step or batch, kept on this Mac: a thread's newest 400, until it has not used the computer for 30 days. Turning it off deletes them and keeps the steps and the text read." error={picturesError}>
             <SettingSwitch label="Keep pictures of the window" on={settings.value.keepPictures} onChange={keepPictures} />
           </PageRow>
         ) : null}

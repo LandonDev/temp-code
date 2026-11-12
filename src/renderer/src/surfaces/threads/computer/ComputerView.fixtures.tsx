@@ -5,6 +5,7 @@
 // content only. Each entry is what ComputerView is given, so a state here is
 // a state the section can draw.
 import type { ReactNode } from "react";
+import { plannedSteps, settledSteps, type WordsBook } from "@server/shared/computer/historyWords";
 import type { ComputerHistoryCall, ComputerHistoryStep } from "@server/shared/contract-computer";
 import { flatRows, rowsOf, type HistorySession } from "../../../lib/computerHistory";
 import type { ComputerViewProps, LiveSession } from "./ComputerView";
@@ -82,7 +83,7 @@ const READ_SHEET = [
 ].join("\n");
 
 const read = call(AT - 3 * MIN, [step("read", "Read", "")], { read: "Read 41 elements", text: true });
-const clicked = call(AT - 2 * MIN - 30_000, [step("click", "Clicked", "a text area", { target: "at 412, 300" })], { read: "Read no changes" });
+const clicked = call(AT - 2 * MIN - 30_000, [step("click", "Clicked", "a text area", { target: "at (412, 300)" })], { read: "Read no changes" });
 const typed = call(AT - 2 * MIN, [step("type", "Typed", "into a text area", { kind: "type", target: '"Second line!"', element: 3 })], { read: "Read 1 change", text: true });
 const pressed = call(AT - MIN, [step("key", "Pressed", "super+s", { tier: "front", facts: ["through the menu File › Save…", "opened the save sheet"] })], { read: "Read 5 changes", text: true });
 const typedName = call(AT - 20_000, [step("type", "Typed", "into Save As", { target: '"Total"', element: 48 })], { read: "Read 2 changes", text: true });
@@ -155,13 +156,28 @@ const batchDone = call(
   ],
   { app: "Mail", window: "New Message", read: "Read 3 changes", text: true },
 );
+// This batch's rows are the host's own words, made as the journal makes them (plannedSteps, then settledSteps over
+// the service's results): the click ran, the typing failed, the key never ran.
+const MAIL_LINES: Record<number, string> = { 2: 'group "New Message"', 31: 'input "To"', 33: 'input "Subject"' };
+const MAIL_BOOK: WordsBook = {
+  brief: (i) => (MAIL_LINES[i] ? { index: i, line: MAIL_LINES[i] } : null),
+  path: (i) => (i === 2 ? [] : [{ index: 2, line: MAIL_LINES[2] }]),
+};
+const failedArgs = { app: "Mail", actions: [{ action: "left_click", element: 31 }, { action: "type", text: "Lunch?", element: 33 }, { action: "key", text: "super+Return" }] };
+const mailWords = { app: "Mail", book: MAIL_BOOK };
 const batchFailed = call(
   AT - 30_000,
-  [
-    step("click", "Clicked", "To", { target: 'an input in the "New Message" group' }, "Mail"),
-    step("type", "Typed", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone", target: "6 characters" }, "Mail"),
-    step("key", "Pressed", "super+Return", { state: "not-run", tier: undefined }, "Mail"),
-  ],
+  settledSteps({
+    tool: "computer_batch",
+    args: failedArgs,
+    ctx: mailWords,
+    planned: plannedSteps("computer_batch", failedArgs, mailWords),
+    results: [
+      { index: 0, action: "left_click", status: "ok", tier: "ax", effect: "changed" },
+      { index: 1, action: "type", status: "failed", error: { kind: "stale_element", message: "the element is gone" } },
+      { index: 2, action: "key", status: "not-run" },
+    ],
+  }),
   { app: "Mail", window: "New Message" },
 );
 
@@ -237,7 +253,7 @@ const fixtures: ComputerFixture[] = [
     props: base({
       sessions: [live],
       pinned: true,
-      viewport: kept("textedit", "typed", TEXTEDIT, "2:02 PM"),
+      viewport: kept("textedit", "typed", TEXTEDIT, "2:02 PM", { line: <ViewportLine words="As it was after this step" /> }),
       running: [working("Clicking", "Save")],
       ...listOf(own(run), (ids) => ids[2]),
     }),
@@ -247,37 +263,38 @@ const fixtures: ComputerFixture[] = [
     props: base({
       sessions: [live],
       pinned: true,
-      viewport: kept("textedit", "save-sheet", TEXTEDIT, "2:03 PM"),
+      viewport: kept("textedit", "save-sheet", TEXTEDIT, "2:03 PM", { line: <ViewportLine words="As it was after this step" /> }),
       ...listOf(own(run), (ids) => ids[0]),
       read: { open: true, text: READ_SHEET },
     }),
     height: 760,
   },
   {
-    name: "11. A failed step: its red line, and the batch's later steps not run",
+    name: "11. A failed step: what was asked, its red line, and the batch's later steps not run",
     props: base({
-      viewport: kept("chrome", "form", CHROME, "2:03 PM", { label: "New Message in Mail at 2:03 PM" }),
+      viewport: kept("chrome", "form", CHROME, "2:03 PM", { label: "New Message in Mail at 2:03 PM", line: <ViewportLine words="After the steps that ran" /> }),
       ...listOf(own([...run.slice(0, 2), batchFailed]), (ids) => ids[1]),
       pinned: true,
     }),
   },
   {
-    name: "12a. Stopped by the person's touch",
+    name: "12a. Stopped by the person's touch: what was asked, and the last picture kept, with its time",
     props: base({
-      viewport: kept("textedit", "typed", TEXTEDIT, "2:03 PM"),
-      ...listOf(own([...run.slice(0, 3), call(AT - 40_000, [step("click", "Clicked", "Save", { state: "stopped", tier: undefined, reason: "Stopped when you used the mouse or keyboard", target: 'a button in the "save" sheet' })], { picture: { none: "no-read" } })])),
+      viewport: kept("textedit", "typed", TEXTEDIT, "2:02 PM", { line: <ViewportLine words="As it was at 2:02 PM" /> }),
+      ...listOf(own([...run.slice(0, 3), call(AT - 40_000, [step("click", "Click", "Save", { state: "stopped", tier: undefined, reason: "Stopped when you used the mouse or keyboard", target: 'a button in the "save" sheet' })], { picture: { none: "no-read" } })])),
     }),
   },
   {
-    name: "12b. Stopped by Stop; a call that didn't finish; one refused before it ran",
+    name: "12b. Stopped by Stop; a call that didn't finish; one the person did not allow; one the host refused",
     props: base({
-      viewport: kept("textedit", "typed", TEXTEDIT, "2:03 PM"),
+      viewport: kept("textedit", "typed", TEXTEDIT, "2:02 PM", { line: <ViewportLine words="As it was at 2:02 PM" /> }),
       ...listOf(
         own([
           ...run.slice(0, 2),
-          call(AT - 100_000, [step("click", "Clicked", "Save", { state: "failed", tier: undefined, reason: "You didn't allow it", target: 'a button in the "save" sheet' })], { picture: { none: "no-read" } }),
-          call(AT - 70_000, [step("key", "Pressing", "super+s", { state: undefined, tier: undefined })], { state: "unfinished", endedAt: undefined, picture: undefined, rev: 1 }),
-          call(AT - 40_000, [step("type", "Typed", "into Save As", { state: "stopped", tier: undefined, reason: "Stopped" })], { picture: { none: "no-read" } }),
+          call(AT - 110_000, [step("read", "Read", "", { state: "failed", reason: "Computer use was off" })], { picture: { none: "no-read" } }),
+          call(AT - 100_000, [step("click", "Click", "Save", { state: "stopped", tier: undefined, reason: "You didn't allow it", target: 'a button in the "save" sheet' })], { picture: { none: "no-read" } }),
+          call(AT - 70_000, [step("key", "Press", "super+s", { state: undefined, tier: undefined })], { state: "unfinished", endedAt: undefined, picture: undefined, rev: 1 }),
+          call(AT - 40_000, [step("type", "Type", "into Save As", { state: "stopped", tier: undefined, reason: "Stopped" })], { picture: { none: "no-read" } }),
         ]),
       ),
     }),
@@ -315,6 +332,8 @@ const fixtures: ComputerFixture[] = [
     props: base({
       viewport: { face: { kind: "text", text: READ_DOC }, label: "Untitled in TextEdit at 2:01 PM", line: <ViewportLine words="Screen Recording was off" /> },
       ...listOf(own([call(AT - 3 * MIN, [step("read", "Read", "")], { read: "Read 41 elements", text: true, picture: { none: "permission" } })])),
+      // the viewport shows the text: the row's line says what was read and opens nothing
+      read: { open: false, text: null, above: true },
     }),
   },
   {
@@ -324,6 +343,7 @@ const fixtures: ComputerFixture[] = [
       viewport: { face: { kind: "text", text: READ_DOC }, label: "Untitled in TextEdit at 2:01 PM", line: <ViewportLine words="Turn on Screen Recording for TempCode in System Settings" /> },
       running: [working("Clicking", "a text area")],
       ...listOf(own([call(AT - 3 * MIN, [step("read", "Read", "")], { read: "Read 41 elements", text: true, picture: { none: "permission" } })])),
+      read: { open: false, text: null, above: true },
     }),
   },
   {
@@ -334,12 +354,14 @@ const fixtures: ComputerFixture[] = [
     }),
   },
   {
-    name: "17. A step whose picture is no longer kept and that read nothing: the line alone",
+    name: "17. A pinned step whose picture is no longer kept and that read nothing: the box keeps its place, the line inside it",
     props: base({
       pinned: true,
-      viewport: { face: null, label: "Untitled in TextEdit at 2:01 PM", line: <ViewportLine words="This picture is no longer kept" /> },
-      ...listOf(own([call(AT - 3 * MIN, [step("click", "Clicked", "a text area", { target: "at 412, 300" })], { n: 0, picture: { none: "gone" } }), ...run.slice(2)]), (ids) => ids[ids.length - 1]),
+      viewport: { face: { kind: "none" }, label: "Untitled in TextEdit at 2:01 PM", line: <ViewportLine words="This picture is no longer kept" /> },
+      ...listOf(own([call(AT - 3 * MIN, [step("click", "Clicked", "a text area", { target: "at (412, 300)" })], { n: 0, picture: { none: "gone" } }), ...run.slice(2)]), (ids) => ids[ids.length - 1]),
     }),
+    // the box measured 198px at 260 and 240px at 480 when the pin began
+    kept: { 260: 198, 480: 240 },
   },
   {
     name: "18a. The preview ended: the window closed, over the newest step's kept picture",
@@ -406,6 +428,11 @@ const fixtures: ComputerFixture[] = [
     props: base({ sessions: [live], viewport: liveBox("textedit", "doc", TEXTEDIT), running: [working("Reading", "TextEdit")], status: "loading" }),
   },
   { name: "24b. The read failed: one red line with Retry", props: base({ status: "failed" }), height: 200 },
+  {
+    name: "24d. The read failed while steps are there: the line above them, with Retry",
+    props: base({ viewport: kept("textedit", "save-sheet", TEXTEDIT, "2:03 PM"), ...listOf(own(run.slice(2))), status: "failed" }),
+    height: 460,
+  },
   {
     name: "24c. More than 200 steps: Show earlier steps",
     props: base({ viewport: kept("textedit", "save-sheet", TEXTEDIT, "2:03 PM"), ...listOf(own(run)), more: true }),

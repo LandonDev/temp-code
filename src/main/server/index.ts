@@ -1343,6 +1343,8 @@ export async function startServer(
       pictures: () => picturesFromEnv && store.getSetting(KEEP_PICTURES_SETTING) !== '0'
     })
     computerHistory = history
+    // the switch answers before the pictures go: one found off at boot finishes what a quit may have cut short
+    if (store.getSetting(KEEP_PICTURES_SETTING) === '0') void history.dropPictures()
     history.start()
     const service = new ComputerService({
       dataDir: computerData,

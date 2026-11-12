@@ -232,7 +232,10 @@ describe("following", () => {
     const view = mount(data([call(1), batch], [e]));
     await flush();
     expect(runningRows()[0].querySelector(".h-7")!.textContent).toBe("Workingin Mail");
-    expect([...runningRows()[0].querySelectorAll('[data-slot="step-plan"] [data-slot="facts"] > span')].map((s) => s.textContent)).toEqual(plan);
+    // one planned step a line: a step's own words hold commas
+    const planned = [...runningRows()[0].querySelectorAll('[data-slot="step-plan"] > span')];
+    expect(planned.map((s) => s.textContent)).toEqual(plan);
+    for (const line of planned) expect(line.className).toContain("block");
     expect(rows()).toHaveLength(1);
     // it answers: three rows, newest first, and no running line
     const done = call(2, {
@@ -482,6 +485,65 @@ describe("pinning", () => {
     rect.mockRestore();
   });
 
+  it("choosing another row while one is pinned moves nothing: the offset kept is the pinned row's own", async () => {
+    h.preview.state = live();
+    Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+      configurable: true,
+      get(this: HTMLElement) {
+        const all = [...document.querySelectorAll('[data-slot="step"]')];
+        return Math.max(0, all.indexOf(this)) * 28;
+      },
+    });
+    mount(data([call(1), call(2), call(3)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:3:0"));
+    await flush();
+    expect(stepList().scrollTop).toBe(0);
+    // a lower row, 56px down: the list stays where the person has it
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(stepList().scrollTop).toBe(0);
+    delete (HTMLElement.prototype as { offsetTop?: number }).offsetTop;
+  });
+
+  it("a pinned step that kept nothing keeps the box's place, with its line inside: stepping through rows moves nothing", async () => {
+    h.preview.state = live();
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ height: 185, width: 296, top: 0, left: 0, right: 296, bottom: 185, x: 0, y: 0, toJSON: () => ({}) });
+    mount(data([call(1, { picture: { none: "gone" } }), call(2, { picture: { none: "off" } }), call(3)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:3:0"));
+    await flush();
+    expect(box()!.style.height).toBe("185px");
+    fireEvent.keyDown(rowButton("t1:3:0"), { key: "ArrowDown" });
+    await flush();
+    expect(box()!.getAttribute("data-face")).toBe("none");
+    expect(box()!.style.height).toBe("185px");
+    expect(box()!.textContent).toBe("No picture was kept");
+    fireEvent.keyDown(rowButton("t1:2:0"), { key: "ArrowDown" });
+    await flush();
+    expect(box()!.getAttribute("data-face")).toBe("none");
+    expect(box()!.textContent).toBe("This picture is no longer kept");
+    rect.mockRestore();
+  });
+
+  it("the fade is the viewport's arrival alone: its wrapper carries it and stays through every change of face", async () => {
+    h.preview.state = live();
+    mount(data([call(1), call(2)], [entry()]));
+    await flush();
+    const wrapper = document.querySelector<HTMLElement>('[data-slot="computer-viewport"]')!;
+    expect(wrapper.className).toContain("starting:opacity-0");
+    expect(box()!.className).not.toContain("starting:opacity-0");
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(box()!.tagName).toBe("BUTTON");
+    expect(box()!.className).not.toContain("starting:opacity-0");
+    // the same wrapper: nothing was mounted again, so nothing fades again
+    expect(document.querySelector('[data-slot="computer-viewport"]')).toBe(wrapper);
+    fireEvent.click(screen.getByRole("button", { name: "Go live" }));
+    await flush();
+    expect(document.querySelector('[data-slot="computer-viewport"]')).toBe(wrapper);
+  });
+
   it("a kept picture opens the lightbox from the box, and the live box does not", async () => {
     h.preview.state = live();
     mount(data([call(1), call(2)], [entry()]));
@@ -551,15 +613,34 @@ describe("pinning", () => {
     fireEvent.click(rowButton("t1:2:0"));
     await flush();
     expect(lineUnder()).toBe("After all 3 steps");
-    // its last step is the picture's own: no line
+    // its last step is the picture's own: with a session live, the line says only that this is not the window now
     fireEvent.click(rowButton("t1:2:2"));
     await flush();
-    expect(lineUnder()).toBe("");
+    expect(lineUnder()).toBe("As it was after this step");
     // one call, one read: the rows of one call share it
     expect(h.readStep.mock.calls.filter((c) => c[1] === 2)).toHaveLength(1);
   });
 
-  it("a pinned step with no picture shows the read text in the box's place and says why, with no line when the switch was off", async () => {
+  it("a batch that stopped part way says After the steps that ran: the picture is not of steps that never ran", async () => {
+    h.preview.state = live();
+    const batch = call(2, { steps: [step("Clicked", "To"), step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), step("Press", "super+Return", { kind: "key", state: "not-run", tier: undefined })] });
+    mount(data([call(1), batch], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:2:0"));
+    await flush();
+    expect(lineUnder()).toBe("After the steps that ran");
+  });
+
+  it("a pinned picture with nothing live needs no line: its row says its time", async () => {
+    mount(data([call(1), call(2)]));
+    await flush();
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(box()!.tagName).toBe("BUTTON");
+    expect(lineUnder()).toBe("");
+  });
+
+  it("a pinned step with no picture shows the read text in the box's place and says why; with no reason to give, that it is not the window now", async () => {
     h.preview.state = live();
     h.readStep.mockImplementation(async () => ({ text: 'app "TextEdit" · window "Untitled" · 1280×1072\n[1] window "Untitled"' }));
     const cases: [ComputerHistoryCall["picture"], string][] = [
@@ -567,8 +648,8 @@ describe("pinning", () => {
       [{ none: "minimized" }, "The window was minimized"],
       [{ none: "not-drawn" }, "The window was not drawn"],
       [{ none: "gone" }, "This picture is no longer kept"],
-      [{ none: "off" }, ""],
-      [{ none: "failed" }, ""],
+      [{ none: "off" }, "As it was after this step"],
+      [{ none: "failed" }, "As it was after this step"],
     ];
     for (const [none, said] of cases) {
       mount(data([call(1, { picture: none, text: true, read: "Read 1 element" }), call(2)], [entry()]));
@@ -610,7 +691,7 @@ describe("the row states", () => {
 
   it("a failed step: the red mark, a red line that says why, and the batch's later steps muted, Not run", async () => {
     const batch = call(1, {
-      steps: [step("Clicked", "To"), step("Typed", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), step("Pressed", "super+Return", { kind: "key", state: "not-run", tier: undefined })],
+      steps: [step("Clicked", "To"), step("Type", "into Subject", { kind: "type", state: "failed", tier: undefined, reason: "The element was gone" }), step("Press", "super+Return", { kind: "key", state: "not-run", tier: undefined })],
     });
     const failed = await openOn(batch, "t1:1:1");
     expect(failed.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("failed");
@@ -618,10 +699,12 @@ describe("the row states", () => {
     const why = failed.querySelector('[data-slot="step-why"]')!;
     expect(why.textContent).toBe("The element was gone");
     expect(why.className).toContain("text-destructive");
-    // the step that did not run is muted whole
+    // the step that did not run is muted whole, a dash in its glyph's place
     const notRun = rows()[0];
-    expect(words(notRun)).toBe("Pressedsuper+Return");
+    expect(words(notRun)).toBe("Presssuper+Return");
     expect(notRun.querySelector(".text-foreground")).toBeNull();
+    expect(notRun.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("not-run");
+    expect(rows()[2].querySelector('[data-slot="step-glyph"]')!.hasAttribute("data-mark")).toBe(false);
     fireEvent.click(rowButton("t1:1:2"));
     await flush();
     expect(openRow()!.querySelector('[data-slot="step-why"]')!.textContent).toBe("Not run");
@@ -641,20 +724,26 @@ describe("the row states", () => {
   });
 
   it("didn't finish: a start with no end that is not the running call is one row for the whole call", async () => {
-    const lost = call(1, { state: "unfinished", endedAt: undefined, picture: undefined, rev: 1, steps: [step("Clicking", "To", { state: undefined }), step("Typing", "into Subject", { state: undefined })] });
+    const lost = call(1, { state: "unfinished", endedAt: undefined, picture: undefined, rev: 1, steps: [step("Click", "To", { state: undefined }), step("Type", "into Subject", { state: undefined })] });
     const el = await openOn(lost);
     expect(rows()).toHaveLength(1);
-    expect(words(el)).toBe("Workedin TextEdit");
+    // what was asked, never "Worked": it did not finish
+    expect(words(el)).toBe("Workin TextEdit");
     expect(el.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("stopped");
     expect(el.querySelector('[data-slot="step-why"]')!.textContent).toBe("Didn't finish");
     expect(runningRows()).toHaveLength(0);
   });
 
-  it("refused before it ran: the planned step, the red mark and the refusal's line", async () => {
-    const el = await openOn(call(1, { picture: { none: "no-read" }, steps: [step("Clicked", "Save", { state: "failed", tier: undefined, reason: "You didn't allow it" })] }));
-    expect(words(el)).toBe("ClickedSave in TextEdit");
-    expect(el.querySelector('[data-slot="step-why"]')!.textContent).toBe("You didn't allow it");
-    expect(el.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("failed");
+  it("refused before it ran: what was asked, with the refusal's line; the person's own no is a stop, the host's a failure", async () => {
+    const no = await openOn(call(1, { picture: { none: "no-read" }, steps: [step("Click", "Save", { state: "stopped", tier: undefined, reason: "You didn't allow it" })] }));
+    expect(words(no)).toBe("ClickSave in TextEdit");
+    expect(no.querySelector('[data-slot="step-why"]')!.textContent).toBe("You didn't allow it");
+    expect(no.querySelector('[data-slot="step-why"]')!.className).not.toContain("text-destructive");
+    expect(no.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("stopped");
+    cleanup();
+    const off = await openOn(call(1, { picture: { none: "no-read" }, steps: [step("Click", "Save", { state: "failed", tier: undefined, reason: "Computer use was off" })] }));
+    expect(off.querySelector('[data-slot="step-why"]')!.className).toContain("text-destructive");
+    expect(off.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark")).toBe("failed");
   });
 
   it("the facts line: the tier first, what it acted on, how it went, then its time; nothing for the plain case", async () => {
@@ -740,8 +829,56 @@ describe("the read line", () => {
     await flush();
     await act(async () => fireEvent.click(openRow()!.querySelector<HTMLButtonElement>('[data-slot="step-read"]')!));
     expect(screen.getByRole("status", { name: "Loading what was read" })).toBeTruthy();
-    await reads.answer(1, { text: "the read" });
+    await reads.answer(1, { ...picture(1), text: "the read" });
     expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read");
+  });
+
+  it("opening the read pins its row, so the text stays while more steps land", async () => {
+    h.preview.state = live();
+    h.readStep.mockImplementation(async (_k: string, n: number) => ({ ...picture(n), text: `read ${n}` }));
+    const view = mount(data([call(1), call(2, { text: true, read: "Read 3 changes" })], [entry()]));
+    await flush();
+    expect(screen.queryByRole("button", { name: "Go live" })).toBeNull();
+    await act(async () => fireEvent.click(openRow()!.querySelector<HTMLButtonElement>('[data-slot="step-read"]')!));
+    await flush();
+    // pinned: Go live shows, the stream stops, the box is that call's picture
+    expect(screen.getByRole("button", { name: "Go live" })).toBeTruthy();
+    expect(h.preview.runs.at(-1)).toBe(false);
+    expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("read 2");
+    view.again(data([call(1), call(2, { text: true, read: "Read 3 changes" }), call(3)], [entry()]));
+    await flush();
+    expect(words(openRow())).toBe("ClickedStep 2");
+    expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("read 2");
+  });
+
+  it("the open text stays while a later record of its call is read again", async () => {
+    const reads = deferredReads();
+    const held = call(1, { text: true, read: "Read 3 changes", rev: 3 });
+    const view = mount(data([held]));
+    await flush();
+    await reads.answer(1, { ...picture(1), text: "the read" });
+    await act(async () => fireEvent.click(openRow()!.querySelector<HTMLButtonElement>('[data-slot="step-read"]')!));
+    await flush();
+    expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read");
+    // a record lands on the call: it is read again, and the text held stays up meanwhile, never a skeleton
+    view.again(data([{ ...held, rev: 4 }]));
+    await flush();
+    expect(reads.asked()).toEqual([1]);
+    expect(screen.queryByRole("status", { name: "Loading what was read" })).toBeNull();
+    expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read");
+    await reads.answer(1, { ...picture(1), text: "the read, again" });
+    expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read, again");
+  });
+
+  it("where the viewport already shows the read text, the row's read line says what was read and opens nothing", async () => {
+    h.readStep.mockImplementation(async () => ({ text: 'app "TextEdit"\n[1] window "Untitled"' }));
+    mount(data([call(1, { picture: { none: "permission" }, text: true, read: "Read 1 element" })]));
+    await flush();
+    expect(box()!.tagName).toBe("PRE");
+    const line = openRow()!.querySelector('[data-slot="step-read"]')!;
+    expect(line.tagName).toBe("SPAN");
+    expect(line.textContent).toBe("Read 1 element");
+    expect(document.querySelector('[data-slot="step-read-text"]')).toBeNull();
   });
 });
 
@@ -754,7 +891,9 @@ describe("once the turn settled", () => {
     expect(document.querySelector('[data-slot="computer-session"]')).toBeNull();
     expect(words(openRow())).toBe("ClickedStep 2");
     expect(box()!.tagName).toBe("BUTTON");
-    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${clockTime(AT + 2400)}`);
+    // the picture's own time: it is taken after the call's answer
+    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${clockTime(AT + 2450)}`);
+    expect(lineUnder()).toBe("");
     expect(h.readStep).toHaveBeenCalledWith("t1", 2);
     // nothing is live, so nothing is asked of the Mac
     expect(h.preview.runs.every((run) => run === false)).toBe(true);
@@ -784,6 +923,23 @@ describe("once the turn settled", () => {
     expect(groups[1].querySelector('[data-slot="step-heading"]')!.className.split(/\s+/)).toEqual(expect.arrayContaining(["text-xs", "font-medium", "text-muted-foreground"]));
     // apps are named only where they change, and by the oldest row of each group
     expect(rows().map(words)).toEqual(["ClickedSend in Mail", "ClickedStep 2 in TextEdit", "ClickedStep 1 in TextEdit", "ClickedStep 1 in TextEdit"]);
+  });
+
+  it("where the newest step kept nothing, the newest picture that was kept stands in, and says when it was", async () => {
+    // a call stopped in flight keeps no picture and no text; the one before it kept the window
+    const stopped = call(2, { picture: { none: "failed" }, steps: [step("Click", "Save", { state: "stopped", tier: undefined, reason: "Stopped" })] });
+    mount(data([call(1), stopped]));
+    await flush();
+    expect(words(openRow())).toBe("ClickSave");
+    expect(box()!.tagName).toBe("BUTTON");
+    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${clockTime(AT + 1450)}`);
+    expect(lineUnder()).toBe(`As it was at ${clockTime(AT + 1450)}`);
+    expect(h.readStep).toHaveBeenCalledWith("t1", 1);
+    cleanup();
+    // with nothing kept anywhere there is no box at all
+    mount(data([stopped]));
+    await flush();
+    expect(box()).toBeNull();
   });
 
   it("a run with no pictures: the read text in the viewport, and why", async () => {
@@ -870,6 +1026,76 @@ describe("loading, failing and older steps", () => {
     expect(h.retry).toHaveBeenCalledWith(["t1"]);
   });
 
+  it("a read that failed says so above the steps that are there, with Retry", async () => {
+    h.preview.state = live();
+    mount(data([call(1)], [entry({ running: { tool: "computer_act", words: "Clicking Save in TextEdit", startedAt: AT } })], { status: "failed" }));
+    await flush();
+    const line = stepList().querySelector('[data-slot="steps-failed"]')!;
+    expect(line.textContent).toBe("Couldn't read the stepsRetry");
+    expect(rows()).toHaveLength(1);
+    expect(runningRows()).toHaveLength(1);
+    // it leads the list
+    expect(stepList().firstElementChild).toBe(line);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(h.retry).toHaveBeenCalledWith(["t1"]);
+  });
+
+  it("the first read's rows do not animate in, and a page of earlier steps neither animates nor moves the list", async () => {
+    const view = mount(data([], [], { status: "loading" }));
+    await flush();
+    view.again(data([call(201), call(202)], [], { more: true }));
+    await flush();
+    expect(rows().some((r) => r.classList.contains("step-land"))).toBe(false);
+    // the person scrolls down and asks for earlier steps
+    stepList().scrollTop = 40;
+    fireEvent.scroll(stepList());
+    view.again(data([call(199), call(200), call(201), call(202)], [], { more: true }));
+    await flush();
+    expect(rows()).toHaveLength(4);
+    expect(rows().some((r) => r.classList.contains("step-land"))).toBe(false);
+    expect(stepList().scrollTop).toBe(40);
+  });
+
+  it("following, a list at its top stays there as steps land; one the person scrolled keeps its place", async () => {
+    h.preview.state = live();
+    const view = mount(data([call(1), call(2)], [entry()]));
+    await flush();
+    view.again(data([call(1), call(2), call(3)], [entry()]));
+    await flush();
+    expect(stepList().scrollTop).toBe(0);
+    expect(rows().filter((r) => r.classList.contains("step-land")).map(words)).toEqual(["ClickedStep 3"]);
+    stepList().scrollTop = 120;
+    fireEvent.scroll(stepList());
+    view.again(data([call(1), call(2), call(3), call(4)], [entry()]));
+    await flush();
+    expect(stepList().scrollTop).toBe(120);
+    // back at the top it follows again
+    stepList().scrollTop = 0;
+    fireEvent.scroll(stepList());
+    stepList().scrollTop = 3;
+    view.again(data([call(1), call(2), call(3), call(4), call(5)], [entry()]));
+    await flush();
+    expect(stepList().scrollTop).toBe(0);
+  });
+
+  it("a pinned row whose history went is no pin: a later call with its number is not chosen for the person", async () => {
+    h.preview.state = live();
+    const view = mount(data([call(1), call(2)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(screen.getByRole("button", { name: "Go live" })).toBeTruthy();
+    view.again(data([], [entry()], { born: 0 }));
+    await flush();
+    expect(screen.queryByRole("button", { name: "Go live" })).toBeNull();
+    // the history begins again: its call 1 is another call, and the section follows
+    view.again(data([call(1, { steps: [step("Clicked", "Other")] }), call(2, { steps: [step("Clicked", "Newest")] })], [entry()], { born: 2 }));
+    await flush();
+    expect(screen.queryByRole("button", { name: "Go live" })).toBeNull();
+    expect(words(openRow())).toBe("ClickedNewest");
+    expect(document.querySelector('[data-slot="computer-section"]')!.hasAttribute("data-following")).toBe(true);
+  });
+
   it("Show earlier steps loads the page under the oldest call held", async () => {
     mount(data([call(201), call(202)], [], { more: true }));
     await flush();
@@ -949,6 +1175,33 @@ describe("the kept pictures' cache", () => {
     cache.clear();
     expect(cache.size).toBe(0);
     expect(gone).toHaveLength(3);
+  });
+
+  it("a read still out when its key was dropped, or the cache cleared, keeps nothing: its picture is revoked as it lands", async () => {
+    for (const end of ["clear", "dropKey"] as const) {
+      let answer: (a: ComputerHistoryStepAnswer) => void = () => undefined;
+      const made: string[] = [];
+      const gone: string[] = [];
+      const cache = new StepMediaCache({
+        read: () => new Promise<ComputerHistoryStepAnswer>((resolve) => (answer = resolve)),
+        createUrl: () => (made.push(`blob:${made.length + 1}`), made.at(-1)!),
+        revokeUrl: (url) => void gone.push(url),
+      });
+      const load = cache.load("t1", callOf(1));
+      if (end === "clear") cache.clear();
+      else cache.dropKey("t1");
+      answer({ ...picture(1), text: "text 1" });
+      expect(await load, end).toEqual({ rev: 3 });
+      expect(made, end).toEqual(["blob:1"]);
+      expect(gone, end).toEqual(["blob:1"]);
+      expect(cache.size, end).toBe(0);
+      // dropping one key leaves another's read alone
+      const other = cache.load("sub1", callOf(1));
+      cache.dropKey("t1");
+      answer(picture(1));
+      expect((await other).picture?.url, end).toBe("blob:2");
+      expect(cache.size, end).toBe(1);
+    }
   });
 
   it("a picture is decoded before it lands, so it never takes the old one's place as a blank box", async () => {

@@ -129,7 +129,8 @@ async function read(keys: string[]): Promise<void> {
       const answer = await link.request<ComputerHistoryReadAnswer>("computer.history.read", { keys: part });
       for (const session of answer.sessions) if (wanted.has(session.key)) setKey(session.key, (held) => mergeRead(held, session));
     } catch {
-      // an older host, or one without computer use: the keys say so, and Retry asks again
+      // a socket that dropped reads again when it opens; any other failure the keys say, and Retry asks again
+      if (!link.connected) continue;
       for (const key of part) if (wanted.has(key)) setKey(key, (held) => ({ ...(held ?? EMPTY), status: "failed" }));
     }
   }

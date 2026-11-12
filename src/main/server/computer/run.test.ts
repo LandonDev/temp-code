@@ -1571,7 +1571,8 @@ describe('the journal (history.ts): one start and one end per call', () => {
     expect(out).toMatchObject({ isError: true, body: hostErrorLine('denied'), refused: 'denied' })
     expect(h.text(out)).toBe(hostErrorLine('denied'))
     const call = (await calls(h))[1]
-    expect(call.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Clicked', 'failed', "You didn't allow it"], ['Pressed', 'not-run', undefined]])
+    // the person's no is a stop, not a failure, and nothing reads as done
+    expect(call.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Click', 'stopped', "You didn't allow it"], ['Press', 'not-run', undefined]])
     expect(call.picture).toEqual({ none: 'no-read' })
   })
 
@@ -1594,10 +1595,10 @@ describe('the journal (history.ts): one start and one end per call', () => {
     // arguments the schema refuses are no call at all
     await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: -1 })
     expect((await calls(h)).map((c) => [c.steps[0].verb, c.steps[0].state, c.steps[0].reason])).toEqual([
-      ['Read', 'failed', 'The thread was paused'],
-      ['Clicked', 'failed', 'The window had not been read'],
-      ['Listed', 'failed', 'That app is off limits'],
-      ['Listed', 'failed', 'Only http, https and file items open']
+      ['Read', 'stopped', 'The thread was paused'],
+      ['Click', 'failed', 'The window had not been read'],
+      ['Launch', 'failed', 'That app is off limits'],
+      ['Open', 'failed', 'Only http, https and file items open']
     ])
     expect(count(h, 'state.get') + count(h, 'action.run') + count(h, 'apps.launch')).toBe(0)
   })
@@ -1611,7 +1612,7 @@ describe('the journal (history.ts): one start and one end per call', () => {
     const refused = await h.run('computer_observe', { app: 'TextEdit' })
     expect(refused).toMatchObject({ body: 'stopped by the person; no more computer use this turn', refused: 'stopped' })
     const got = await calls(h)
-    expect(got[0].steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Pressed', 'stopped', 'Stopped'], ['Pressed', 'not-run', undefined]])
+    expect(got[0].steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Press', 'stopped', 'Stopped'], ['Press', 'not-run', undefined]])
     expect(got[1].steps.map((s) => [s.state, s.reason])).toEqual([['stopped', 'Stopped']])
     expect(got.map((c) => c.state)).toEqual(['done', 'done'])
     // a step the service fails keeps the service's kind
@@ -1620,7 +1621,7 @@ describe('the journal (history.ts): one start and one end per call', () => {
     await h.run('computer_batch', { app: 'Sessiony', actions: [{ action: 'hold_key', text: 'shift', duration: 1 }, { action: 'key', text: 'super+s' }] })
     const failed = (await calls(h)).at(-1)!
     expect(failed.turn).toBe(2)
-    expect(failed.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Held', 'failed', 'It needed your pointer and keyboard'], ['Pressed', 'not-run', undefined]])
+    expect(failed.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Hold', 'failed', 'It needed your pointer and keyboard'], ['Press', 'not-run', undefined]])
   })
 
   it('a request the service refuses whole is the call’s failure', async () => {
@@ -1652,6 +1653,21 @@ describe('the journal (history.ts): one start and one end per call', () => {
     expect(written).not.toContain('hunter2')
     expect(written).toContain(`${secret.length} characters`)
     expect(written).toContain('a key')
+  })
+
+  it('a text the steps held back is taken out of the read the journal keeps', async () => {
+    const h = make({ history: { pictures: () => false } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    // text with no target after a click is a length in its step; the window's title stands in for a secret the read shows
+    const out = await h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', element: 21 }, { action: 'type', text: 'Untitled' }] })
+    expect(h.text(out)).toContain('"Untitled"')
+    await records(h)
+    const call = (await calls(h))[1]
+    expect(call.steps[1]).toMatchObject({ verb: 'Typed', target: '8 characters' })
+    expect(call.text).toBe(true)
+    const kept = readFileSync(join(h.dataDir, 'history', 't1', 'steps', `${call.n}.txt`), 'utf8')
+    expect(kept).not.toContain('Untitled')
+    expect(kept).toContain('‹8 characters›')
   })
 
   it('a field named by index that is no password field keeps its text, until the book says otherwise', async () => {

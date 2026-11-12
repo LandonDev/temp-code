@@ -55,4 +55,27 @@ describe("the Computer section's fixtures", () => {
     const short = draw("23.");
     expect(short.querySelectorAll('[data-slot="computer-section"]')).toHaveLength(1);
   });
+
+  it("the failed batch reads in the host's own words: done for the step that ran, asked for the two that did not", () => {
+    const { container } = render(<ComputerStates from={fixtures.indexOf(named("11."))} to={fixtures.indexOf(named("11.")) + 1} />);
+    const pane = container.querySelector('[data-slot="computer-section"]')!;
+    const rows = [...pane.querySelectorAll('[data-slot="step"]')].slice(0, 3);
+    expect(rows.map((r) => r.querySelector("button")!.textContent)).toEqual(["Presssuper+Return", "Typeinto Subject", "ClickedTo in Mail"]);
+    expect(rows.map((r) => r.querySelector('[data-slot="step-glyph"]')!.getAttribute("data-mark"))).toEqual(["not-run", "failed", null]);
+    const open = pane.querySelector('[data-slot="step"][data-open]')!;
+    expect(open.querySelector('[data-slot="step-why"]')!.textContent).toBe("The element was gone");
+    expect(open.querySelector('[data-slot="step-detail"]')!.textContent).toContain("6 characters");
+    expect(pane.querySelector('[data-slot="computer-line"]')!.textContent).toBe("After the steps that ran");
+  });
+
+  it("a pinned step that kept nothing holds the box, and a failed read leads the steps that are there", () => {
+    const at = (start: string) => render(<ComputerStates from={fixtures.indexOf(named(start))} to={fixtures.indexOf(named(start)) + 1} />).container;
+    const none = at("17.").querySelector<HTMLElement>('[data-face="none"]')!;
+    expect(none.style.height).toBe("198px");
+    expect(none.textContent).toBe("This picture is no longer kept");
+    cleanup();
+    const failed = at("24d.").querySelector('[data-slot="computer-steps"]')!;
+    expect(failed.firstElementChild!.getAttribute("data-slot")).toBe("steps-failed");
+    expect(failed.querySelectorAll('[data-slot="step"]').length).toBeGreaterThan(0);
+  });
 });

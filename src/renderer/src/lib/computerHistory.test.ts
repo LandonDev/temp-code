@@ -270,6 +270,24 @@ describe("the store", () => {
     off();
   });
 
+  it("a read cut off by a dropped socket is no failure: the key waits, and is read again when the socket opens", async () => {
+    H.startComputerHistory();
+    const { link, requests, failNext } = localLink({ t1: { born: 10, calls: [call(1)] } });
+    failNext(true);
+    const off = H.watchHistory(["t1"]);
+    // the socket goes while the read is out
+    link.connected = false;
+    await settle();
+    expect(held("t1")).toMatchObject({ status: "loading", calls: [] });
+    failNext(false);
+    link.connected = true;
+    link.open?.();
+    await settle();
+    expect(held("t1")).toMatchObject({ status: "ready" });
+    expect(requests).toHaveLength(2);
+    off();
+  });
+
   it("a picture the host no longer has is marked gone", async () => {
     H.startComputerHistory();
     localLink({ t1: { born: 10, calls: [call(1, { picture: { width: 9, height: 9, at: 1 } }), call(2)] } });

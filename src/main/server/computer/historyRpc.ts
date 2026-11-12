@@ -56,6 +56,7 @@ export class ComputerHistoryRpc {
 
 export async function handleComputerHistory(req: ClientRequest, rpc: ComputerHistoryRpc | null, viewer: HistoryViewer): Promise<{ handled: boolean; result?: unknown }> {
   if (req.method !== 'computer.history.read' && req.method !== 'computer.history.step') return { handled: false }
-  if (!rpc) throw new Error('Computer use is not available here')
+  // a host without computer use keeps no journal: it has nothing, which is not a failure to read
+  if (!rpc) return { handled: true, result: req.method === 'computer.history.read' ? { sessions: req.params.keys.map((key) => ({ key, born: 0, calls: [], more: false })) } : {} }
   return { handled: true, result: req.method === 'computer.history.read' ? await rpc.read(viewer, req.params) : await rpc.step(req.params) }
 }

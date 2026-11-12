@@ -6,7 +6,9 @@ import type { ComputerHistoryCall, ComputerHistoryStepAnswer } from "@server/sha
  * and the text the model read. Read over `computer.history.step` when a row
  * needs it and held in a small cache, so stepping back and forth through a
  * few rows asks once. The cache holds 12 steps, revokes the URL of what it
- * drops, and empties when a key's history goes.
+ * drops, and empties when a key's history goes. A read still out when its
+ * key was dropped or the cache cleared keeps nothing: its picture's URL is
+ * revoked as it lands.
  */
 export interface StepMedia {
   /** the call's revision this was read at: a later record (its picture landing) reads again */
@@ -56,6 +58,9 @@ export class StepMediaCache {
   /** least recently used first */
   private readonly entries = new Map<string, StepMedia>();
   private readonly loading = new Map<string, Promise<StepMedia>>();
+  /** how many times each key was dropped, and the whole cache cleared: a read that began before one keeps nothing */
+  private readonly drops = new Map<string, number>();
+  private clears = 0;
   private readonly limit: number;
   private readonly createUrl: (blob: Blob) => string;
   private readonly revokeUrl: (url: string) => void;
@@ -92,6 +97,7 @@ export class StepMediaCache {
     const flight = `${id}\n${call.rev}`;
     const pending = this.loading.get(flight);
     if (pending) return pending;
+    const began = this.stamp(key);
     const load = this.opts
       .read(key, call.n)
       .then(async (answer) => {
@@ -102,12 +108,21 @@ export class StepMediaCache {
           await decoded(media.picture.url);
         } else if (call.picture && !("none" in call.picture)) this.opts.onPictureGone?.(key, call.n);
         if (answer.text !== undefined) media.text = answer.text;
+        if (this.stamp(key) !== began) {
+          // its key was dropped, or the cache cleared, while it was out: nothing of it is kept or shown
+          if (media.picture) this.revokeUrl(media.picture.url);
+          return { rev: call.rev };
+        }
         this.put(id, media);
         return media;
       })
       .finally(() => this.loading.delete(flight));
     this.loading.set(flight, load);
     return load;
+  }
+
+  private stamp(key: string): string {
+    return `${this.clears}:${this.drops.get(key) ?? 0}`;
   }
 
   private put(id: string, media: StepMedia): void {
@@ -125,10 +140,12 @@ export class StepMediaCache {
 
   /** A key's history went: nothing of it is shown again. */
   dropKey(key: string): void {
+    this.drops.set(key, (this.drops.get(key) ?? 0) + 1);
     for (const id of [...this.entries.keys()]) if (id.startsWith(`${key}\n`)) this.drop(id);
   }
 
   clear(): void {
+    this.clears += 1;
     for (const id of [...this.entries.keys()]) this.drop(id);
   }
 }

@@ -8,12 +8,14 @@ import {
   cutReadText,
   failureWords,
   frontFact,
+  maskedTexts,
   mayQuoteText,
   planWords,
   plannedSteps,
   readSummary,
   refusalWords,
   resultFacts,
+  scrubReadText,
   settledSteps,
   stepTargetWords,
   workingStep,
@@ -66,11 +68,11 @@ describe('stepTargetWords', () => {
   })
 
   it('a point, a menu path, a scroll, a drag and a save say theirs', () => {
-    expect(target({ action: 'left_click', coordinate: [500, 300] })).toBe('at 500, 300')
+    expect(target({ action: 'left_click', coordinate: [500, 300] })).toBe('at (500, 300)')
     expect(target({ action: 'left_click', menu: 'File > Save…' })).toBe('menu File › Save…')
     expect(target({ action: 'perform', name: 'pick', menu: 'Format › Font › Bold' })).toBe('menu Format › Font › Bold')
     expect(target({ action: 'scroll', scroll_direction: 'down', scroll_amount: 3, element: 5 })).toBe('down 3')
-    expect(target({ action: 'left_click_drag', start_coordinate: [100, 200], coordinate: [300, 400] })).toBe('100, 200 to 300, 400')
+    expect(target({ action: 'left_click_drag', start_coordinate: [100, 200], coordinate: [300, 400] })).toBe('(100, 200) to (300, 400)')
     expect(target({ action: 'left_click_drag', start_element: 3, element: 5 })).toBeUndefined()
     expect(target({ action: 'save_as', path: '~/run/Total.txt' })).toBe('~/run/Total.txt')
     expect(target({ action: 'right_click', element: 44 })).toBe('a button in the "Save As" sheet')
@@ -143,6 +145,7 @@ describe('the secret rule', () => {
         { action: 'type', text: secret, element: 12 },
         { action: 'paste', text: secret, named: 'Password' },
         { action: 'set_value', value: secret, element: 12 },
+        { action: 'select_text', text: secret, element: 3 },
         { action: 'key', text: 'c' }
       ]
     }
@@ -151,26 +154,44 @@ describe('the secret rule', () => {
     expect(written).not.toContain(secret)
     expect(written).not.toContain('horse')
     expect(written).toContain('21 characters')
+    // every one of them is a text the kept read must not show either
+    expect(maskedTexts('computer_batch', args, ctx)).toEqual([secret, secret, secret, secret, secret])
+  })
+
+  it('a selected text follows the rule: quoted for a known field with no input before it, else its length', () => {
+    const select = { action: 'select_text', text: 'Hello', element: 3 } as ComputerAction
+    expect(stepTargetWords([select], 0, book)).toBe('"Hello"')
+    expect(planWords('computer_batch', { app: 'TextEdit', actions: [select, { action: 'key', text: 'super+c' }] }, ctx)).toEqual(['select "Hello" in text area', 'press super+c'])
+    const after = [{ action: 'left_click', element: 44 } as ComputerAction, select]
+    expect(stepTargetWords(after, 1, book)).toBe('5 characters')
+    expect(planWords('computer_batch', { app: 'TextEdit', actions: after }, ctx)).toEqual(['click button "Save"', 'select 5 characters in text area'])
+    expect(maskedTexts('computer_batch', { app: 'TextEdit', actions: after }, ctx)).toEqual(['Hello'])
+    expect(maskedTexts('computer_act', { app: 'TextEdit', ...select }, ctx)).toEqual([])
   })
 })
 
 describe('plannedSteps and planWords', () => {
   it('one step per action, present tense, with and without the app', () => {
     const steps = plannedSteps('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', element: 44 }, { action: 'type', text: 'Total', element: 33 }, { action: 'key', text: 'super+s' }] }, ctx)
-    expect(steps).toEqual([
+    expect(steps.map(({ asked: _asked, done: _done, ...step }) => step)).toEqual([
       { kind: 'click', verb: 'Clicking', object: 'Save', inApp: 'Save in TextEdit', target: 'a button in the "Save As" sheet', element: 44 },
       { kind: 'type', verb: 'Typing', object: 'into Subject', inApp: 'into Subject in TextEdit', target: '5 characters', element: 33 },
       { kind: 'key', verb: 'Pressing', object: 'super+s', inApp: 'super+s in TextEdit' }
     ])
+    // the same rows as asked and as done, made now, from the book the model acted on
+    expect(steps.map((step) => [step.asked.verb, step.done.verb])).toEqual([['Click', 'Clicked'], ['Type', 'Typed'], ['Press', 'Pressed']])
+    expect(steps[0].asked).toEqual({ verb: 'Click', object: 'Save', inApp: 'Save in TextEdit' })
   })
 
   it('a read, a look and the apps call are one step each', () => {
-    expect(plannedSteps('computer_observe', { app: 'TextEdit' }, ctx)).toEqual([{ kind: 'read', verb: 'Reading', object: '', inApp: 'TextEdit' }])
-    expect(plannedSteps('computer_act', { app: 'TextEdit', action: 'screenshot' }, ctx)).toEqual([{ kind: 'look', verb: 'Looking at', object: '', inApp: 'TextEdit' }])
-    expect(plannedSteps('computer_apps', {}, { app: '' })).toEqual([{ kind: 'app', verb: 'Listing', object: 'apps', inApp: 'apps' }])
-    expect(plannedSteps('computer_apps', { launch: 'Preview', open: ['/Users/me/report.pdf'] }, { app: '' })).toEqual([
-      { kind: 'app', verb: 'Opening', object: 'report.pdf in Preview', inApp: 'report.pdf in Preview' }
+    expect(plannedSteps('computer_observe', { app: 'TextEdit' }, ctx)).toMatchObject([{ kind: 'read', verb: 'Reading', object: '', inApp: 'TextEdit', asked: { verb: 'Read' }, done: { verb: 'Read' } }])
+    expect(plannedSteps('computer_act', { app: 'TextEdit', action: 'screenshot' }, ctx)).toMatchObject([{ kind: 'look', verb: 'Looking at', object: '', inApp: 'TextEdit', asked: { verb: 'Look at' } }])
+    expect(plannedSteps('computer_apps', {}, { app: '' })).toMatchObject([{ kind: 'app', verb: 'Listing', object: 'apps', inApp: 'apps', asked: { verb: 'List', object: 'apps' } }])
+    expect(plannedSteps('computer_apps', { launch: 'Preview', open: ['/Users/me/report.pdf'] }, { app: '' })).toMatchObject([
+      { kind: 'app', verb: 'Opening', object: 'report.pdf in Preview', inApp: 'report.pdf in Preview', asked: { verb: 'Open', object: 'report.pdf in Preview' } }
     ])
+    // what was asked of a bare launch is the launch
+    expect(plannedSteps('computer_apps', { launch: 'TextEdit' }, { app: '' })[0]).toMatchObject({ verb: 'Listing', asked: { verb: 'Launch', object: 'TextEdit' } })
   })
 
   it("every action has a kind, and a batch's plan is the card's words", () => {
@@ -185,8 +206,9 @@ describe('plannedSteps and planWords', () => {
   })
 
   it('a batch as one row reads Working in its app', () => {
-    expect(workingStep('Mail', true)).toEqual({ kind: 'click', verb: 'Working', object: '', inApp: 'in Mail' })
-    expect(workingStep('Mail', false)).toMatchObject({ verb: 'Worked', inApp: 'in Mail' })
+    expect(workingStep('Mail', 'live')).toEqual({ kind: 'click', verb: 'Working', object: '', inApp: 'in Mail' })
+    expect(workingStep('Mail', 'done')).toMatchObject({ verb: 'Worked', inApp: 'in Mail' })
+    expect(workingStep('Mail', 'asked')).toMatchObject({ verb: 'Work', inApp: 'in Mail' })
   })
 })
 
@@ -320,28 +342,50 @@ describe('settledSteps', () => {
     expect(steps[0].target).toBe('a button in the "Save As" sheet')
   })
 
-  it('a failed step says why and the steps after it did not run', () => {
+  it('a step keeps the name its element had when the model acted, whatever the act renamed it to', () => {
+    const renamed: WordsBook = { brief: (i) => (i === 44 ? { index: 44, line: 'button "Saved"' } : book.brief(i)), path: book.path }
+    const steps = settledSteps({ tool: 'computer_batch', args: batch, ctx: { app: 'TextEdit', book: renamed }, planned, results: [ok('left_click')] })
+    expect(steps[0]).toMatchObject({ verb: 'Clicked', object: 'Save' })
+    // with no start record to go by, the words are made from the book as it is
+    expect(settledSteps({ tool: 'computer_batch', args: batch, ctx: { app: 'TextEdit', book: renamed }, results: [ok('left_click')] })[0].object).toBe('Saved')
+  })
+
+  it('a step named by its name gets its element and its target from the result', () => {
+    const args = { app: 'TextEdit', action: 'left_click', named: 'Save' }
+    const steps = settledSteps({ tool: 'computer_act', args, ctx, planned: plannedSteps('computer_act', args, ctx), results: [ok('left_click', { resolved: 44, element: { index: 44, line: 'button "Save"' } })] })
+    expect(steps[0]).toMatchObject({ verb: 'Clicked', object: 'Save', element: 44, target: 'a button in the "Save As" sheet' })
+  })
+
+  it('a failed step says why and the steps after it did not run: each reads as what was asked, never as done', () => {
     const steps = settledSteps({ tool: 'computer_batch', args: batch, ctx, planned, results: [ok('left_click'), failed('type', { kind: 'stale_element' }), { index: 2, action: 'key', status: 'not-run' }] })
-    expect(steps.map((s) => [s.state, s.reason])).toEqual([['ok', undefined], ['failed', 'The element was gone'], ['not-run', undefined]])
+    expect(steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Clicked', 'ok', undefined], ['Type', 'failed', 'The element was gone'], ['Press', 'not-run', undefined]])
   })
 
   it("the person's touch stops a step", () => {
     const steps = settledSteps({ tool: 'computer_act', args: { app: 'TextEdit', action: 'left_click', element: 44 }, ctx, results: [failed('left_click', { kind: 'interrupted', by: 'person' })] })
-    expect(steps[0]).toMatchObject({ state: 'stopped', reason: 'Stopped when you used the mouse or keyboard' })
+    expect(steps[0]).toMatchObject({ verb: 'Click', state: 'stopped', reason: 'Stopped when you used the mouse or keyboard' })
   })
 
   it('a refused call says so on its first step and leaves the rest not run', () => {
     const denied = settledSteps({ tool: 'computer_batch', args: batch, ctx, planned, refused: { kind: 'denied', line: 'denied: the person did not allow it' } })
+    // the person's own no is a stop, never the red; nothing was clicked, so nothing reads as clicked
     expect(denied.map((s) => [s.verb, s.state, s.reason])).toEqual([
-      ['Clicked', 'failed', "You didn't allow it"],
-      ['Typed', 'not-run', undefined],
-      ['Pressed', 'not-run', undefined]
+      ['Click', 'stopped', "You didn't allow it"],
+      ['Type', 'not-run', undefined],
+      ['Press', 'not-run', undefined]
     ])
     expect(settledSteps({ tool: 'computer_observe', args: { app: 'TextEdit' }, ctx, refused: { kind: 'service_unavailable', line: 'x' } })).toEqual([
       { kind: 'read', verb: 'Read', object: '', inApp: 'TextEdit', state: 'failed', reason: 'Computer use was off' }
     ])
-    expect(settledSteps({ tool: 'computer_apps', args: { launch: 'TempCode' }, ctx: { app: '' }, refused: { kind: 'refused_app', line: 'x' } })[0]).toMatchObject({ verb: 'Listed', state: 'failed', reason: 'That app is off limits' })
-    expect(settledSteps({ tool: 'computer_act', args: { app: 'TextEdit', action: 'left_click', element: 44 }, ctx, refused: { kind: 'stopped', line: 'x' } })[0]).toMatchObject({ state: 'stopped', reason: 'Stopped' })
+    expect(settledSteps({ tool: 'computer_apps', args: { launch: 'TempCode' }, ctx: { app: '' }, refused: { kind: 'refused_app', line: 'x' } })[0]).toMatchObject({ verb: 'Launch', object: 'TempCode', state: 'failed', reason: 'That app is off limits' })
+    const one = { app: 'TextEdit', action: 'left_click', element: 44 }
+    expect(settledSteps({ tool: 'computer_act', args: one, ctx, refused: { kind: 'stopped', line: 'x' } })[0]).toMatchObject({ verb: 'Click', state: 'stopped', reason: 'Stopped' })
+    // a pause, a cancel and the Away refusal are the thread's or the person's doing too
+    for (const [kind, reason] of [['paused', COMPUTER_REFUSAL_WORDS.paused], ['cancelled', COMPUTER_REFUSAL_WORDS.cancelled], ['away', COMPUTER_REFUSAL_WORDS.away]] as const)
+      expect(settledSteps({ tool: 'computer_act', args: one, ctx, refused: { kind, line: 'x' } })[0], kind).toMatchObject({ state: 'stopped', reason })
+    // the host's own refusals are failures
+    for (const kind of ['service_unavailable', 'refused_app', 'no_observation', 'session_refused'] as const)
+      expect(settledSteps({ tool: 'computer_act', args: one, ctx, refused: { kind, line: 'x' } })[0].state, kind).toBe('failed')
   })
 
   it('a stop ends the call where it was: before any step, or after the ones that ran', () => {
@@ -393,9 +437,11 @@ describe('readSummary', () => {
   it('an unchanged read is its header alone', () => {
     expect(readSummary(observation('unchanged.txt'))).toEqual({ words: 'Read no changes', more: false })
   })
-  it('a thin tree is the picture', () => {
-    expect(readSummary(observation('thin.txt'))).toEqual({ words: 'Looked at the picture', more: true })
-    expect(readSummary('app "TC Probe" · window "TC Probe" · 720×364 · no changes · thin tree, see the screenshot')).toEqual({ words: 'Looked at the picture', more: false })
+  it('a thin tree is the picture only when a picture reached the model; else it is the few elements it read', () => {
+    expect(readSummary(observation('thin.txt'), true)).toEqual({ words: 'Looked at the picture', more: true })
+    expect(readSummary('app "TC Probe" · window "TC Probe" · 720×364 · no changes · thin tree, see the screenshot', true)).toEqual({ words: 'Looked at the picture', more: false })
+    expect(readSummary(observation('thin.txt')).words).toMatch(/^Read \d+ elements?$/)
+    expect(readSummary('app "TC Probe" · window "TC Probe" · 720×364 · no changes · thin tree, see the screenshot')).toEqual({ words: 'Read no changes', more: false })
   })
   it('a loading page and one not drawn say so', () => {
     expect(readSummary(observation('loading.txt')).words).toMatch(/^Read \d+ elements, still loading$/)
@@ -408,6 +454,23 @@ describe('readSummary', () => {
   it('a text off the grammar still says something', () => {
     expect(readSummary('not an observation\nat all')).toEqual({ words: 'Read the window', more: true })
     expect(readSummary('nope')).toEqual({ words: 'Read the window', more: false })
+  })
+})
+
+describe('scrubReadText', () => {
+  const read = 'app "Chrome" · window "Keys"\n[48] input "API key" = "sk-live-1234"\n[49] text = "say \\"hi\\" twice"\n[50] text = "sk-live-1234 again"'
+  it('a text the steps held back reads as its length wherever it stands', () => {
+    expect(scrubReadText(read, ['sk-live-1234'])).toBe('app "Chrome" · window "Keys"\n[48] input "API key" = "‹12 characters›"\n[49] text = "say \\"hi\\" twice"\n[50] text = "‹12 characters› again"')
+  })
+  it('finds a text as the observation escapes it', () => {
+    expect(scrubReadText(read, ['say "hi" twice'])).toContain('[49] text = "‹14 characters›"')
+  })
+  it('leaves the text alone with nothing held back, and never takes out a text of three characters or fewer', () => {
+    expect(scrubReadText(read, [])).toBe(read)
+    expect(scrubReadText(read, ['API', 'sk'])).toBe(read)
+  })
+  it('takes the longer text first, so one that holds another goes whole', () => {
+    expect(scrubReadText('value = "abcdefgh"', ['abcd', 'abcdefgh'])).toBe('value = "‹8 characters›"')
   })
 })
 

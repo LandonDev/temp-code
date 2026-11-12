@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { ComputerHistoryStep, ComputerStepKind } from "@server/shared/contract-computer";
 import { workingStep } from "@server/shared/computer/historyWords";
 import { COMPUTER_TIER_WORDS } from "@server/shared/statusWords";
@@ -10,7 +10,7 @@ import { Skeleton } from "@renderer/components/ui/skeleton";
 import { StatusMark } from "@renderer/components/ui/status";
 import { TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
-import { AppWindow, Camera, ChevronRight, Hourglass, Keyboard, MousePointerClick, MoveVertical, ScanText, TextCursor, type IconComponent } from "../../../chrome/icons";
+import { AppWindow, Camera, ChevronRight, Hourglass, Keyboard, Minus, MousePointerClick, MoveVertical, ScanText, TextCursor, type IconComponent } from "../../../chrome/icons";
 import type { StepGroup, StepRow } from "../../../lib/computerHistory";
 import { clockTime } from "../../../lib/duration";
 import { STAGGER } from "../../../lib/ease";
@@ -25,9 +25,12 @@ import { GLYPH_SLOT, STEP_LINE } from "../../transcript/stepLine";
  * open: the last step that finished while the section follows, else the one
  * the person chose. It carries its facts (the tier in the house's words, what
  * it acted on, how it went, its time), what the model read and, for a step
- * that failed, why. The words are the host's, made once (the journal's). A
- * step that lands while the section follows fades in and rises 4px; nothing
- * moves on a key, while a row is pinned, or at mount.
+ * that failed, why. The words are the host's, made once (the journal's): a
+ * step that ran reads in the past ("Clicked Save"), one that failed, was
+ * stopped or never ran as what was asked ("Click Save"). A step that lands
+ * at the top while the section follows fades in and rises 4px; nothing
+ * moves on a key, while a row is pinned, at mount, or for a page of earlier
+ * steps.
  */
 
 /** A step's glyph by its kind, uncoloured; a state takes its place. */
@@ -64,12 +67,14 @@ export interface RunningLine {
 export interface ReadFold {
   open: boolean;
   text: string | null;
+  /** the viewport above already shows this text: the line says what was read and opens nothing */
+  above?: boolean;
 }
 
 /** A row's words: its own without the app, or with it where the row names its app or has nothing else to say. */
 export function rowWords(row: Pick<StepRow, "step" | "namesApp" | "whole" | "call">, live = false): { verb: string; object: string } {
-  // a batch that runs, or never finished, is its call as one row
-  const step: ComputerHistoryStep = row.whole && row.call.steps.length > 1 ? workingStep(row.call.app, live) : row.step;
+  // a batch that runs, or never finished, is its call as one row: "Working in Mail", or what was asked, "Work in Mail"
+  const step: ComputerHistoryStep = row.whole && row.call.steps.length > 1 ? workingStep(row.call.app, live ? "live" : "asked") : row.step;
   return { verb: step.verb, object: row.namesApp || !step.object ? step.inApp : step.object };
 }
 
@@ -85,15 +90,16 @@ function Words({ verb, object, quiet, whole }: { verb: string; object: string; q
 /** A line that says its words whole: the step grid's height as a minimum, the glyph on its first line. */
 const WHOLE_LINE = "flex min-h-7 min-w-0 items-start gap-1 py-1 font-sans text-[13px] leading-5";
 
-/** How a finished row ended, as its mark: nothing for a step that ran or did not run. */
-type RowMark = "failed" | "stopped" | null;
-const markOf = (row: StepRow): RowMark => (row.call.state === "unfinished" || row.step.state === "stopped" ? "stopped" : row.step.state === "failed" ? "failed" : null);
+/** How a finished row ended, as its mark: nothing for a step that ran; a dash for one that never did. */
+type RowMark = "failed" | "stopped" | "not-run" | null;
+const markOf = (row: StepRow): RowMark =>
+  row.call.state === "unfinished" || row.step.state === "stopped" ? "stopped" : row.step.state === "failed" ? "failed" : row.step.state === "not-run" ? "not-run" : null;
 
 function RowGlyph({ kind, mark }: { kind: ComputerStepKind; mark: RowMark }) {
   const Glyph = KIND_GLYPH[kind];
   return (
     <span className={GLYPH_SLOT} data-slot="step-glyph" data-mark={mark ?? undefined}>
-      {mark ? <StatusMark state={mark} word={false} aria-hidden /> : <Glyph className="size-3.5" />}
+      {mark === "not-run" ? <Minus className="size-3.5" /> : mark ? <StatusMark state={mark} word={false} aria-hidden /> : <Glyph className="size-3.5" />}
     </span>
   );
 }
@@ -115,7 +121,6 @@ function RunningRow({ line, pinned, onFollow }: { line: RunningLine; pinned: boo
     </>
   );
   const lineClass = cn(whole ? WHOLE_LINE : STEP_LINE, ROW_INSET);
-  const under = line.waits ? [line.waits] : line.plan;
   return (
     <div data-slot="step-running" data-state={line.state}>
       {pinned ? (
@@ -128,9 +133,14 @@ function RunningRow({ line, pinned, onFollow }: { line: RunningLine; pinned: boo
           {head}
         </div>
       )}
-      {under?.length ? (
+      {line.waits || line.plan?.length ? (
+        // what a held step waits to do, or a batch's planned steps, one a line: a step's own words hold commas
         <div className={cn(WORDS_COLUMN, "pb-1 text-xs leading-4 text-muted-foreground")} data-slot="step-plan">
-          <Facts parts={under} />
+          {(line.waits ? [line.waits] : (line.plan ?? [])).map((words, i) => (
+            <span key={i} className="block">
+              {words}
+            </span>
+          ))}
         </div>
       ) : null}
     </div>
@@ -184,7 +194,7 @@ function StepDetail({ row, read, onToggleRead }: { row: StepRow; read: ReadFold;
       ) : null}
       <Facts parts={facts} className="text-muted-foreground" />
       {reads ? (
-        call.text ? (
+        call.text && !read.above ? (
           <Collapsible open={read.open}>
             <button
               type="button"
@@ -278,6 +288,7 @@ const StepRowView = memo(
     a.stagger === b.stagger &&
     a.read?.open === b.read?.open &&
     a.read?.text === b.read?.text &&
+    a.read?.above === b.read?.above &&
     a.onSelect === b.onSelect &&
     a.onToggleRead === b.onToggleRead,
 );
@@ -353,57 +364,94 @@ export interface StepListProps {
 /** The pinned row's top inside the scroller. */
 const topOf = (el: HTMLElement): number => el.offsetTop;
 
+/** The list counts as at its top within this many pixels: there it stays as steps land. */
+const AT_TOP = 4;
+
+/** The read that failed, said once with its way back: above whatever steps and running lines there still are. */
+function FailedLine({ onRetry, className }: { onRetry: () => void; className: string }) {
+  return (
+    <p data-slot="steps-failed" className={cn("m-0 flex flex-wrap items-baseline gap-x-2 text-xs leading-4 text-destructive", className)}>
+      <span>Couldn't read the steps</span>
+      <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={onRetry}>
+        Retry
+      </Button>
+    </p>
+  );
+}
+
 export function StepList({ running, groups, openId, pinned, read, status, more, loadingMore, onSelect, onFollow, onToggleRead, onRetry, onOlder }: StepListProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const ids = groups.flatMap((g) => g.rows.map((r) => r.id));
   const idsKey = ids.join("|");
 
   // Rows that land in one commit fade in one after another, STAGGER.stepMs apart, the fourth and later together.
-  // A row there at mount, or one that came while a row was pinned, never lands (its place is -1).
+  // The map holds the rows on screen and each one's place; a row never lands (its place is -1) when it was there at
+  // mount, came with the first read, came while a row was pinned, or is a page of earlier steps under the rows
+  // already here: only a step that arrives at the live end is news.
   const [landed, setLanded] = useState<ReadonlyMap<string, number>>(() => new Map(ids.map((id) => [id, -1])));
+  const [armed, setArmed] = useState(status === "ready");
+  useEffect(() => {
+    if (status === "ready") setArmed(true);
+  }, [status]);
   const fresh = ids.filter((id) => !landed.has(id));
-  if (fresh.length > 0) {
-    const next = new Map(landed);
+  if (fresh.length > 0 || landed.size > ids.length) {
+    const firstHeld = ids.findIndex((id) => landed.has(id));
+    const next = new Map<string, number>();
+    for (const id of ids) {
+      const place = landed.get(id);
+      if (place !== undefined) next.set(id, place);
+    }
+    const atTop = fresh.filter((id) => firstHeld < 0 || ids.indexOf(id) < firstHeld);
     // newest first on screen: the first of a batch is its last row, so the batch lands in the order it ran
-    fresh.reverse().forEach((id, i) => next.set(id, pinned ? -1 : Math.min(i, STAGGER.max)));
+    atTop.reverse().forEach((id, i) => next.set(id, pinned || !armed ? -1 : Math.min(i, STAGGER.max)));
+    for (const id of fresh) if (!next.has(id)) next.set(id, -1);
     setLanded(next);
   }
 
   // While a row is pinned, rows that land above it do not move it: the list scrolls on by their height, from 0 too.
-  const pinnedTop = useRef<number | null>(null);
+  // The offset is that row's own: choosing another row starts again from where the new one stands.
+  const anchor = useRef<{ id: string; top: number } | null>(null);
   useLayoutEffect(() => {
     const el = scroller.current;
     const row = pinned && openId ? el?.querySelector<HTMLElement>(`[data-step="${quoted(openId)}"]`) : null;
-    if (!el || !row) {
-      pinnedTop.current = null;
+    if (!el || !row || !openId) {
+      anchor.current = null;
       return;
     }
     const top = topOf(row);
-    if (pinnedTop.current !== null && top !== pinnedTop.current) el.scrollTop += top - pinnedTop.current;
-    pinnedTop.current = top;
+    if (anchor.current?.id === openId && top !== anchor.current.top) el.scrollTop += top - anchor.current.top;
+    anchor.current = { id: openId, top };
   }, [idsKey, openId, pinned, running.length]);
 
-  // Following, the list stays at its top: the live end.
+  // Following, a list at its top stays there as steps land: the live end. One the person scrolled keeps its place
+  // (so does a page of earlier steps they asked for); following again, by Go live or Home, goes back to the top.
+  const atTop = useRef(true);
+  const wasPinned = useRef(pinned);
   useLayoutEffect(() => {
-    if (!pinned && scroller.current) scroller.current.scrollTop = 0;
+    const el = scroller.current;
+    if (el && !pinned && (wasPinned.current || atTop.current)) {
+      el.scrollTop = 0;
+      atTop.current = true;
+    }
+    wasPinned.current = pinned;
   }, [idsKey, pinned]);
 
   const onKeyDown = useStepKeys({ ids, openId, scroller, onSelect, onFollow });
 
-  if (status === "failed" && !ids.length && !running.length) {
-    return (
-      <p data-slot="steps-failed" className="m-0 flex flex-wrap items-baseline gap-x-2 px-3 py-2 text-xs leading-4 text-destructive">
-        <span>Couldn't read the steps</span>
-        <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={onRetry}>
-          Retry
-        </Button>
-      </p>
-    );
-  }
+  if (status === "failed" && !ids.length && !running.length) return <FailedLine onRetry={onRetry} className="px-3 py-2" />;
 
   return (
     // The keys are the rows': the list hears them where they bubble.
-    <div ref={scroller} data-slot="computer-steps" onKeyDown={onKeyDown} className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pb-3">
+    <div
+      ref={scroller}
+      data-slot="computer-steps"
+      onKeyDown={onKeyDown}
+      onScroll={(e) => {
+        atTop.current = e.currentTarget.scrollTop <= AT_TOP;
+      }}
+      className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pb-3"
+    >
+      {status === "failed" ? <FailedLine onRetry={onRetry} className="px-2 pb-2" /> : null}
       {running.map((line) => (
         <RunningRow key={line.id} line={line} pinned={pinned} onFollow={onFollow} />
       ))}

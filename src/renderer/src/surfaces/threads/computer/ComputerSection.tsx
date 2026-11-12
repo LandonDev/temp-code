@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ComputerHistoryCall } from "@server/shared/contract-computer";
 import { loadToast } from "../../../components/ui/toaster";
 import { openLightbox } from "../../../chrome/lightboxStore";
@@ -37,8 +37,13 @@ import { ENDED_WORDS, NO_PICTURE_WORDS, RETRY_ENDS, ViewportLine, liveFace, stre
  * open row is the newest step with an outcome. A click or a key on a row
  * pins it: the viewport is that call's own picture, the stream stops (the
  * Mac stops capturing for it), and Go live, the running line or Home follow
- * again. The stream runs only while the section is shown, the window
- * visible and the section following.
+ * again. Opening a row's read text pins it too, so the text stays while
+ * more steps land. The stream runs only while the section is shown, the
+ * window visible and the section following.
+ *
+ * A picture that is not the window now, nor the open row's own, says when
+ * it was taken under the box: a pinned step's while a session is live, and
+ * an older step's where the newest kept nothing.
  */
 
 const sessionId = (entry: ComputerEntry): string => `${entry.host}:${entry.row.threadId}`;
@@ -79,6 +84,8 @@ export function viewportOf(v: {
   shown: StepRow | null;
   media: ReturnType<typeof useStepMedia>;
   keptHeight: number | null;
+  /** what is shown is neither the window now nor the open row's own picture: the line under it says when it was */
+  asOf?: boolean;
   onOpen: (label: string, url: string, from: DOMRect) => void;
 }): ViewportProps | null {
   const { live, pinned, shown, media, keptHeight } = v;
@@ -96,27 +103,38 @@ export function viewportOf(v: {
     ) : null;
   if (!shown) return ended ? { face: null, label: "", line: ended } : null;
   const { call } = shown;
-  const label = `${windowIn(call)} at ${clockTime(call.endedAt ?? call.at)}`;
-  const size = call.picture && !("none" in call.picture) ? { width: call.picture.width, height: call.picture.height } : null;
+  const kept = call.picture && !("none" in call.picture) ? call.picture : null;
+  // the picture's own time: it is taken after the call's answer
+  const at = kept?.at ?? call.endedAt ?? call.at;
+  const label = `${windowIn(call)} at ${clockTime(at)}`;
+  const size = kept ? { width: kept.width, height: kept.height } : null;
   const here = media.landed?.id === `${shown.key}:${call.n}` ? media.landed.media : null;
   const base = { label, size, height: pinned ? keptHeight : null };
+  // a pinned row's own facts carry its time; an older step standing in for the newest says when it was
+  const asIt = v.asOf ? <ViewportLine words={pinned ? "As it was after this step" : `As it was at ${clockTime(at)}`} /> : null;
+  // Nothing to put in a box. A pinned step keeps the box's place, so stepping through rows moves nothing; else the line alone.
+  const nothing = (line: ReactNode): ViewportProps | null =>
+    pinned && keptHeight ? { ...base, size: null, face: { kind: "none" }, line: line ?? <ViewportLine words="No picture was kept" /> } : line ? { face: null, label, line } : null;
   if (!here) {
     // on its way: the picture before it stays, dimmed once that has taken a moment; a first picture is a skeleton
     const before = media.landed?.media.picture;
     if (before) return { ...base, face: { kind: "picture", src: before.url, dim: media.late }, line: ended };
-    return keepsMedia(call) ? { ...base, face: { kind: "skeleton" }, line: ended } : ended ? { face: null, label, line: ended } : null;
+    return keepsMedia(call) ? { ...base, face: { kind: "skeleton" }, line: ended } : nothing(ended);
   }
   if (here.picture) {
     const url = here.picture.url;
-    // one picture per call: a batch's earlier step shows the window after all of them, and says so
-    const after = pinned && call.steps.length > 1 && shown.index < call.steps.length - 1 ? <ViewportLine words={`After all ${call.steps.length} steps`} /> : null;
-    return { ...base, size: { width: here.picture.width, height: here.picture.height }, face: { kind: "picture", src: url, onOpen: (from) => v.onOpen(label, url, from) }, line: ended ?? after };
+    // one picture per call: a batch's earlier step shows the window after every step that ran, and says so
+    const after =
+      pinned && call.steps.length > 1 && shown.index < call.steps.length - 1 ? (
+        <ViewportLine words={call.steps.every((step) => step.state === "ok") ? `After all ${call.steps.length} steps` : "After the steps that ran"} />
+      ) : null;
+    return { ...base, size: { width: here.picture.width, height: here.picture.height }, face: { kind: "picture", src: url, onOpen: (from) => v.onOpen(label, url, from) }, line: ended ?? after ?? asIt };
   }
   // no picture: what the model read stands in its place, and why there is none where that is worth a line
   const none = call.picture && "none" in call.picture ? NO_PICTURE_WORDS[call.picture.none] : undefined;
   const why = ended ?? (none ? <ViewportLine words={none} /> : null);
-  if (here.text) return { ...base, size: null, face: { kind: "text", text: here.text }, line: why };
-  return why ? { face: null, label, line: why } : null;
+  if (here.text) return { ...base, size: null, face: { kind: "text", text: here.text }, line: why ?? asIt };
+  return nothing(why);
 }
 
 export function ComputerSection({ threadId }: { threadId: string }) {
@@ -133,16 +151,17 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   const box = useRef<HTMLElement>(null);
 
   // ── the list ──
-  const sessions = useMemo<HistorySession[]>(
-    () =>
-      data.keys.map(({ key, threadId: id }) => ({
-        key,
-        threadId: id,
-        ...(id !== threadId ? { title: metas.find((m) => m.id === id)?.title || "Subagent" } : {}),
-        calls: data.histories[key]?.calls ?? [],
-      })),
-    [data.histories, data.keys, metas, threadId],
-  );
+  // The subagents' titles as one string: a push that changes none of them leaves the rows as they are.
+  const titles = data.keys.map(({ threadId: id }) => (id === threadId ? "" : metas.find((m) => m.id === id)?.title || "Subagent")).join("\u0000");
+  const sessions = useMemo<HistorySession[]>(() => {
+    const names = titles.split("\u0000");
+    return data.keys.map(({ key, threadId: id }, i) => ({
+      key,
+      threadId: id,
+      ...(id !== threadId ? { title: names[i] } : {}),
+      calls: data.histories[key]?.calls ?? [],
+    }));
+  }, [data.histories, data.keys, titles, threadId]);
   const list = useMemo(() => rowsOf(sessions), [sessions]);
   const rows = useMemo(() => flatRows(list), [list]);
 
@@ -150,6 +169,11 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   const [selected, setSelected] = useState<string | null>(null);
   const [keptHeight, setKeptHeight] = useState<number | null>(null);
   const pinnedRow = selected ? (rows.find((r) => r.id === selected) ?? null) : null;
+  // A pinned row that is gone (its history removed, or begun again) is no pin: a later call with its number is another call.
+  if (selected !== null && pinnedRow === null) {
+    setSelected(null);
+    setKeptHeight(null);
+  }
   const openRow = pinnedRow ?? rows[0] ?? null;
   const lead = data.entries[0] ?? null;
   const stream = useLiveStream(lead, !pinnedRow && paneShown && docShown, box, root);
@@ -169,9 +193,20 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     }
   }, [cache, data.histories, data.keys]);
 
-  // With Screen Recording off the newest read's text stands in for the window.
+  // With nothing live, or the stream over, a kept step stands in for the window: the newest one, or where that kept
+  // nothing (a call that was stopped, refused, or only listed apps) the newest that did. With Screen Recording off
+  // it is the lead session's newest read, whose text is what there is to see.
   const noRecording = stream.state.status === "ended" && stream.state.reason === "permission";
-  const shownRow = pinnedRow ?? (!lead || over ? ((noRecording ? rows.find((r) => r.call.text) : undefined) ?? openRow) : null);
+  const leadKey = lead ? historyKeyOf(lead) : null;
+  const standIn = (): StepRow | null => {
+    if (noRecording) {
+      const read = rows.find((r) => r.call.text && r.key === leadKey) ?? rows.find((r) => r.call.text);
+      if (read) return read;
+    }
+    return openRow && !keepsMedia(openRow.call) ? (rows.find((r) => keepsMedia(r.call)) ?? openRow) : openRow;
+  };
+  const shownRow = pinnedRow ?? (!lead || over ? standIn() : null);
+  const asOf = pinnedRow ? lead !== null : shownRow !== null && shownRow.call !== openRow?.call;
   const media = useStepMedia(cache, wantOf(shownRow));
 
   // The open row's read: closed whenever the open row changes.
@@ -180,10 +215,18 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   const readRow = openRow !== null && readFor === openRow.id ? openRow : null;
   const readOpen = readRow !== null;
   const readMedia = useStepMedia(cache, wantOf(readRow));
-  const readText = readRow && readMedia.landed?.id === `${readRow.key}:${readRow.call.n}` && !readMedia.pending ? (readMedia.landed.media.text ?? "") : null;
+  // the text held for the call stays while a later revision of it (its picture landing) is read
+  const readText = readRow && readMedia.landed?.id === `${readRow.key}:${readRow.call.n}` ? (readMedia.landed.media.text ?? "") : null;
 
+  // The rows' handlers read what is current through a ref, so they keep one identity and a push re-renders only the
+  // row whose call changed (docs/agents/renderer-over-time.md).
+  const latest = useRef({ rows, pinnedRow, openRow });
+  useLayoutEffect(() => {
+    latest.current = { rows, pinnedRow, openRow };
+  });
   const onSelect = useCallback(
     (id: string) => {
+      const { rows, pinnedRow } = latest.current;
       const at = rows.findIndex((r) => r.id === id);
       if (at < 0) return;
       // the box keeps the height it has now for as long as a row is pinned
@@ -192,13 +235,19 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
       // the rows either side are a key away
       for (const near of [rows[at - 1], rows[at + 1]]) if (near && near.call !== rows[at].call && keepsMedia(near.call)) void cache.load(near.key, near.call).catch(() => undefined);
     },
-    [cache, pinnedRow, rows],
+    [cache],
   );
   const onFollow = useCallback(() => {
     setSelected(null);
     setKeptHeight(null);
   }, []);
-  const onToggleRead = useCallback(() => setReadFor((was) => (openRow && was !== openRow.id ? openRow.id : null)), [openRow]);
+  const onToggleRead = useCallback(() => {
+    const { openRow, pinnedRow } = latest.current;
+    if (!openRow) return;
+    // opening the read is choosing its row: it stays open, and its text with it, while more steps land
+    if (!pinnedRow) onSelect(openRow.id);
+    setReadFor((was) => (was !== openRow.id ? openRow.id : null));
+  }, [onSelect]);
 
   // ── the sessions and their Stop ──
   const [stopping, setStopping] = useState<ReadonlySet<string>>(new Set());
@@ -240,6 +289,7 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     shown: shownRow,
     media,
     keptHeight,
+    asOf,
     // a kept picture opens the lightbox from the box; the live box does not
     onOpen: (label, url, from) => openLightbox([{ environmentId: LOCAL_ENVIRONMENT_ID, name: label, src: url }], 0, from),
   });
@@ -254,7 +304,7 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
       running={running}
       groups={list.groups}
       openId={openRow?.id ?? null}
-      read={{ open: readOpen, text: readText }}
+      read={{ open: readOpen, text: readText, above: viewport?.face?.kind === "text" && shownRow?.call === openRow?.call }}
       status={status}
       more={histories.some((h) => h?.more)}
       loadingMore={loadingMore}

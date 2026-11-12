@@ -98,7 +98,9 @@ export type ViewportFace =
   /** what the model read, where there is no picture */
   | { kind: "text"; text: string }
   /** the first picture is on its way */
-  | { kind: "skeleton" };
+  | { kind: "skeleton" }
+  /** a pinned step that kept nothing: the box keeps its place, with the line inside it */
+  | { kind: "none" };
 
 export interface ViewportProps {
   /** null: the line alone (nothing will come into a box) */
@@ -128,18 +130,30 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, line, 
   // In its own shape the picture fills the box's height. In a kept height it is as wide as that height allows and no
   // wider than the box, so a picture of any shape sits whole inside it, centred both ways.
   const fit = height ? { aspectRatio: aspect, width: `min(100%, ${Math.round((height * width) / tall)}px)` } : { aspectRatio: aspect };
-  const boxClass = cn("relative flex w-full justify-center overflow-hidden rounded-lg bg-card", height && "items-center", FADE_IN);
+  const boxClass = cn("relative flex w-full justify-center overflow-hidden rounded-lg bg-card", height && "items-center");
+  // The fade is the section's first picture arriving: it rides the wrapper, which stays through every change of face,
+  // so a pin, Go live and a step by key swap one face for another with nothing moving.
+  const wrap = { "data-slot": "computer-viewport", className: FADE_IN } as const;
   const below = line ? <div className={face ? "pt-1" : undefined}>{line}</div> : null;
-  if (!face) return below ? <div data-slot="computer-viewport">{below}</div> : null;
+  if (!face) return below ? <div {...wrap}>{below}</div> : null;
+  if (face.kind === "none") {
+    return (
+      <div {...wrap}>
+        <div ref={ref as Ref<HTMLDivElement>} data-face="none" className={cn(boxClass, "items-center px-3 text-center")} style={boxStyle}>
+          {line}
+        </div>
+      </div>
+    );
+  }
   if (face.kind === "text") {
     return (
-      <div data-slot="computer-viewport">
+      <div {...wrap}>
         <pre
           ref={ref as Ref<HTMLPreElement>}
           tabIndex={0}
           aria-label={label}
           data-face="text"
-          className={cn(CONSOLE, FADE_IN, "m-0 w-full overflow-x-auto overflow-y-auto whitespace-pre")}
+          className={cn(CONSOLE, "m-0 w-full overflow-x-auto overflow-y-auto whitespace-pre")}
           style={boxStyle}
         >
           {face.text}
@@ -170,7 +184,7 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, line, 
   if (face.kind === "picture" && face.onOpen) {
     const open = face.onOpen;
     return (
-      <div data-slot="computer-viewport">
+      <div {...wrap}>
         <button
           ref={ref as Ref<HTMLButtonElement>}
           type="button"
@@ -187,7 +201,7 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, line, 
     );
   }
   return (
-    <div data-slot="computer-viewport">
+    <div {...wrap}>
       <div
         ref={ref as Ref<HTMLDivElement>}
         role="img"

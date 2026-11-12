@@ -154,6 +154,13 @@ describe('actionWords', () => {
     expect(words({ action: 'select_text', element: 33, range: [0, 3] })).toBe('select 0..3 in input "Subject"')
     expect(words({ action: 'perform', element: 14, name: 'show menu' })).toBe('show menu button "Save"')
   })
+  it('masked, a selected text is its length like a typed one: the journal never writes a text its rule holds back', () => {
+    const masked = (a: Partial<ComputerAction>): string => actionWords(a as ComputerAction, ctx({ maskText: true }))
+    expect(masked({ action: 'select_text', element: 33, text: 'hunter2' })).toBe('select 7 characters in input "Subject"')
+    expect(masked({ action: 'type', text: 'hunter2', element: 33 })).toBe('type 7 characters into input "Subject"')
+    // a range holds no text
+    expect(masked({ action: 'select_text', element: 33, range: [0, 3] })).toBe('select 0..3 in input "Subject"')
+  })
   it('cuts typed text at 60 characters', () => {
     expect(words({ action: 'type', text: 'x'.repeat(80) })).toBe(`type "${'x'.repeat(60)}…"`)
   })
@@ -197,6 +204,41 @@ describe('computerPhrase', () => {
     // a caller that knows what the launch did needs no result text
     expect(words(computerPhrase('computer_apps', { launch: 'TextEdit' }, { live: false, launched: { launched: true, opened: false } }))).toBe('Launched TextEdit')
     expect(words(computerPhrase('computer_apps', open, { live: false, launched: { launched: false, opened: true } }))).toBe('Opened report.pdf in Preview')
+  })
+
+  it('asked: a step that did not end well reads as what was asked of it, never as done', () => {
+    const asked = (tool: string, input: object) => words(computerPhrase(tool, input, { live: false, asked: true, brief, app: 'TextEdit' }))
+    expect(asked('computer_act', { app: 'TextEdit', action: 'left_click', element: 14 })).toBe('Click Save in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'double_click', element: 14 })).toBe('Double-click Save in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'type', text: 'hi', element: 33 })).toBe('Type into Subject in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'paste', text: 'hi', element: 33 })).toBe('Paste into Subject in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'key', text: 'super+s' })).toBe('Press super+s in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'hold_key', text: 'shift', duration: 1 })).toBe('Hold shift in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'scroll', scroll_direction: 'down', scroll_amount: 3 })).toBe('Scroll down in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'set_value', value: 'x', element: 33 })).toBe('Set Subject in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'select_text', text: 'x', element: 33 })).toBe('Select text in TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'screenshot' })).toBe('Look at TextEdit')
+    expect(asked('computer_act', { app: 'TextEdit', action: 'wait', duration: 1 })).toBe('Wait on TextEdit')
+    expect(asked('computer_observe', { app: 'TextEdit' })).toBe('Read TextEdit')
+    expect(asked('computer_batch', { app: 'TextEdit', actions: [{ action: 'key', text: 'a' }, { action: 'key', text: 'b' }] })).toBe('Work in TextEdit (2 steps)')
+    // the apps call: what was asked of a launch is the launch, of an open the open, whatever came of it
+    expect(asked('computer_apps', {})).toBe('List apps')
+    expect(asked('computer_apps', { launch: 'TextEdit' })).toBe('Launch TextEdit')
+    expect(asked('computer_apps', { launch: 'Preview', open: ['/tmp/report.pdf'] })).toBe('Open report.pdf in Preview')
+    // the rest of the verbs, each in its asked form
+    const verbOf = (action: string): string => computerPhrase('computer_act', { app: 'TextEdit', action, name: 'press', element: 14 }, { live: false, asked: true, brief, app: 'TextEdit' })!.verb
+    expect(['right_click', 'middle_click', 'triple_click', 'left_click_drag', 'mouse_move', 'left_mouse_down', 'left_mouse_up', 'perform', 'zoom', 'cursor_position'].map(verbOf)).toEqual([
+      'Right-click',
+      'Middle-click',
+      'Triple-click',
+      'Drag',
+      'Point at',
+      'Press',
+      'Let go of',
+      'Use',
+      'Zoom into',
+      'Find'
+    ])
   })
 
   it('app: false leaves the app out of the object, empty when the app is all there is', () => {

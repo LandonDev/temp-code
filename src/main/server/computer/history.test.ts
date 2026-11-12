@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ComputerHistoryStep } from '@shared/contract-computer'
-import { ComputerHistory, HISTORY_KEEP_CALLS, HISTORY_KEEP_MS, HISTORY_PAGE, PICTURE_TIMEOUT_MS, capturePicture, historyPicturesFromEnv, type HistoryChange } from './history'
+import { ComputerHistory, HISTORY_KEEP_CALLS, HISTORY_KEEP_LINES, HISTORY_KEEP_MS, HISTORY_PAGE, PICTURE_TIMEOUT_MS, capturePicture, historyPicturesFromEnv, type HistoryChange } from './history'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { serviceSessionId } from './sessionId'
 import { FAKE_APPS, ManualClock } from './testFake'
@@ -167,6 +167,67 @@ describe('n, turn and born', () => {
     await j.history.close()
     const again = journal({ root: j.root })
     expect((await again.calls('t1')).calls[0]).toMatchObject({ state: 'unfinished', rev: 1 })
+  })
+
+  it('a call that never finished reads as what was asked of it; while it runs, and once it ends, it reads as it was written', async () => {
+    const j = journal()
+    const asked = { verb: 'Click', object: 'Save', inApp: 'Save in TextEdit' }
+    j.history.begin('t1', { ...start(), steps: [{ ...step('Clicking'), asked }] })
+    const done = j.history.begin('t1', { ...start(), steps: [{ ...step('Clicking'), asked }] })
+    await done.end(end())
+    const live = (await j.calls('t1')).calls
+    expect(live.map((c) => [c.state, c.steps[0].verb])).toEqual([['running', 'Clicking'], ['done', 'Clicked']])
+    // the words a reader gets never carry the journal's own field
+    for (const c of live) expect(c.steps[0]).not.toHaveProperty('asked')
+    for (const c of j.changes) if ('call' in c) expect(c.call.steps[0]).not.toHaveProperty('asked')
+    await j.history.close()
+    const again = journal({ root: j.root })
+    expect((await again.calls('t1')).calls.map((c) => [c.state, c.steps[0].verb])).toEqual([['unfinished', 'Click'], ['done', 'Clicked']])
+  })
+
+  it('a key with nothing on disk is not loaded for a reader, and still takes its first call', async () => {
+    const j = journal()
+    const loaded = (): number => (j.history as unknown as { states: Map<string, unknown> }).states.size
+    expect(await j.history.read(['nobody', 'no-one'])).toEqual([{ key: 'nobody', born: 0, calls: [], more: false }, { key: 'no-one', born: 0, calls: [], more: false }])
+    expect(await j.history.step('nobody', 1)).toEqual({})
+    expect(loaded()).toBe(0)
+    await j.history.begin('nobody', start()).end(end())
+    expect((await j.calls('nobody')).calls).toHaveLength(1)
+    expect(loaded()).toBe(1)
+  })
+
+  it('a log past its bound is written again with its newest calls when it is loaded; the counters go on', async () => {
+    const j = journal()
+    const dir = j.dir('t1')
+    mkdirSync(join(dir, 'steps'), { recursive: true })
+    const total = HISTORY_KEEP_LINES + 5
+    const records: string[] = []
+    for (let n = 1; n <= total; n++) {
+      records.push(JSON.stringify({ v: 1, r: 'start', n, turn: Math.ceil(n / 10), at: n * 10, ...start() }))
+      records.push(JSON.stringify({ v: 1, r: 'end', n, at: n * 10 + 1, ...end() }))
+    }
+    writeFileSync(join(dir, 'log.jsonl'), records.join('\n') + '\n')
+    const newest = await j.calls('t1')
+    expect(newest.calls.at(-1)!.n).toBe(total)
+    // born moved to the oldest call still kept, which tells a reader to drop the ones that went
+    expect(newest.born).toBe(60)
+    const kept = j.lines('t1')
+    expect(kept).toHaveLength(HISTORY_KEEP_LINES * 2)
+    expect(kept[0]).toMatchObject({ r: 'start', n: 6 })
+    expect(existsSync(join(dir, 'log.jsonl.tmp'))).toBe(false)
+    // the oldest page ends at the oldest kept call
+    let before = newest.calls[0].n
+    let oldest = before
+    for (;;) {
+      const page = await j.calls('t1', before)
+      if (!page.calls.length) break
+      oldest = before = page.calls[0].n
+    }
+    expect(oldest).toBe(6)
+    // the next call goes on from the highest number and turn the log held
+    const next = j.history.begin('t1', start())
+    expect(await next.n()).toBe(total + 1)
+    expect((await j.calls('t1')).calls.at(-1)!.turn).toBe(Math.ceil(total / 10) + 1)
   })
 
   it('a torn last line and a foreign line are skipped', async () => {

@@ -6,11 +6,17 @@
  * own arguments, the thread's element book and the service's results in,
  * strings out.
  *
- * No secret in a step: typed, pasted and set text is written only when the
- * step names its field by index, the book says that field is no password
- * field and no earlier step of the call sent input (`mayQuoteText`); every
- * other text is its length, and a bare printable key is "a key". The start,
- * the end and a batch's plan all go through that one rule.
+ * No secret in a step: typed, pasted, set and selected text is written only
+ * when the step names its field by index, the book says that field is no
+ * password field and no earlier step of the call sent input
+ * (`mayQuoteText`); every other text is its length, and a bare printable key
+ * is "a key". The start, the end and a batch's plan all go through that one
+ * rule, and the read text the journal keeps has the texts the rule held back
+ * taken out (`scrubReadText`).
+ *
+ * A step reads in the past only when it ran: "Clicked Save". One that
+ * failed, was stopped, was refused or never ran reads as what was asked,
+ * "Click Save", with why under it.
  */
 import {
   COMPUTER_ABORT_WORDS,
@@ -160,7 +166,8 @@ function elementFact(brief: ElementBrief | null, path: readonly ElementBrief[]):
   return [role, inside].filter(Boolean).join(' ') || undefined
 }
 
-const pointWords = (p: readonly number[]): string => `${p[0]}, ${p[1]}`
+/** A point in brackets, so its comma is not one of the facts line's. */
+const pointWords = (p: readonly number[]): string => `(${p[0]}, ${p[1]})`
 
 /**
  * What step `k` acted on, as an open row's fact, or undefined when its words
@@ -177,6 +184,8 @@ export function stepTargetWords(actions: readonly ComputerAction[], k: number, b
     case 'type':
     case 'paste':
       return textFact(a.text ?? '', mayQuoteText(actions, k, book))
+    case 'select_text':
+      return a.text !== undefined ? textFact(a.text, mayQuoteText(actions, k, book)) : element()
     case 'set_value':
       return textFact(a.value ?? '', mayQuoteText(actions, k, book))
     case 'scroll':
@@ -207,6 +216,28 @@ export interface WordsContext {
   book?: WordsBook
 }
 
+/**
+ * How a row words its step: `live` while it runs ("Clicking Save"), `done`
+ * once it ran ("Clicked Save"), `asked` when it failed, was stopped, was
+ * refused or never ran ("Click Save"): a row never says a thing was done
+ * that was not.
+ */
+export type StepTense = 'live' | 'done' | 'asked'
+const tenseOpts = (tense: StepTense): { live: boolean; asked?: true } => (tense === 'asked' ? { live: false, asked: true } : { live: tense === 'live' })
+
+/** A row's words. */
+export type StepWords = Pick<ComputerHistoryStep, 'verb' | 'object' | 'inApp'>
+
+/**
+ * A step as its start record holds it: the row while it runs, and the same
+ * row as asked and as done, all made before the call from the book the
+ * model acted on, so a button the click renames reads by the name it had.
+ */
+export interface PlannedStep extends ComputerHistoryStep {
+  asked: StepWords
+  done: StepWords
+}
+
 const stepOf = (kind: ComputerStepKind, full: ComputerPhrase | null, short: ComputerPhrase | null): ComputerHistoryStep => ({
   kind,
   verb: full?.verb ?? 'Using',
@@ -214,19 +245,22 @@ const stepOf = (kind: ComputerStepKind, full: ComputerPhrase | null, short: Comp
   inApp: full?.object ?? ''
 })
 
+const wordsOf = ({ verb, object, inApp }: ComputerHistoryStep): StepWords => ({ verb, object, inApp })
+
 /** One action's row words, both ways: with the app, and with it left out. */
-function actionStep(a: ComputerAction, ctx: WordsContext, live: boolean, brief: (i: number) => ElementBrief | null): ComputerHistoryStep {
+function actionStep(a: ComputerAction, ctx: WordsContext, tense: StepTense, brief: (i: number) => ElementBrief | null): ComputerHistoryStep {
   const input = { ...safeAction(a), app: ctx.app }
+  const opts = { ...tenseOpts(tense), brief }
   return stepOf(
     KINDS[a.action] ?? 'click',
-    computerPhrase('computer_act', input, { live, brief, ...(ctx.app ? { app: ctx.app } : {}) }),
-    computerPhrase('computer_act', input, { live, brief, app: false })
+    computerPhrase('computer_act', input, { ...opts, ...(ctx.app ? { app: ctx.app } : {}) }),
+    computerPhrase('computer_act', input, { ...opts, app: false })
   )
 }
 
 /** A call that is not a list of actions, as its one step: the apps call, a read. */
-function wholeStep(tool: ComputerToolName, args: Record<string, unknown>, ctx: WordsContext, live: boolean, launched?: AppsOutcome): ComputerHistoryStep {
-  const opts = { live, ...(launched ? { launched } : {}) }
+function wholeStep(tool: ComputerToolName, args: Record<string, unknown>, ctx: WordsContext, tense: StepTense, launched?: AppsOutcome): ComputerHistoryStep {
+  const opts = { ...tenseOpts(tense), ...(launched ? { launched } : {}) }
   if (tool === 'computer_apps') {
     const phrase = computerPhrase(tool, args, opts)
     return stepOf('app', phrase, phrase)
@@ -234,20 +268,37 @@ function wholeStep(tool: ComputerToolName, args: Record<string, unknown>, ctx: W
   return stepOf('read', computerPhrase(tool, args, { ...opts, ...(ctx.app ? { app: ctx.app } : {}) }), computerPhrase(tool, args, { ...opts, app: false }))
 }
 
-/** A batch as one row while it runs or when it never finished: "Working in Mail". */
-export function workingStep(app: string, live: boolean): ComputerHistoryStep {
+/** A batch as one row while it runs ("Working in Mail") or when it never finished ("Work in Mail"). */
+export function workingStep(app: string, tense: StepTense): ComputerHistoryStep {
   const input = { app, actions: [] }
-  return stepOf('click', computerPhrase('computer_batch', input, { live, ...(app ? { app } : {}) }), computerPhrase('computer_batch', input, { live, app: false }))
+  const opts = tenseOpts(tense)
+  return stepOf('click', computerPhrase('computer_batch', input, { ...opts, ...(app ? { app } : {}) }), computerPhrase('computer_batch', input, { ...opts, app: false }))
 }
 
-/** The call's steps as planned, present tense: what its start record holds. Targets are read from the book now, before the call's closing read replaces it. */
-export function plannedSteps(tool: ComputerToolName, args: Record<string, unknown>, ctx: WordsContext): ComputerHistoryStep[] {
+/** The call's steps as planned, present tense: what its start record holds. Words and targets are read from the book now, before the call's closing read replaces it. */
+export function plannedSteps(tool: ComputerToolName, args: Record<string, unknown>, ctx: WordsContext): PlannedStep[] {
   const actions = callActions(tool, args)
-  if (tool !== 'computer_act' && tool !== 'computer_batch') return [wholeStep(tool, args, ctx, true)]
+  if (tool !== 'computer_act' && tool !== 'computer_batch')
+    return [{ ...wholeStep(tool, args, ctx, 'live'), asked: wordsOf(wholeStep(tool, args, ctx, 'asked')), done: wordsOf(wholeStep(tool, args, ctx, 'done')) }]
   const brief = (i: number): ElementBrief | null => ctx.book?.brief(i) ?? null
   return actions.map((a, k) => {
     const target = stepTargetWords(actions, k, ctx.book)
-    return { ...actionStep(a, ctx, true, brief), ...(target ? { target } : {}), ...(a.element !== undefined ? { element: a.element } : {}) }
+    return {
+      ...actionStep(a, ctx, 'live', brief),
+      ...(target ? { target } : {}),
+      ...(a.element !== undefined ? { element: a.element } : {}),
+      asked: wordsOf(actionStep(a, ctx, 'asked', brief)),
+      done: wordsOf(actionStep(a, ctx, 'done', brief))
+    }
+  })
+}
+
+/** The texts of a call that the secret rule keeps out of its steps: the journal takes them out of the read text it keeps too. */
+export function maskedTexts(tool: ComputerToolName, args: Record<string, unknown>, ctx: WordsContext): string[] {
+  const actions = callActions(tool, args)
+  return actions.flatMap((a, k) => {
+    const text = a.action === 'set_value' ? a.value : a.action === 'type' || a.action === 'paste' || a.action === 'select_text' ? a.text : undefined
+    return text && !mayQuoteText(actions, k, ctx.book) ? [text] : []
   })
 }
 
@@ -340,8 +391,8 @@ export interface SettleInput {
   tool: ComputerToolName
   args: Record<string, unknown>
   ctx: WordsContext
-  /** the start record's steps: their targets were read from the book before the call ran */
-  planned?: readonly ComputerHistoryStep[]
+  /** the start record's steps: their words and targets were read from the book before the call ran */
+  planned?: readonly PlannedStep[]
   /** the service's results, one per action that got one */
   results?: readonly StepResult[]
   /** the closing read's wait */
@@ -361,24 +412,27 @@ export interface SettleInput {
   launched?: AppsOutcome
 }
 
+/** The refusals that are the person's own doing or the thread's: a stop, not a failure, so never the red. */
+const STOPPED_REFUSALS: ReadonlySet<HostErrorKind> = new Set<HostErrorKind>(['stopped', 'paused', 'cancelled', 'denied', 'away'])
+
 /** How the whole call ended when nothing of it ran to an answer: stopped, refused or failed, with its line; null when it ran. */
 function callEnd(s: SettleInput): Pick<ComputerHistoryStep, 'state' | 'reason'> | null {
   if (s.abort) return { state: 'stopped', reason: COMPUTER_ABORT_WORDS[s.abort] ?? COMPUTER_REFUSAL_WORDS.cancelled }
-  if (s.refused) return s.refused.kind === 'stopped' ? { state: 'stopped', reason: COMPUTER_REFUSAL_WORDS.stopped } : { state: 'failed', reason: refusalWords(s.refused.kind, s.refused.line) }
+  if (s.refused) return { state: s.refused.kind && STOPPED_REFUSALS.has(s.refused.kind) ? 'stopped' : 'failed', reason: refusalWords(s.refused.kind, s.refused.line) }
   if (s.error) return { state: 'failed', reason: failureWords(s.error, { app: s.ctx.app || undefined }) }
   return null
 }
 
 /**
- * The call's steps as they ended, past tense, one per action: `ok` with its
- * tier and facts, `failed` with why, `stopped`, or `not-run`. A call that was
- * refused, failed whole or stopped before any step answered says so on its
- * first step and leaves the rest not run.
+ * The call's steps as they ended, one per action: `ok` in the past tense
+ * with its tier and facts; `failed` with why, `stopped` or `not-run` as what
+ * was asked. A call that was refused, failed whole or stopped before any
+ * step answered says so on its first step and leaves the rest not run.
  */
 export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
   const end = callEnd(s)
   if (s.tool !== 'computer_act' && s.tool !== 'computer_batch') {
-    const step = wholeStep(s.tool, s.args, s.ctx, false, s.launched)
+    const step = wholeStep(s.tool, s.args, s.ctx, end ? 'asked' : 'done', s.launched)
     const w = s.tool === 'computer_observe' ? waitFact(s.waited) : null
     return [{ ...step, ...(end ?? { state: 'ok' as const }), ...(!end && w ? { facts: [w] } : {}) }]
   }
@@ -389,9 +443,11 @@ export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
     const r = s.results?.[k]
     const resolved = r?.status === 'ok' && r.element ? r.element : undefined
     const brief = (i: number): ElementBrief | null => (resolved?.index === i ? resolved : (s.ctx.book?.brief(i) ?? null))
-    const words = actionStep(a, s.ctx, false, brief)
-    // the planned target was read before the call's closing read moved the book; a `named` step has one only now
-    const target = s.planned?.[k]?.target ?? (resolved ? stepTargetWords(actions, k, s.ctx.book, resolved) : undefined) ?? stepTargetWords(actions, k, s.ctx.book)
+    const plan = s.planned?.[k]
+    const tense: StepTense = r?.status === 'ok' ? 'done' : 'asked'
+    // the planned words and target were read before the call moved the book; a `named` step's element is known only now
+    const words: ComputerHistoryStep = plan && !resolved ? { kind: plan.kind, ...plan[tense] } : actionStep(a, s.ctx, tense, brief)
+    const target = plan?.target ?? (resolved ? stepTargetWords(actions, k, s.ctx.book, resolved) : undefined) ?? stepTargetWords(actions, k, s.ctx.book)
     const element = a.element ?? (r?.status === 'ok' ? r.resolved : undefined)
     const base = { ...words, ...(target ? { target } : {}), ...(element !== undefined ? { element } : {}) }
     if (r?.status === 'ok') {
@@ -433,10 +489,11 @@ const count = (n: number, one: string, many = `${one}s`): string => `${n} ${n ==
 /**
  * What a read took in, as the open row's read line: "Read 46 elements",
  * "Read 3 changes", "Read no changes", or "Looked at the picture" when the
- * tree was too thin to act from. `more` says the text holds more than its
- * header, so the line opens onto it.
+ * tree was too thin to act from and a picture did reach the model
+ * (`sawPicture`); a thin tree with no picture is the few elements it read.
+ * `more` says the text holds more than its header, so the line opens onto it.
  */
-export function readSummary(text: string): { words: string; more: boolean } {
+export function readSummary(text: string, sawPicture = false): { words: string; more: boolean } {
   let parsed: ReturnType<typeof parseObservation>
   try {
     parsed = parseObservation(text)
@@ -446,7 +503,7 @@ export function readSummary(text: string): { words: string; more: boolean } {
   const { header, lines } = parsed
   const more = lines.length > 0
   const tail = header.loading ? ', still loading' : header.notDrawn ? ', page not drawn' : ''
-  if (header.thin) return { words: 'Looked at the picture', more }
+  if (header.thin && sawPicture) return { words: 'Looked at the picture', more }
   if (header.change === 'unchanged') return { words: `Read no changes${tail}`, more }
   if (header.change === 'diff') {
     // a removed, changed or added group each counts once
@@ -478,4 +535,25 @@ export function cutReadText(text: string, max = READ_TEXT_MAX_BYTES): string {
   if (line > 0) kept = kept.slice(0, line)
   const left = text.slice(kept.length).split('\n').filter(Boolean).length
   return `${kept}\n… cut here, ${count(left, 'more line')}`
+}
+
+/** A text worth taking out: shorter ones are words any window holds. */
+const SCRUB_MIN = 4
+
+/**
+ * The read text with the call's held-back texts taken out: each place one
+ * stands, as typed or as the observation escapes it, reads as its length.
+ * The step said only how long the text was; the field's value in the read
+ * that follows must not say more.
+ */
+export function scrubReadText(text: string, masked: readonly string[]): string {
+  let out = text
+  // the longest first, so a text that holds another goes whole
+  for (const secret of [...new Set(masked)].sort((a, b) => b.length - a.length)) {
+    const n = [...secret].length
+    if (n < SCRUB_MIN) continue
+    const mark = `‹${count(n, 'character')}›`
+    for (const form of new Set([secret, JSON.stringify(secret).slice(1, -1)])) out = out.split(form).join(mark)
+  }
+  return out
 }

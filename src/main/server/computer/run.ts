@@ -24,9 +24,8 @@ import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, mayRunAtAx, type Acti
 import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type AppsOutcome, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
-import { planWords, plannedSteps, readSummary, settledSteps } from '@shared/computer/historyWords'
+import { maskedTexts, planWords, plannedSteps, readSummary, scrubReadText, settledSteps, type PlannedStep } from '@shared/computer/historyWords'
 import { approvalLine } from '@shared/approvalLine'
-import type { ComputerHistoryStep } from '@shared/contract-computer'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { awayAllowsKind } from '@shared/away'
@@ -301,16 +300,18 @@ export async function runComputerTool(
   // closing read replaces it. A call refused below is journaled too, as a start and its end at once.
   const note: CallNote = {}
   const words = { app: known?.name ?? args.app ?? '', ...(known ? { book: known.book } : {}) }
-  let planned: ComputerHistoryStep[] = []
+  let planned: PlannedStep[] = []
+  let masked: string[] = []
   let entry: HistoryEntry | null = null
   if (host.history) {
     try {
       planned = plannedSteps(tool, args, words)
+      masked = maskedTexts(tool, args, words)
       const plan = planWords(tool, args, words)
       entry = host.history.begin(t.threadId, {
         app: words.app,
         window: args.window ?? known?.window?.title ?? null,
-        steps: planned,
+        steps: planned.map(({ done: _done, ...step }) => step),
         ...(plan ? { plan } : {}),
         ...(ctx.turn !== undefined ? { token: ctx.turn } : {})
       })
@@ -325,8 +326,8 @@ export async function runComputerTool(
     try {
       const after = args.app ? lookupApp(t, args.app) : undefined
       const abort = signal.aborted ? (typeof signal.reason === 'string' ? signal.reason : 'cancel') : undefined
-      // the model reads the closing observation only when it is the answer's body
-      const read = obs && out?.body === obs.text ? readSummary(obs.text) : null
+      // the model reads the closing observation only when it is the answer's body, and looked at a picture only when one came with it
+      const read = obs && out?.body === obs.text ? readSummary(obs.text, out.shots.length > 0) : null
       const app = obs?.app.name ?? after?.name ?? words.app
       void entry.end({
         app,
@@ -347,7 +348,8 @@ export async function runComputerTool(
           ...(note.launched ? { launched: note.launched } : {})
         }),
         ...(read ? { read: read.words } : {}),
-        ...(read?.more ? { text: obs!.text } : {})
+        // a text the steps held back is held back here too
+        ...(read?.more ? { text: scrubReadText(obs!.text, masked) } : {})
       })
     } catch (e) {
       host.log(`computer history: the end of a call was not written: ${(e as Error).message}`)

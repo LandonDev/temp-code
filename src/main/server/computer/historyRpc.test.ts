@@ -51,10 +51,15 @@ describe('computer.history.* (historyRpc.ts)', () => {
     expect(METHOD_CAPABILITY['computer.history.step']).toBe('local')
   })
 
-  it('is refused on a host without computer use, and leaves every other method alone', async () => {
-    const read = ClientRequestSchema.parse({ id: '1', method: 'computer.history.read', params: { keys: ['t1'] } }) as ClientRequest
+  it('a host without computer use keeps no journal: a read answers nothing kept, never a failure; every other method is left alone', async () => {
+    const read = ClientRequestSchema.parse({ id: '1', method: 'computer.history.read', params: { keys: ['t1', 't2'] } }) as ClientRequest
     const viewer = { connection: {}, send: () => undefined }
-    await expect(handleComputerHistory(read, null, viewer)).rejects.toThrow('Computer use is not available here')
+    expect(await handleComputerHistory(read, null, viewer)).toEqual({
+      handled: true,
+      result: { sessions: [{ key: 't1', born: 0, calls: [], more: false }, { key: 't2', born: 0, calls: [], more: false }] }
+    })
+    const step = ClientRequestSchema.parse({ id: '2', method: 'computer.history.step', params: { key: 't1', n: 1 } }) as ClientRequest
+    expect(await handleComputerHistory(step, null, viewer)).toEqual({ handled: true, result: {} })
     const other = ClientRequestSchema.parse({ id: '1', method: 'computer.sessions', params: {} }) as ClientRequest
     expect(await handleComputerHistory(other, null, viewer)).toEqual({ handled: false })
   })
