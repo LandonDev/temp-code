@@ -1624,6 +1624,24 @@ describe('the journal (history.ts): one start and one end per call', () => {
     expect(failed.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Hold', 'failed', 'It needed your pointer and keyboard'], ['Press', 'not-run', undefined]])
   })
 
+  it('only the model’s own cancel reads as the model’s: an abort with no reason of its own is a plain cancel', async () => {
+    const h = make({ history: { pictures: () => false } })
+    // a harness that gave the call up, or a dropped bridge, aborts with no reason
+    const gaveUp = new AbortController()
+    const slow = h.run('computer_act', { app: 'Slow', action: 'key', text: 'super+a' }, 't1', { signal: gaveUp.signal })
+    await until(() => count(h, 'action.run') === 1, 'the action')
+    gaveUp.abort()
+    await slow
+    // computer_result's cancel names itself
+    const model = new AbortController()
+    const again = h.run('computer_act', { app: 'Slow', action: 'key', text: 'super+b' }, 't1', { signal: model.signal })
+    await until(() => count(h, 'action.run') === 2, 'the second action')
+    model.abort('cancel')
+    await again
+    const got = await calls(h)
+    expect(got.map((c) => [c.steps[0].state, c.steps[0].reason])).toEqual([['stopped', 'Cancelled'], ['stopped', 'The model cancelled it']])
+  })
+
   it('a request the service refuses whole is the call’s failure', async () => {
     const h = make({ history: { pictures: () => false } })
     const o = await h.run('computer_observe', { app: 'TextEdit', window: 'No such window' })

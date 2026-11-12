@@ -1299,6 +1299,35 @@ describe("when the preview ends", () => {
     expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 2450)}`);
   });
 
+  it("under a session whose preview ended, the picture is that session's own, though another session's step is the newest", async () => {
+    h.preview.state = { status: "ended", reason: "window-closed" };
+    const d = (t1: ComputerHistoryCall[]): ComputerSectionData => ({
+      // TextEdit is the followed session; the subagent has just finished a newer call in Mail
+      entries: [entry()],
+      keys: [{ key: "t1", threadId: "t1" }, { key: "sub1", threadId: "sub1" }],
+      histories: {
+        t1: { born: 1, calls: t1, more: false, status: "ready" },
+        sub1: { born: 2, calls: [call(9, { app: "Mail", window: "Inbox" })], more: false, status: "ready" },
+      },
+      exists: true,
+      live: true,
+    });
+    const view = mount(d([call(1)]));
+    await flush();
+    // the open row is the tree's newest step, Mail's; the box under "Untitled in TextEdit" is TextEdit's
+    expect(words(openRow())).toContain("Step 9");
+    expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("Untitled in TextEdit");
+    expect(box()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
+    expect(lineUnder()).toBe(`The window closed. As it was at ${clockTime(AT + 1450)}`);
+    expect(h.readStep).toHaveBeenCalledWith("t1", 1);
+    expect(h.readStep).not.toHaveBeenCalledWith("sub1", 9);
+    // with nothing of its own kept, the other session's picture stands in, and the line names its window
+    view.again(d([call(1, { picture: { none: "no-read" } })]));
+    await flush();
+    expect(box()!.getAttribute("aria-label")).toMatch(/^Inbox in Mail at /);
+    expect(lineUnder()).toBe(`The window closed. Inbox in Mail, as it was at ${clockTime(AT + 9450)}`);
+  });
+
   it("with no step kept it is the line alone", async () => {
     h.preview.state = { status: "ended", reason: "window-closed" };
     mount(data([], [entry()]));
@@ -1429,6 +1458,42 @@ describe("loading, failing and older steps", () => {
     await vi.waitFor(() => expect(again.disabled).toBe(false));
     await act(async () => fireEvent.click(again));
     expect(h.loadOlder).toHaveBeenCalledTimes(2);
+  });
+
+  it("a history that begins again in one step (no empty state between) reads its call anew and drops the pin: call 1 of the new history is another call", async () => {
+    h.preview.state = live();
+    h.readStep.mockImplementation(async (_k: string, n: number) => ({ ...picture(n), text: `read ${n}` }));
+    const view = mount(data([call(1), call(2)], [entry()]));
+    await flush();
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(screen.getByRole("button", { name: "Go live" })).toBeTruthy();
+    const first = box()!.querySelector("img")!.getAttribute("src");
+    const reads = h.readStep.mock.calls.length;
+    // the reconnect read replaces the key whole: a new birth, and a call 1 at the same revision
+    view.again(data([call(1, { steps: [step("Clicked", "Other")] })], [entry()], { born: 2 }));
+    await flush();
+    // the old picture went with its history, and nothing of it is shown: the pin is gone and the section follows
+    expect(revoked).toContain(first);
+    expect(screen.queryByRole("button", { name: "Go live" })).toBeNull();
+    expect(document.querySelector('[data-slot="computer-section"]')!.hasAttribute("data-following")).toBe(true);
+    // pinned again, the new call 1 is read for itself
+    fireEvent.click(rowButton("t1:1:0"));
+    await flush();
+    expect(h.readStep.mock.calls.length).toBe(reads + 1);
+    expect(box()!.querySelector("img")!.getAttribute("src")).not.toBe(first);
+  });
+
+  it("a kept step shown while nothing is live is read again when its history begins again under it", async () => {
+    const view = mount(data([call(1)]));
+    await flush();
+    const first = box()!.querySelector("img")!.getAttribute("src");
+    expect(h.readStep).toHaveBeenCalledTimes(1);
+    view.again(data([call(1)], [], { born: 2 }));
+    await flush();
+    expect(h.readStep).toHaveBeenCalledTimes(2);
+    expect(revoked).toContain(first);
+    expect(box()!.querySelector("img")!.getAttribute("src")).not.toBe(first);
   });
 
   it("Show earlier steps loads the page under the oldest call held", async () => {

@@ -557,9 +557,10 @@ under them is the section's one scroller.
   kept nothing and an older picture of its session stands in (another
   window's is named: "Inbox in Mail, as it was at 2:03 PM"); and
   "Couldn't read the picture" with Retry when the read failed, which is
-  never said as nothing kept. Under a preview that ended a kept picture
-  is a still beneath a live session's row, so its line always says when
-  it was ("The window closed. As it was at 2:03 PM"), and a failed read
+  never said as nothing kept. Under a preview that ended the kept
+  picture is that session's own newest (another session's, where it has
+  none, is named), a still beneath a live session's row, so its line
+  always says when it was ("The window closed. As it was at 2:03 PM"), and a failed read
   sits beside the end's words with its own Retry. The
   box fades in once, when the viewport arrives; a change of face moves
   nothing.

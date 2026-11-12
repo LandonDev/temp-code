@@ -403,6 +403,10 @@ describe('settledSteps', () => {
     // the step in flight answers cancelled: that is the stop
     const during = settledSteps({ tool: 'computer_batch', args: batch, ctx, planned, abort: 'paused', results: [ok('left_click'), failed('type', { kind: 'cancelled' })] })
     expect(during.map((s) => [s.state, s.reason])).toEqual([['ok', undefined], ['stopped', 'The thread was paused'], ['not-run', undefined]])
+    // only the model's own cancel is the model's: an abort with no reason of its own reads as a plain cancel
+    const one = { app: 'TextEdit', action: 'left_click', element: 44 }
+    expect(settledSteps({ tool: 'computer_act', args: one, ctx, abort: 'cancel' })[0]).toMatchObject({ state: 'stopped', reason: 'The model cancelled it' })
+    expect(settledSteps({ tool: 'computer_act', args: one, ctx, abort: 'aborted' })[0]).toMatchObject({ state: 'stopped', reason: 'Cancelled' })
     // an abort that came after every step answered marks nothing
     const late = settledSteps({ tool: 'computer_act', args: { app: 'TextEdit', action: 'left_click', element: 44 }, ctx, abort: 'stopped', results: [ok('left_click')] })
     expect(late[0].state).toBe('ok')

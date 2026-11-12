@@ -310,7 +310,7 @@ whole minutes, 1 to 60, committed as `computer.sessionIdleMs`, then When a
 step needs the app in front, a `ChoiceSelect` of Bring it forward for a moment
 (`brief`) and Wait until I'm away (`away`), saved as `computer.activeApp`
 (docs/computer-protocol.md §26.6), then Keep pictures of the window, a
-`SettingSwitch` with "On this Mac, for 30 days after a thread last used the computer. Off deletes them; the steps and what was read stay." (`keepPictures`, the setting
+`SettingSwitch` with "On this Mac: a thread's newest 400, for 30 days after it last used the computer. Off deletes them; the steps and what was read stay." (`keepPictures`, the setting
 `computer.history.pictures`; docs/computer-protocol.md §17.9). Permissions:
 Accessibility and Screen Recording on the `PermissionRow` Appshots shares,
 muted Granted or amber Not granted with Grant… to the System Settings pane;

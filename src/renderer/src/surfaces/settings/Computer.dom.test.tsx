@@ -272,7 +272,7 @@ describe("Keep pictures of the window", () => {
     await settle();
     const row = toggle().closest("[data-slot=page-row]") as HTMLElement;
     expect(row.textContent).toContain("Keep pictures of the window");
-    expect(row.textContent).toContain("On this Mac, for 30 days after a thread last used the computer. Off deletes them; the steps and what was read stay.");
+    expect(row.textContent).toContain("On this Mac: a thread's newest 400, for 30 days after it last used the computer. Off deletes them; the steps and what was read stay.");
     expect(toggle().getAttribute("aria-checked")).toBe("true");
     // one control in the row, and it sits in the first section, under the two settings before it
     expect(within(row).getAllByRole("switch")).toHaveLength(1);

@@ -77,7 +77,13 @@ const windowIn = (call: Pick<ComputerHistoryCall, "app" | "window">): string => 
 const shownAt = (call: ComputerHistoryCall): number => (call.picture && !("none" in call.picture) ? call.picture.at : (call.endedAt ?? call.at));
 /** What a kept face is, as its accessible name: "Untitled in TextEdit at 2:04 PM". */
 const keptLabel = (call: ComputerHistoryCall): string => `${windowIn(call)} at ${clockTime(shownAt(call))}`;
-const wantOf = (row: StepRow | null): MediaWant | null => (row ? { id: `${row.key}:${row.call.n}`, key: row.key, call: row.call } : null);
+/**
+ * A step's media as the section asks for it. Its id carries the history's
+ * birth: a history removed and begun again counts its calls from 1 again,
+ * and call 1 of the new one is another call, whose media is read anew.
+ */
+const wantOf = (row: StepRow | null, born: (key: string) => number): MediaWant | null =>
+  row ? { id: `${row.key}:${born(row.key)}:${row.call.n}`, key: row.key, call: row.call } : null;
 
 /** The running calls as lines: each live session's card, hold or call, worded from the journal's start where it has one. */
 export function runningLines(entries: readonly ComputerEntry[], list: Steps): RunningLine[] {
@@ -127,6 +133,8 @@ export function viewportOf(v: {
   pinned: StepRow | null;
   /** the step whose kept media stands in for the stream: the pinned row, else the newest one where nothing is live or the stream ended */
   shown: StepRow | null;
+  /** the id that step's media was asked under (`wantOf`) */
+  shownId?: string;
   media: ReturnType<typeof useStepMedia>;
   keptHeight: number | null;
   /** what is shown is neither the window now nor the open row's own picture: the line under it says when it was */
@@ -155,7 +163,7 @@ export function viewportOf(v: {
   const at = shownAt(call);
   const label = keptLabel(call);
   const size = kept ? { width: kept.width, height: kept.height } : null;
-  const here = media.landed?.id === `${shown.key}:${call.n}` ? media.landed.media : null;
+  const here = media.landed?.id === (v.shownId ?? `${shown.key}:${call.n}`) ? media.landed.media : null;
   const base = { label, size, height: pinned ? keptHeight : null };
   // a pinned row's own facts carry its time; an older step standing in for the newest says when it was, and whose
   // window it is where that is not the newest step's
@@ -264,13 +272,21 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   // ── kept pictures and read texts ──
   const [cache] = useState(() => new StepMediaCache({ read: readHistoryStep, onPictureGone: markPictureGone }));
   useEffect(() => () => cache.clear(), [cache]);
-  // a history that was removed, or removed and begun again, shows nothing of what it was
+  // a history that was removed, or removed and begun again, shows nothing of what it was: its kept media goes,
+  // and a row pinned in it is no pin (the new history's call of that number is another call)
+  const bornOf = (key: string): number => data.histories[key]?.born ?? 0;
   const births = useRef(new Map<string, number>());
   useEffect(() => {
     for (const { key } of data.keys) {
       const born = data.histories[key]?.born ?? 0;
       const was = births.current.get(key);
-      if (was !== undefined && was !== born) cache.dropKey(key);
+      if (was !== undefined && was !== born) {
+        cache.dropKey(key);
+        if (latest.current.pinnedRow?.key === key) {
+          setSelected(null);
+          setKeptHeight(null);
+        }
+      }
       births.current.set(key, born);
     }
   }, [cache, data.histories, data.keys]);
@@ -285,23 +301,35 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
       const read = rows.find((r) => r.call.text && r.key === leadKey) ?? rows.find((r) => r.call.text);
       if (read) return read;
     }
+    // Under a session's row whose preview ended, that session's own newest kept step: the newest step of the
+    // tree may be another session's, in another window.
+    const own = lead ? rows.find((r) => r.key === leadKey && keepsMedia(r.call)) : undefined;
+    if (own) return own;
     if (!openRow || keepsMedia(openRow.call)) return openRow;
     // the open step's own session first: its window is the one the step was in
     return rows.find((r) => r.key === openRow.key && keepsMedia(r.call)) ?? rows.find((r) => keepsMedia(r.call)) ?? openRow;
   };
   const shownRow = pinnedRow ?? (!lead || over ? standIn() : null);
-  const asOf = pinnedRow ? lead !== null : shownRow !== null && shownRow.call !== openRow?.call;
-  const another = !pinnedRow && shownRow !== null && openRow !== null && (shownRow.key !== openRow.key || shownRow.call.app !== openRow.call.app || shownRow.call.window !== openRow.call.window);
-  const media = useStepMedia(cache, wantOf(shownRow));
+  // What the stand-in is measured against: the followed session's window while one is live, else the open step's.
+  const another =
+    !pinnedRow && shownRow !== null
+      ? lead
+        ? shownRow.key !== leadKey
+        : openRow !== null && (shownRow.key !== openRow.key || shownRow.call.app !== openRow.call.app || shownRow.call.window !== openRow.call.window)
+      : false;
+  const asOf = pinnedRow ? lead !== null : shownRow !== null && (another || shownRow.call !== openRow?.call);
+  const shownWant = wantOf(shownRow, bornOf);
+  const media = useStepMedia(cache, shownWant);
 
   // The open row's read: closed whenever the open row changes.
   const [readFor, setReadFor] = useState<string | null>(null);
   if (readFor !== null && readFor !== (openRow?.id ?? null)) setReadFor(null);
   const readRow = openRow !== null && readFor === openRow.id ? openRow : null;
   const readOpen = readRow !== null;
-  const readMedia = useStepMedia(cache, wantOf(readRow));
+  const readWant = wantOf(readRow, bornOf);
+  const readMedia = useStepMedia(cache, readWant);
   // the text held for the call stays while a later revision of it (its picture landing) is read
-  const readText = readRow && readMedia.landed?.id === `${readRow.key}:${readRow.call.n}` ? (readMedia.landed.media.text ?? "") : null;
+  const readText = readWant && readMedia.landed?.id === readWant.id ? (readMedia.landed.media.text ?? "") : null;
 
   // The rows' handlers read what is current through a ref, so they keep one identity and a push re-renders only the
   // row whose call changed (docs/agents/renderer-over-time.md).
@@ -388,6 +416,7 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     live: lead ? { entry: lead, stream } : null,
     pinned: pinnedRow,
     shown: shownRow,
+    ...(shownWant ? { shownId: shownWant.id } : {}),
     media,
     keptHeight,
     asOf,

@@ -325,7 +325,8 @@ export async function runComputerTool(
     const obs = note.observation
     try {
       const after = args.app ? lookupApp(t, args.app) : undefined
-      const abort = signal.aborted ? (typeof signal.reason === 'string' ? signal.reason : 'cancel') : undefined
+      // an abort with no reason of its own (a harness that gave the call up, a dropped bridge) is not the model's cancel
+      const abort = signal.aborted ? (typeof signal.reason === 'string' ? signal.reason : 'aborted') : undefined
       // the model reads the closing observation only when it is the answer's body, and looked at a picture only when one came with it
       const read = obs && out?.body === obs.text ? readSummary(obs.text, out.shots.length > 0) : null
       const app = obs?.app.name ?? after?.name ?? words.app
