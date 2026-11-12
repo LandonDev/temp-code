@@ -314,7 +314,9 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
   const another =
     !pinnedRow && shownRow !== null
       ? lead
-        ? shownRow.key !== leadKey
+        ? // the followed session's row names the window it is in now: a still of any other window, its own older
+          // one included, is named
+          shownRow.key !== leadKey || shownRow.call.app !== (lead.row.apps[0]?.name ?? shownRow.call.app) || shownRow.call.window !== (lead.row.apps[0]?.window ?? null)
         : openRow !== null && (shownRow.key !== openRow.key || shownRow.call.app !== openRow.call.app || shownRow.call.window !== openRow.call.window)
       : false;
   const asOf = pinnedRow ? lead !== null : shownRow !== null && (another || shownRow.call !== openRow?.call);

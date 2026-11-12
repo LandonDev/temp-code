@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, utimesSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -278,7 +278,39 @@ describe('n, turn and born', () => {
     const read = await again.calls('t1')
     expect(read.calls.map((x) => [x.n, x.state])).toEqual([[1, 'done']])
     // the counter still clears the end with no start
-    expect(await again.history.begin('t1', start()).n()).toBe(8)
+    const next = again.history.begin('t1', start())
+    expect(await next.n()).toBe(8)
+    // the new call's records start on a line of their own, never joined to the torn one: it is there at the next load
+    await next.end(end({ read: 'Read 3 changes', text: 'the read' }))
+    await next.picture(again.shot)
+    await again.history.close()
+    const third = journal({ root: j.root })
+    const reloaded = (await third.calls('t1')).calls
+    expect(reloaded.map((x) => [x.n, x.state])).toEqual([[1, 'done'], [8, 'done']])
+    expect(reloaded[1]).toMatchObject({ text: true, picture: { width: 960, height: 804 } })
+    expect((await third.history.step('t1', 8)).text).toBe('the read')
+  })
+
+  it('a kept file that cannot be read just now is not said gone: the read fails and may be asked again; one that is gone is gone', async () => {
+    const j = journal()
+    const entry = j.history.begin('t1', start())
+    await entry.end(end({ read: 'Read 3 changes', text: 'the read' }))
+    await entry.picture(j.shot)
+    const jpg = join(j.dir('t1'), 'steps', '1.jpg')
+    const bytes = readFileSync(jpg)
+    // the picture's place holds something that is no file to read: an error that is not "no such file"
+    rmSync(jpg)
+    mkdirSync(jpg)
+    await expect(j.history.step('t1', 1)).rejects.toThrow()
+    // the host still lists it, and the next read of it works
+    expect((await j.calls('t1')).calls[0].picture).toEqual({ width: 960, height: 804, at: 5_000 })
+    rmSync(jpg, { recursive: true })
+    writeFileSync(jpg, bytes)
+    expect((await j.history.step('t1', 1)).picture?.data).toBe(bytes.toString('base64'))
+    // a file that is not there is gone, and the list says so
+    rmSync(jpg)
+    expect((await j.history.step('t1', 1)).picture).toBeUndefined()
+    expect((await j.calls('t1')).calls[0].picture).toEqual({ none: 'gone' })
   })
 
   it('a history removed and begun again has a new born, and its numbers start over', async () => {

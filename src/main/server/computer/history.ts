@@ -127,6 +127,8 @@ interface KeyState {
   /** the names under steps/ */
   files: Set<string>
   made: boolean
+  /** the log ends in a torn line (a crash mid-write): the next record starts on a line of its own */
+  torn: boolean
   /** removed: every job still queued does nothing */
   dead: boolean
   chain: Promise<void>
@@ -432,6 +434,7 @@ export class ComputerHistory {
       open: new Set(),
       files: new Set(),
       made: false,
+      torn: false,
       dead: false,
       chain: Promise.resolve()
     }
@@ -452,6 +455,8 @@ export class ComputerHistory {
   /** The log's records as they stand on disk: a torn or foreign line is skipped. */
   private async records(state: KeyState): Promise<HistoryRecord[]> {
     const text = await readFile(join(state.dir, 'log.jsonl'), 'utf8').catch(() => '')
+    // a last line with no newline was cut off mid-write: what is appended next must not join it
+    state.torn = text !== '' && !text.endsWith('\n')
     const records: HistoryRecord[] = []
     for (const line of text.split('\n')) {
       if (!line) continue
@@ -497,6 +502,7 @@ export class ComputerHistory {
     try {
       await writeFile(`${log}.tmp`, keep.map((r) => JSON.stringify(r) + '\n').join(''))
       await rename(`${log}.tmp`, log)
+      state.torn = false
     } catch (e) {
       this.failed(e)
       return
@@ -591,7 +597,8 @@ export class ComputerHistory {
   private async append(state: KeyState, record: HistoryRecord): Promise<void> {
     try {
       await this.ensureDir(state)
-      await appendFile(join(state.dir, 'log.jsonl'), JSON.stringify(record) + '\n')
+      await appendFile(join(state.dir, 'log.jsonl'), `${state.torn ? '\n' : ''}${JSON.stringify(record)}\n`)
+      state.torn = false
     } catch (e) {
       this.failed(e)
     }
@@ -608,10 +615,12 @@ export class ComputerHistory {
     }
   }
 
+  /** A kept file's bytes; null when it is gone. Any other failure to read it is thrown: the file may still be there, and the reader can ask again. */
   private async readStep(state: KeyState, name: string): Promise<Buffer | null> {
     try {
       return await readFile(join(state.dir, 'steps', name))
-    } catch {
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') throw e
       state.files.delete(name)
       return null
     }

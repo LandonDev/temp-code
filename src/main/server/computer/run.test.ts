@@ -580,7 +580,11 @@ describe('needsFull', () => {
  * PersonIdle over a raw idle the test moves (`away` puts the person's last
  * input five minutes back, `present` keeps it now), shortened numbers.
  */
-function scheduled(env: Record<string, string> = {}, numbers: Partial<SessionSchedulerOptions> = { pollMs: 50, recentCopyMs: 1_600, pasteWaitMaxMs: 4_000, clipboardPollMs: 50 }) {
+function scheduled(
+  env: Record<string, string> = {},
+  numbers: Partial<SessionSchedulerOptions> = { pollMs: 50, recentCopyMs: 1_600, pasteWaitMaxMs: 4_000, clipboardPollMs: 50 },
+  more: Parameters<typeof make>[0] = {}
+) {
   let rawLast = Date.now() - 300_000
   let present = false
   const raw = { getSystemIdleTime: () => (present ? 0 : Math.floor((Date.now() - rawLast) / 1000)) }
@@ -589,6 +593,7 @@ function scheduled(env: Record<string, string> = {}, numbers: Partial<SessionSch
   let sched!: SessionScheduler
   const h = make({
     env,
+    ...more,
     makeGate: ({ service, sessions }) =>
       (sched = new SessionScheduler({
         service,
@@ -1622,6 +1627,18 @@ describe('the journal (history.ts): one start and one end per call', () => {
     const failed = (await calls(h)).at(-1)!
     expect(failed.turn).toBe(2)
     expect(failed.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Hold', 'failed', 'It needed your pointer and keyboard'], ['Press', 'not-run', undefined]])
+  })
+
+  it('a step stopped while it waits for the Mac is a stop in the journal, never the red with the hold’s own refusal', async () => {
+    const s = scheduled({}, undefined, { history: { pictures: () => false } })
+    s.setPresent(true)
+    const held = s.h.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 1 })
+    await until(() => s.lines.includes('Waiting for the Mac to be free'), 'the held line')
+    // the person presses Stop while the step is still held at the gate
+    await s.h.sessions.stop('t1')
+    await held
+    const call = (await calls(s.h)).at(-1)!
+    expect(call.steps.map((x) => [x.verb, x.state, x.reason])).toEqual([['Hold', 'stopped', 'Stopped']])
   })
 
   it('only the model’s own cancel reads as the model’s: an abort with no reason of its own is a plain cancel', async () => {

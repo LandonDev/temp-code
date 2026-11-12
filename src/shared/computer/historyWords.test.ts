@@ -407,9 +407,45 @@ describe('settledSteps', () => {
     const one = { app: 'TextEdit', action: 'left_click', element: 44 }
     expect(settledSteps({ tool: 'computer_act', args: one, ctx, abort: 'cancel' })[0]).toMatchObject({ state: 'stopped', reason: 'The model cancelled it' })
     expect(settledSteps({ tool: 'computer_act', args: one, ctx, abort: 'aborted' })[0]).toMatchObject({ state: 'stopped', reason: 'Cancelled' })
+    // a step still held for the Mac, or for the clipboard, when the call is stopped answers as the hold's own
+    // refusal: it was stopped, and never reads as the one red with a reason that is not what happened
+    const heldForMac = settledSteps({ tool: 'computer_act', args: one, ctx, abort: 'stopped', results: [failed('left_click', { kind: 'needs_tier', needed: 'session' })] })
+    expect(heldForMac[0]).toMatchObject({ verb: 'Click', state: 'stopped', reason: 'Stopped' })
+    const heldForCopy = settledSteps({ tool: 'computer_act', args: { app: 'TextEdit', action: 'paste', text: 'x', element: 33 }, ctx, abort: 'paused', results: [failed('paste', { kind: 'clipboard_busy', reason: 'recent-copy' })] })
+    expect(heldForCopy[0]).toMatchObject({ state: 'stopped', reason: 'The thread was paused' })
+    // with no abort the same refusals are what they say
+    expect(settledSteps({ tool: 'computer_act', args: one, ctx, results: [failed('left_click', { kind: 'needs_tier', needed: 'session' })] })[0]).toMatchObject({ state: 'failed', reason: 'It needed your pointer and keyboard' })
+    // Skip on the Run-now card is the person's own no
+    expect(settledSteps({ tool: 'computer_act', args: one, ctx, skipped: [0], results: [failed('left_click', { kind: 'needs_tier', needed: 'session' })] })[0]).toMatchObject({ state: 'stopped', reason: 'You chose Skip' })
     // an abort that came after every step answered marks nothing
     const late = settledSteps({ tool: 'computer_act', args: { app: 'TextEdit', action: 'left_click', element: 44 }, ctx, abort: 'stopped', results: [ok('left_click')] })
     expect(late[0].state).toBe('ok')
+  })
+
+  it('a focus that stopped a text step says which of its reasons it was: only one is a focus that moved', () => {
+    const typed = { app: 'TextEdit', action: 'type', text: 'hunter2-long', named: 'Password' }
+    const why = (reason: string): string | undefined =>
+      settledSteps({ tool: 'computer_act', args: typed, ctx, results: [failed('type', { kind: 'focus_moved', reason } as never)] })[0].reason
+    expect(why('secure')).toBe('A password field takes text only by its element')
+    expect(why('browser-field')).toBe("The keys would have gone to the browser's own field")
+    expect(why('unplanned')).toBe('Another field had the focus')
+    expect(why('moved')).toBe(COMPUTER_FAILURE_WORDS.focus_moved)
+  })
+
+  it('a password field found only when the step ran keeps not even the length its plan had', () => {
+    const typed = { app: 'TextEdit', action: 'type', text: 'hunter2-long', named: 'Password' }
+    const planned = plannedSteps('computer_act', typed, ctx)
+    // named by name, the book cannot know the field: the plan is a length
+    expect(planned[0].target).toBe('12 characters')
+    // the service refuses it as a password field and names the field: the row says a password
+    const refused = settledSteps({ tool: 'computer_act', args: typed, ctx, planned, results: [failed('type', { kind: 'focus_moved', reason: 'secure', focused: { index: 12, line: 'password "Password"' } } as never)] })
+    expect(refused[0]).toMatchObject({ state: 'failed', target: 'a password' })
+    // and so does one that ran into it
+    const ran = settledSteps({ tool: 'computer_act', args: typed, ctx, planned, results: [ok('type', { resolved: 12, element: { index: 12, line: 'password "Password"' } })] })
+    expect(ran[0]).toMatchObject({ state: 'ok', target: 'a password' })
+    // a plain field found the same way keeps its length
+    const plain = settledSteps({ tool: 'computer_act', args: { ...typed, named: 'Subject' }, ctx, planned, results: [ok('type', { resolved: 33, element: { index: 33, line: 'input "Subject"' } })] })
+    expect(plain[0].target).toBe('12 characters')
   })
 
   it('a request that failed whole says the service’s kind', () => {

@@ -1328,6 +1328,17 @@ describe("when the preview ends", () => {
     expect(lineUnder()).toBe(`The window closed. Inbox in Mail, as it was at ${clockTime(AT + 9450)}`);
   });
 
+  it("a still of another window of the same session is named too: the session's row says the window it is in now", async () => {
+    h.preview.state = { status: "ended", reason: "window-closed" };
+    // the session read document A and kept its picture, then moved to document B, whose step kept nothing
+    const inB = entry({ apps: [{ name: "TextEdit", bundleId: "com.apple.TextEdit", window: "B" }] });
+    mount(data([call(1, { window: "A" }), call(2, { window: "B", picture: { none: "failed" } })], [inB]));
+    await flush();
+    expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("B in TextEdit");
+    expect(box()!.getAttribute("aria-label")).toMatch(/^A in TextEdit at /);
+    expect(lineUnder()).toBe(`The window closed. A in TextEdit, as it was at ${clockTime(AT + 1450)}`);
+  });
+
   it("with no step kept it is the line alone", async () => {
     h.preview.state = { status: "ended", reason: "window-closed" };
     mount(data([], [entry()]));
